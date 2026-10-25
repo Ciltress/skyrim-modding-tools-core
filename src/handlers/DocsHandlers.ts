@@ -1,8 +1,8 @@
-import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
+import type { AppBackend } from '../backend/index.js';
 import { BaseHandler } from './BaseHandler.js';
 import type { ToolSpec } from './BaseHandler.js';
+import { ToolError, ToolErrorCode } from './errors.js';
 import {
-    GUIDES,
     GuideNotFoundError,
     extractSection,
     guideById,
@@ -11,9 +11,10 @@ import {
     listSections,
     readGuideFile
 } from '../lib/guides.js';
+import type { Product } from '../lib/product.js';
 
 /**
- * Serves this server's own documentation as a tool.
+ * Serves the product's own documentation as a tool: the guides it lists.
  *
  * The same documents are exposed as MCP resources by the server, but resources
  * are typically attached by the *user* in a client's UI, so an agent will not
@@ -25,7 +26,12 @@ import {
  * first.
  */
 export class DocsHandlers extends BaseHandler {
+    constructor(backend: AppBackend, private readonly product: Product) {
+        super(backend);
+    }
+
     protected toolSpecs(): ToolSpec[] {
+        const guides = this.product.guides;
         return [
             {
                 definition: {
@@ -50,9 +56,9 @@ export class DocsHandlers extends BaseHandler {
                                 // Derived from the registry, so a guide added there is
                                 // described here without anyone remembering to.
                                 description:
-                                    `Which guide: ${GUIDES.map(g => `'${g.id}' (${g.title})`).join(', ')}. ` +
+                                    `Which guide: ${guides.map(g => `'${g.id}' (${g.title})`).join(', ')}. ` +
                                     'Omit for the index of all of them.',
-                                enum: GUIDES.map(g => g.id)
+                                enum: guides.map(g => g.id)
                             },
                             section: {
                                 type: 'string',
@@ -78,33 +84,34 @@ export class DocsHandlers extends BaseHandler {
      * @param args.guide - Guide id. Omit for the index.
      * @param args.section - Section number or title fragment.
      * @returns The requested documentation as markdown.
-     * @throws {McpError} If the guide or section does not exist, or the file is unreadable.
+     * @throws {ToolError} If the guide or section does not exist, or the file is unreadable.
      */
     private readServerGuide(args: any): Record<string, any> {
         const requested = args?.guide ? String(args.guide).trim().toLowerCase() : undefined;
         const section = args?.section ? String(args.section).trim() : undefined;
+        const ids = this.product.guides.map(g => g.id).join(', ');
 
         try {
             // No guide named: hand back the cheap index rather than every document.
             if (!requested) {
                 if (section) {
-                    throw new McpError(
-                        ErrorCode.InvalidParams,
+                    throw new ToolError(
+                        ToolErrorCode.InvalidParams,
                         `A section was requested without a guide. Name one of: ` +
-                        `${GUIDES.map(g => g.id).join(', ')}.`
+                        `${ids}.`
                     );
                 }
                 return {
-                    guides: guideIndex(),
+                    guides: guideIndex(this.product),
                     hint: 'Request a section with {guide, section}, e.g. {"guide":"tools","section":"1"}.'
                 };
             }
 
-            const guide = guideById(requested);
+            const guide = guideById(this.product, requested);
             if (!guide) {
-                throw new McpError(
-                    ErrorCode.InvalidParams,
-                    `There is no guide '${requested}'. Available: ${GUIDES.map(g => g.id).join(', ')}.`
+                throw new ToolError(
+                    ToolErrorCode.InvalidParams,
+                    `There is no guide '${requested}'. Available: ${ids}.`
                 );
             }
 
@@ -114,7 +121,7 @@ export class DocsHandlers extends BaseHandler {
                 return {
                     guide: guide.id,
                     title: guide.title,
-                    uri: guideUri(guide.id),
+                    uri: guideUri(this.product, guide.id),
                     bytes: Buffer.byteLength(markdown, 'utf8'),
                     sections: listSections(markdown).map(({ number, title, level }) => ({ number, title, level })),
                     content: markdown
@@ -123,8 +130,8 @@ export class DocsHandlers extends BaseHandler {
 
             const found = extractSection(markdown, section);
             if (!found) {
-                throw new McpError(
-                    ErrorCode.InvalidParams,
+                throw new ToolError(
+                    ToolErrorCode.InvalidParams,
                     `Guide '${guide.id}' has no section matching '${section}'. Available sections: ` +
                     listSections(markdown)
                         .map(s => (s.number ? `${s.number} ${s.title}` : s.title))
@@ -135,7 +142,7 @@ export class DocsHandlers extends BaseHandler {
             return {
                 guide: guide.id,
                 title: guide.title,
-                uri: guideUri(guide.id),
+                uri: guideUri(this.product, guide.id),
                 section: {
                     number: found.section.number,
                     title: found.section.title,
@@ -147,7 +154,7 @@ export class DocsHandlers extends BaseHandler {
             // A guide that ships with the build but is not on disk is an installation
             // problem, not a bad argument — it keeps its own message.
             if (error instanceof GuideNotFoundError) {
-                throw new McpError(ErrorCode.InternalError, error.message);
+                throw new ToolError(ToolErrorCode.InternalError, error.message);
             }
             throw error;
         }

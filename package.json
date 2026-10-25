@@ -1,19 +1,27 @@
 {
-  "name": "skyrim-modding-tools-mcp",
+  "name": "skyrim-modding-tools-core",
   "version": "0.1.0",
-  "mcpName": "io.github.ciltress/skyrim-modding-tools-mcp",
-  "description": "MCP server for Skyrim SE modding: look up records across a Mod Organizer load order, and author mods and patches as text projects built into plugins",
+  "description": "The core of the Skyrim SE modding tools: records across a mod manager's load order, mods and patches authored as text projects and built into plugins, and the tools, guides and skills for them, served by skyrim-modding-tools-mcp and its OpenClaw plugin",
   "type": "module",
   "main": "dist/index.js",
-  "bin": {
-    "skyrim-modding-tools-mcp": "dist/index.js"
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/fakes.d.ts",
+      "default": "./dist/testing/fakes.js"
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",
     "docs",
     "skills",
+    "helper/SkyrimHelper",
     "helper/bin",
-    "AGENTS.md",
     "CONTEXT.md"
   ],
   "scripts": {
@@ -21,23 +29,17 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:types": "tsc -p tsconfig.json --noEmit",
-    "start": "node ./dist/index.js",
-    "dev": "npx @modelcontextprotocol/inspector ./dist/index.js",
-    "setup": "npm ci && npm run build && node dist/setup/main.js",
     "build": "tsc",
-    "docs:tools": "node scripts/generate-tool-docs.mjs",
-    "smoke": "node scripts/smoke.mjs",
+    "prepare": "tsc",
     "build:helper": "dotnet publish helper/SkyrimHelper -c Release -o helper/bin -nologo",
-    "check:helper": "node scripts/check-helper.mjs",
-    "eval:ollama": "node scripts/eval-ollama.mjs"
+    "check:helper": "node scripts/check-helper.mjs"
   },
   "keywords": [
-    "mcp",
-    "model-context-protocol",
     "skyrim",
     "skyrim-special-edition",
     "modding",
     "mod-organizer",
+    "amethyst",
     "mutagen",
     "spriggit"
   ],
@@ -45,10 +47,6 @@
   "license": "GPL-3.0-only",
   "engines": {
     "node": ">=24.18.0"
-  },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.32.1",
-    "dotenv": "^18.0.7"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",

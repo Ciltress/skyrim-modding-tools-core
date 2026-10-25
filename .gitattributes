@@ -6,3 +6,8 @@
 # container then fails with "no such file or directory" naming a file that is
 # plainly there.
 *.sh text eol=lf
+
+# The guides and skills are served whole, as they are on disk: checked out with CRLF on Windows, every one
+# reaches a model with `\r\n` in it — more tokens, and line ends a model can copy into a record file. LF
+# everywhere, so what is served does not depend on the system or on which files a tool last rewrote.
+*.md text eol=lf

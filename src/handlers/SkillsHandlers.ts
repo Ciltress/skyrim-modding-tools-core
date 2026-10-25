@@ -1,6 +1,8 @@
-import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
+import type { AppBackend } from '../backend/index.js';
 import { BaseHandler } from './BaseHandler.js';
 import type { ToolSpec } from './BaseHandler.js';
+import { ToolError, ToolErrorCode } from './errors.js';
+import type { Product } from '../lib/product.js';
 import {
     SkillFileError,
     discoverSkills,
@@ -24,6 +26,11 @@ import type { Skill } from '../lib/skills.js';
  * SKILL.md.
  */
 export class SkillsHandlers extends BaseHandler {
+    /** The product the skills are served by: their URIs carry its scheme. */
+    constructor(backend: AppBackend, private readonly product: Product) {
+        super(backend);
+    }
+
     protected toolSpecs(): ToolSpec[] {
         return [
             {
@@ -81,7 +88,7 @@ export class SkillsHandlers extends BaseHandler {
      * @param args.skill - Skill name, to read its SKILL.md.
      * @param args.file - Supporting file of that skill.
      * @returns The requested index or markdown.
-     * @throws {McpError} If the skill, collection or file does not exist.
+     * @throws {ToolError} If the skill, collection or file does not exist.
      */
     private readSkill(args: any): Record<string, any> {
         // A skill sent as `name`, the way OpenClaw's own skills_read takes it, was answered with the index and went
@@ -92,13 +99,13 @@ export class SkillsHandlers extends BaseHandler {
         const file = args?.file ? String(args.file).trim() : undefined;
 
         if (file && !skillName) {
-            throw new McpError(ErrorCode.InvalidParams, 'A file was requested without a skill.');
+            throw new ToolError(ToolErrorCode.InvalidParams, 'A file was requested without a skill.');
         }
 
         const all = discoverSkills();
         if (!all.length) {
-            throw new McpError(
-                ErrorCode.InvalidRequest,
+            throw new ToolError(
+                ToolErrorCode.InvalidRequest,
                 'No skills are installed. Skill collections live under skills/ — each one is a ' +
                 'directory containing SKILL.md files.'
             );
@@ -109,8 +116,8 @@ export class SkillsHandlers extends BaseHandler {
             if (skillName) {
                 const skill = resolveSkill(skillName, collection);
                 if (!skill) {
-                    throw new McpError(
-                        ErrorCode.InvalidParams,
+                    throw new ToolError(
+                        ToolErrorCode.InvalidParams,
                         `There is no skill '${skillName}'${collection ? ` in '${collection}'` : ''}. ` +
                         `Call readSkill with no arguments for the list.`
                     );
@@ -125,8 +132,8 @@ export class SkillsHandlers extends BaseHandler {
                     // A skill's name sent as the collection (`items`): read that skill.
                     const meant = resolveSkill(collection);
                     if (meant) return this.oneSkill(meant, file);
-                    throw new McpError(
-                        ErrorCode.InvalidParams,
+                    throw new ToolError(
+                        ToolErrorCode.InvalidParams,
                         `There is no collection '${collection}'. Available: ` +
                         `${[...new Set(all.map(s => s.collection))].join(', ')}`
                     );
@@ -138,7 +145,7 @@ export class SkillsHandlers extends BaseHandler {
                         name: s.name,
                         category: s.category || undefined,
                         description: s.description,
-                        uri: skillUri(s),
+                        uri: skillUri(this.product, s),
                         files: s.files
                     }))
                 };
@@ -155,7 +162,7 @@ export class SkillsHandlers extends BaseHandler {
             // A file the skill lists but does not have is the caller asking for the
             // wrong thing, so it reads as an argument problem rather than a fault.
             if (error instanceof SkillFileError) {
-                throw new McpError(ErrorCode.InvalidParams, error.message);
+                throw new ToolError(ToolErrorCode.InvalidParams, error.message);
             }
             throw error;
         }
@@ -169,7 +176,7 @@ export class SkillsHandlers extends BaseHandler {
                 collection: skill.collection,
                 category: skill.category || undefined,
                 description: skill.description,
-                uri: skillUri(skill),
+                uri: skillUri(this.product, skill),
                 path: skill.dir,
                 files: skill.files
             },

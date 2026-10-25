@@ -76,15 +76,6 @@ jobs:
       - name: Build Package
         run: npm run build
 
-      # The built server over real stdio: fails on anything but JSON-RPC frames on
-      # stdout, which no unit test can see.
-      - name: Smoke Test
-        run: npm run smoke
-        env:
-          # No game on a runner. The server refuses to start without an instance, so it gets one
-          # that does not exist: it starts, and healthcheck reports the instance unreadable.
-          SKYRIM_MO2_INSTANCE: ${{ runner.temp }}/no-instance
-
       # The plugin helper, built for this system and started once: its protocol, and a
       # version read from a version resource, which on Linux is the helper's own parser.
       - name: Build Helper

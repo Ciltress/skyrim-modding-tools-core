@@ -1,5 +1,6 @@
 import { createHandlers } from '../handlers/index.js';
 import type { AppBackend } from '../backend/index.js';
+import type { Product } from './product.js';
 import type { ToolDefinition, ToolProperty } from '../types/tools.js';
 
 /**
@@ -45,12 +46,13 @@ function labelFor(handler: string): string {
 }
 
 /**
- * Every handler's tools, from the same `createHandlers()` the server serves —
+ * Every handler's tools, from the same `createHandlers()` the product serves —
  * so the reference documents exactly what can be listed, no more and no less.
- * `getTools()` never touches the backend, so none is needed to read it.
+ * `getTools()` never touches the backend, so none is needed to read it. The
+ * product is needed: readServerGuide lists its guides.
  */
-export function collectToolFamilies(): ToolFamily[] {
-    return createHandlers(undefined as unknown as AppBackend)
+export function collectToolFamilies(product: Product): ToolFamily[] {
+    return createHandlers(undefined as unknown as AppBackend, product)
         .map(handler => ({
             handler: handler.constructor.name,
             label: labelFor(handler.constructor.name),
@@ -126,10 +128,11 @@ function renderTool(tool: ToolDefinition): string {
 export const TOOL_REFERENCE_FILE = 'docs/Tool-Reference.md';
 
 /**
- * Renders the whole reference. Deterministic — families and tools keep a stable
- * order — so the drift test compares cleanly and diffs stay readable.
+ * Renders the whole reference, as a product serves the tools (collectToolFamilies).
+ * Deterministic — families and tools keep a stable order — so the drift test
+ * compares cleanly and diffs stay readable.
  */
-export function renderToolReference(families: ToolFamily[] = collectToolFamilies()): string {
+export function renderToolReference(families: ToolFamily[]): string {
     const total = families.reduce((n, f) => n + f.tools.length, 0);
 
     const head = [
@@ -146,9 +149,9 @@ export function renderToolReference(families: ToolFamily[] = collectToolFamilies
         'listed, and the server withholds anything the connected backend does not support.',
         '`tools/list` is always the truth; `healthcheck` reports the profile and what was withheld.',
         '',
-        'Looking for the tool that does a particular job? Start with',
-        '[`Tool-Router.md`](./Tool-Router.md), which maps intent to tool. For workflows and the error',
-        'model, see [`MCP-Tools.md`](./MCP-Tools.md).',
+        'Looking for the tool that does a particular job? Start with the guide `router`',
+        '(`readServerGuide {"guide":"router"}`), which maps intent to tool. For workflows and the error',
+        'model, see the guide `tools`.',
         '',
         'An argument marked **\\*** is required. Argument *descriptions* are not repeated here: they',
         'reach you in the `inputSchema` of every tool you can call.',
@@ -171,7 +174,7 @@ export function renderToolReference(families: ToolFamily[] = collectToolFamilies
     const body = families.map(family => [
         `## ${family.label}`,
         '',
-        `From \`src/handlers/${family.handler}.ts\`.`,
+        `From \`src/handlers/${family.handler}.ts\` of skyrim-modding-tools-core.`,
         '',
         ...family.tools.map(renderTool)
     ].join('\n')).join('\n');

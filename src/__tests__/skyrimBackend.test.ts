@@ -18,8 +18,9 @@ import { HelperError, HelperMissingError, HelperUnavailableError, type HelperTra
 import { CompilerUnavailableError, ScriptCompileError } from '../backend/skyrim/externalTools';
 import { asRequestError } from '../handlers/args';
 import { createHandlers } from '../handlers/index';
+import { CORE_PRODUCT } from '../testing/fakes';
 import type { AppBackend } from '../backend/index';
-import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
+import { ToolError, ToolErrorCode } from '../handlers/errors';
 
 /**
  * What the Skyrim backend actually does, against a real Mod Organizer instance laid out in a
@@ -683,7 +684,7 @@ describe('the Skyrim backend', () => {
         await newProjectWithRecord(backend, fixture.projects, 'MavenNote');
         const note = 'Books/Note.yaml: overrides LetterRiftenBlackBriarMeadery04 of Skyrim.esm and renames it';
         helperAnswers.checkRecords = () => ({ records: 1, leftOut: [], notes: [note] });
-        const handler = createHandlers(backend as unknown as AppBackend).find(h => h.getTools().some(t => t.name === 'buildProject'))!;
+        const handler = createHandlers(backend as unknown as AppBackend, CORE_PRODUCT).find(h => h.getTools().some(t => t.name === 'buildProject'))!;
         const answer = async () => JSON.parse((await handler.handle('buildProject', { project: 'MavenNote' })).content[0].text);
 
         const warned = await answer();
@@ -709,7 +710,7 @@ describe('the Skyrim backend', () => {
         await newProjectWithRecord(backend, fixture.projects, 'HildaTheNord');
         const change = 'moved `Level` under `Configuration` — a Npc has it there, not at the margin';
         helperAnswers.checkRecords = () => ({ records: 1, leftOut: [], corrected: [{ file: 'Npcs/Hilda.yaml', change }] });
-        const handler = createHandlers(backend as unknown as AppBackend).find(h => h.getTools().some(t => t.name === 'buildProject'))!;
+        const handler = createHandlers(backend as unknown as AppBackend, CORE_PRODUCT).find(h => h.getTools().some(t => t.name === 'buildProject'))!;
         const answer = async () => JSON.parse((await handler.handle('buildProject', { project: 'HildaTheNord' })).content[0].text);
         const done = 'Each change in `corrected` is done: the build wrote it into the file, and the plugin has it. A file it ' +
             'changed no longer reads as it was written — read it before editing it again.';
@@ -729,10 +730,10 @@ describe('the Skyrim backend', () => {
         helperAnswers.checkRecords = () => {
             throw new HelperError('badRecord', '1 field(s) cannot be built as written: Weapons/FlameBlade.yaml: Damage is high.');
         };
-        const handler = createHandlers(backend as unknown as AppBackend).find(h => h.getTools().some(t => t.name === 'buildProject'))!;
+        const handler = createHandlers(backend as unknown as AppBackend, CORE_PRODUCT).find(h => h.getTools().some(t => t.name === 'buildProject'))!;
 
         await expect(handler.handle('buildProject', { project: 'FlameBlade' })).rejects.toThrow(
-            /: Not built: 1 field\(s\) cannot be built as written: Weapons\/FlameBlade\.yaml: Damage is high\. Fix what this names, then build again — only a build that answers success writes the plugin\.$/);
+            /^Not built: 1 field\(s\) cannot be built as written: Weapons\/FlameBlade\.yaml: Damage is high\. Fix what this names, then build again — only a build that answers success writes the plugin\.$/);
     });
 
     it('says in a refusal that names corrections that they are made, and that a corrected file is read before it is edited', async () => {
@@ -743,7 +744,7 @@ describe('the Skyrim backend', () => {
             throw new HelperError('badRecord', '1 field(s) cannot be built as written: Npcs/Hilda.yaml: AIData.Aggression is Average. ' +
                 'Corrected in the files already: Npcs/Hilda.yaml: moved `Level` under `Configuration`.');
         };
-        const handler = createHandlers(backend as unknown as AppBackend).find(h => h.getTools().some(t => t.name === 'buildProject'))!;
+        const handler = createHandlers(backend as unknown as AppBackend, CORE_PRODUCT).find(h => h.getTools().some(t => t.name === 'buildProject'))!;
 
         await expect(handler.handle('buildProject', { project: 'FlameBlade' })).rejects.toThrow(
             new RegExp('moved `Level` under `Configuration`\\. The corrections are made: redo none of them, and read a corrected file ' +
@@ -776,7 +777,7 @@ describe('the Skyrim backend', () => {
         };
 
         await expect(backend.buildProject('StormBolt')).rejects.toThrow(/read no record from .*1 record file.*directly in its group's folder/);
-        await expect(asRequestError(backend.buildProject('StormBolt'))).rejects.toMatchObject({ code: ErrorCode.InvalidParams });
+        await expect(asRequestError(backend.buildProject('StormBolt'))).rejects.toMatchObject({ code: ToolErrorCode.InvalidParams });
         await expect(backend.deployProject('StormBolt')).rejects.toThrow(/not been built yet/);
     });
 
@@ -844,7 +845,7 @@ describe('the Skyrim backend', () => {
 
         const refused = asRequestError(backend.buildProject('HildaTheNord'));
 
-        await expect(refused).rejects.toMatchObject({ code: ErrorCode.InvalidParams });
+        await expect(refused).rejects.toMatchObject({ code: ToolErrorCode.InvalidParams });
         await expect(backend.buildProject('HildaTheNord')).rejects.toThrow(
             new RegExp(`${escape(fenced)}, lines 1 and 4.*markdown fence.*delete the fence lines`));
         expect(calls.some(c => c.method === 'checkRecords' || c.method === 'build')).toBe(false);
@@ -882,7 +883,7 @@ describe('the Skyrim backend', () => {
 
         const refused = asRequestError(backend.buildProject('FlameBlade'));
 
-        await expect(refused).rejects.toMatchObject({ code: ErrorCode.InvalidParams });
+        await expect(refused).rejects.toMatchObject({ code: ToolErrorCode.InvalidParams });
         await expect(refused).rejects.toThrow(new RegExp('cannot be built as written: .*a Weapon has no field damage.*' +
             `Corrected in the files already: ${escape(sword)}, line 4 \\(two backslashes\\): .* → \`File: Weapons\\\\Iron\\\\LongSword\\.nif\``));
         expect(fs.readFileSync(sword, 'utf8')).toBe('EditorID: FlameBlade\ndamage: 12\nModel:\n  File: Weapons\\Iron\\LongSword.nif\n');
@@ -1045,7 +1046,7 @@ describe('the Skyrim backend', () => {
         write(invented, 'EditorID: FlameBlade\ndamage: 18\n');
         const refused = backend.buildProject('FlameBlade');
         await expect(refused).rejects.toThrow(/has no field damage/);
-        await expect(asRequestError(backend.buildProject('FlameBlade'))).rejects.toMatchObject({ code: ErrorCode.InvalidParams });
+        await expect(asRequestError(backend.buildProject('FlameBlade'))).rejects.toMatchObject({ code: ToolErrorCode.InvalidParams });
         expect(fs.readFileSync(invented, 'utf8')).not.toMatch(/FormKey/);
     });
 
@@ -1613,8 +1614,8 @@ describe('disabling a mod', () => {
     it('answers a refusal as a request the client can fix', async () => {
         const { backend } = makeBackend();
         const refused = asRequestError(backend.disableMod({ mod: 'Nothing Like It' }));
-        await expect(refused).rejects.toBeInstanceOf(McpError);
-        await expect(asRequestError(backend.disableMod({ mod: 'Nothing Like It' }))).rejects.toMatchObject({ code: ErrorCode.InvalidParams });
+        await expect(refused).rejects.toBeInstanceOf(ToolError);
+        await expect(asRequestError(backend.disableMod({ mod: 'Nothing Like It' }))).rejects.toMatchObject({ code: ToolErrorCode.InvalidParams });
     });
 });
 
@@ -1782,13 +1783,13 @@ describe('checking the game version', () => {
 });
 
 describe('which failures the client is asked to fix', () => {
-    const code = (error: unknown) => asRequestError(Promise.reject(error)).catch(e => e instanceof McpError ? e.code : 'passed through');
+    const code = (error: unknown) => asRequestError(Promise.reject(error)).catch(e => e instanceof ToolError ? e.code : 'passed through');
 
     it('asks to fix the request when the request or the project text is at fault', async () => {
-        expect(await code(new ScriptCompileError('MyQuest.psc(3,1): no viable alternative'))).toBe(ErrorCode.InvalidParams);
-        expect(await code(new HelperError('danglingLinks', 'x'))).toBe(ErrorCode.InvalidParams);
-        expect(await code(new HelperError('writeFailed', 'x'))).toBe(ErrorCode.InvalidParams);
-        expect(await code(new ProjectError('x'))).toBe(ErrorCode.InvalidParams);
+        expect(await code(new ScriptCompileError('MyQuest.psc(3,1): no viable alternative'))).toBe(ToolErrorCode.InvalidParams);
+        expect(await code(new HelperError('danglingLinks', 'x'))).toBe(ToolErrorCode.InvalidParams);
+        expect(await code(new HelperError('writeFailed', 'x'))).toBe(ToolErrorCode.InvalidParams);
+        expect(await code(new ProjectError('x'))).toBe(ToolErrorCode.InvalidParams);
     });
 
     it('does not blame the request for what is missing on the machine', async () => {

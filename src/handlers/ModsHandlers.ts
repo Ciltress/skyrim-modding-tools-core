@@ -1,7 +1,7 @@
-import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 import { BaseHandler } from './BaseHandler.js';
 import type { ToolSpec } from './BaseHandler.js';
 import { asRequestError, limitArg, offsetArg, optionalBoolean, optionalString, requireString } from './args.js';
+import { ToolError, ToolErrorCode } from './errors.js';
 
 /** listMods' page: a whole list of most setups, within core's 24 KB (a short row is ~135 bytes); a part of a Wabbajack one's. */
 const MOD_PAGE = 150;
@@ -200,7 +200,7 @@ function choicesArg(args: any): string[] | undefined {
     const value = args?.choices;
     if (value === undefined || value === null) return undefined;
     if (!Array.isArray(value) || value.some(item => typeof item !== 'string')) {
-        throw new McpError(ErrorCode.InvalidParams,
+        throw new ToolError(ToolErrorCode.InvalidParams,
             '\'choices\' must be an array of option ids from the first answer, e.g. ["1.1.2", "2.1.1"]; [] installs every default.');
     }
     return value.map((item: string) => item.trim()).filter(Boolean);
@@ -210,6 +210,6 @@ function choicesArg(args: any): string[] | undefined {
 function rootArg(args: any): string | undefined {
     const value = args?.root;
     if (value === undefined || value === null) return undefined;
-    if (typeof value !== 'string') throw new McpError(ErrorCode.InvalidParams, '\'root\' must be a folder of the file, e.g. "2K".');
+    if (typeof value !== 'string') throw new ToolError(ToolErrorCode.InvalidParams, '\'root\' must be a folder of the file, e.g. "2K".');
     return value.trim();
 }

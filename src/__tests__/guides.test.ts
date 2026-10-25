@@ -1,26 +1,33 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { vi, type MockInstance } from 'vitest';
 import { DocsHandlers } from '../handlers/DocsHandlers';
 import type { AppBackend } from '../backend/index';
 import {
-    GUIDES,
-    GUIDE_URI_PREFIX,
+    CORE_GUIDES,
     extractSection,
     guideById,
     guideByUri,
     guideIndex,
     guideUri,
+    guideUriPrefix,
     listSections,
     readGuideFile
 } from '../lib/guides';
+import type { Product } from '../lib/product';
+import { CORE_PRODUCT } from '../testing/fakes';
 
 /**
- * The documentation the server serves to its clients, as MCP resources and
+ * The documentation a product serves to its clients, as MCP resources and
  * through readServerGuide.
  *
  * These run against the real files in docs/ on purpose: the point of the
  * feature is that what ships is what is served, so a guide that goes missing or
  * loses a section should fail here rather than at a client.
  */
+
+const GUIDES = CORE_PRODUCT.guides;
 
 const SAMPLE = [
     '# Title',
@@ -111,13 +118,33 @@ describe('extractSection', () => {
 describe('the guide registry', () => {
     it('resolves every guide by id and by resource uri', () => {
         for (const guide of GUIDES) {
-            expect(guideById(guide.id)).toBe(guide);
-            expect(guideById(guide.id.toUpperCase())).toBe(guide);
-            expect(guideByUri(guideUri(guide.id))).toBe(guide);
+            expect(guideById(CORE_PRODUCT, guide.id)).toBe(guide);
+            expect(guideById(CORE_PRODUCT, guide.id.toUpperCase())).toBe(guide);
+            expect(guideByUri(CORE_PRODUCT, guideUri(CORE_PRODUCT, guide.id))).toBe(guide);
         }
-        expect(guideById('nope')).toBeUndefined();
-        expect(guideByUri(`${GUIDE_URI_PREFIX}nope`)).toBeUndefined();
-        expect(guideByUri('file:///etc/passwd')).toBeUndefined();
+        expect(guideById(CORE_PRODUCT, 'nope')).toBeUndefined();
+        expect(guideByUri(CORE_PRODUCT, `${guideUriPrefix(CORE_PRODUCT)}nope`)).toBeUndefined();
+        expect(guideByUri(CORE_PRODUCT, 'file:///etc/passwd')).toBeUndefined();
+    });
+
+    it('serves the guides a product lists, its own read from its own folder', () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'product-guide-'));
+        try {
+            fs.writeFileSync(path.join(root, 'HOSTING.md'), '# Hosting\n\n## 1. Where it runs\n\nBeside the game.\n');
+            const product: Product = {
+                ...CORE_PRODUCT,
+                name: '@someone/other-product',
+                guides: [CORE_GUIDES.router, { id: 'hosting', title: 'Hosting', description: 'Where it runs.', root, file: 'HOSTING.md' }]
+            };
+
+            expect(guideIndex(product).map(g => g.id)).toEqual(['router', 'hosting']);
+            expect(guideUri(product, 'hosting')).toBe('someone-other-product://guides/hosting');
+            expect(readGuideFile(guideById(product, 'hosting')!)).toContain('Beside the game.');
+            // Another product's URI does not resolve here.
+            expect(guideByUri(product, guideUri(CORE_PRODUCT, 'router'))).toBeUndefined();
+        } finally {
+            fs.rmSync(root, { recursive: true, force: true });
+        }
     });
 
     it('has unique ids', () => {
@@ -134,13 +161,13 @@ describe('the guide registry', () => {
     });
 
     it('indexes the guides cheaply', () => {
-        const index = guideIndex();
+        const index = guideIndex(CORE_PRODUCT);
 
         // Derived from the registry, so adding a guide does not break this.
         expect(index.map(g => g.id).sort()).toEqual(GUIDES.map(g => g.id).sort());
         for (const entry of index) {
             expect(entry.bytes).toBeGreaterThan(0);
-            expect(entry.uri).toBe(guideUri(entry.id));
+            expect(entry.uri).toBe(guideUri(CORE_PRODUCT, entry.id));
             expect(entry.sections.length).toBeGreaterThan(0);
         }
         // The index must stay far smaller than the documents it describes.
@@ -157,7 +184,7 @@ async function readGuide(handler: DocsHandlers, args: any) {
 }
 
 describe('readServerGuide', () => {
-    const handler = () => new DocsHandlers(undefined as unknown as AppBackend);
+    const handler = () => new DocsHandlers(undefined as unknown as AppBackend, CORE_PRODUCT);
 
     it('returns the index when no guide is named', async () => {
         const payload = await readGuide(handler(), {});
@@ -184,11 +211,11 @@ describe('readServerGuide', () => {
     });
 
     it('returns a whole guide with its section list when no section is named', async () => {
-        const payload = await readGuide(handler(), { guide: 'agents' });
+        const payload = await readGuide(handler(), { guide: 'router' });
 
         expect(payload.bytes).toBeGreaterThan(0);
         expect(payload.sections.length).toBeGreaterThan(0);
-        expect(payload.content).toContain('AGENTS.md');
+        expect(payload.content).toContain('findRecords');
     });
 
     it('is much cheaper for a section than for the whole guide', async () => {

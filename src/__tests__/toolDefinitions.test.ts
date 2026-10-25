@@ -1,4 +1,5 @@
 import { createHandlers } from '../handlers/index';
+import { CORE_PRODUCT } from '../testing/fakes';
 import type { AppBackend } from '../backend/index';
 import type { ToolProperty } from '../types/tools';
 
@@ -6,7 +7,7 @@ import type { ToolProperty } from '../types/tools';
  * The catalogue itself. getTools() never touches the backend, so none is needed
  * to inspect it.
  */
-const handlers = createHandlers(undefined as unknown as AppBackend);
+const handlers = createHandlers(undefined as unknown as AppBackend, CORE_PRODUCT);
 const allTools = handlers.flatMap(h => h.getTools().map(tool => ({ handler: h.constructor.name, tool })));
 
 describe('tool catalogue', () => {

@@ -1,7 +1,8 @@
 import { SkillsHandlers } from '../handlers/SkillsHandlers';
+import { CORE_PRODUCT } from '../testing/fakes';
 import type { AppBackend } from '../backend/index';
 import {
-    SKILL_URI_PREFIX,
+    skillUriPrefix,
     SkillFileError,
     discoverSkills,
     findSkill,
@@ -52,10 +53,10 @@ describe('discoverSkills', () => {
 
     it('round-trips every skill through its resource uri', () => {
         for (const skill of skills) {
-            expect(skillUri(skill).startsWith(SKILL_URI_PREFIX)).toBe(true);
-            expect(skillByUri(skillUri(skill))).toEqual(skill);
+            expect(skillUri(CORE_PRODUCT, skill).startsWith(skillUriPrefix(CORE_PRODUCT))).toBe(true);
+            expect(skillByUri(CORE_PRODUCT, skillUri(CORE_PRODUCT, skill))).toEqual(skill);
         }
-        expect(skillByUri('file:///etc/passwd')).toBeUndefined();
+        expect(skillByUri(CORE_PRODUCT, 'file:///etc/passwd')).toBeUndefined();
     });
 });
 
@@ -119,7 +120,7 @@ describe('readSkillFile', () => {
 
 describe('readSkill', () => {
     const run = async (args: any) => {
-        const envelope = await new SkillsHandlers(undefined as unknown as AppBackend).handle('readSkill', args);
+        const envelope = await new SkillsHandlers(undefined as unknown as AppBackend, CORE_PRODUCT).handle('readSkill', args);
         return JSON.parse(envelope.content[0].text);
     };
 

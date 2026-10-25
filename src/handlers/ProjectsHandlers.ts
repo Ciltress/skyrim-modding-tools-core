@@ -1,7 +1,7 @@
 import { BaseHandler } from './BaseHandler.js';
 import type { ToolSpec } from './BaseHandler.js';
 import { asRequestError, optionalBoolean, optionalFieldValues, optionalString, optionalStringList, recordRef, requireString } from './args.js';
-import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
+import { ToolError, ToolErrorCode } from './errors.js';
 import { FAMILY_SKILLS } from '../lib/skills.js';
 
 /**
@@ -115,7 +115,7 @@ export class ProjectsHandlers extends BaseHandler {
                 run: args => {
                     const records = optionalStringList(args, 'records', '["IronSword"]')?.map(recordRef);
                     if (!records) {
-                        throw new McpError(ErrorCode.InvalidParams,
+                        throw new ToolError(ToolErrorCode.InvalidParams,
                             `'records' is required: the FormIDs or editor IDs to override, e.g. ["IronSword"].`);
                     }
                     return asRequestError(this.backend.addPatch({

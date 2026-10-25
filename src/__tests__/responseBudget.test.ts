@@ -10,11 +10,12 @@ import {
 } from '../lib/responseBudget';
 import { PROFILE_NAMES } from '../lib/profiles';
 import { collectToolFamilies } from '../lib/toolDocs';
+import { CORE_PRODUCT } from '../testing/fakes';
 
 const envelope = (text: string) => ({ content: [{ type: 'text', text }] });
 
 /** The narrowing hint a real tool carries, read from the catalogue. */
-const CATALOGUE = new Map(collectToolFamilies().flatMap(f => f.tools).map(tool => [tool.name, tool]));
+const CATALOGUE = new Map(collectToolFamilies(CORE_PRODUCT).flatMap(f => f.tools).map(tool => [tool.name, tool]));
 const hintOf = (name: string) => CATALOGUE.get(name)?.narrowingHint;
 
 describe('resolveResponseBudget', () => {

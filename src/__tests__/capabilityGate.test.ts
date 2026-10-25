@@ -1,9 +1,10 @@
 import { GATED_FEATURES, evaluateGate, gatingEnabled } from '../lib/capabilityGate';
 import { createHandlers } from '../handlers/index';
+import { CORE_PRODUCT } from '../testing/fakes';
 import type { AppBackend } from '../backend/index';
 import type { ToolDefinition } from '../types/tools';
 
-const CATALOGUE = createHandlers(undefined as unknown as AppBackend).flatMap(h => h.getTools());
+const CATALOGUE = createHandlers(undefined as unknown as AppBackend, CORE_PRODUCT).flatMap(h => h.getTools());
 
 const tool = (name: string, needsFeature?: string): ToolDefinition => ({
     name,

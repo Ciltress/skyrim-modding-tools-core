@@ -8,6 +8,7 @@ import {
 } from '../lib/profiles';
 import type { ProfileName } from '../lib/profiles';
 import { createHandlers } from '../handlers/index';
+import { CORE_PRODUCT } from '../testing/fakes';
 import type { AppBackend } from '../backend/index';
 import type { ToolDefinition } from '../types/tools';
 
@@ -19,7 +20,7 @@ const tool = (name: string): ToolDefinition => ({
 
 /** The real catalogue, by name. getTools() never touches the backend. */
 const CATALOGUE = new Map(
-    createHandlers(undefined as unknown as AppBackend).flatMap(h => h.getTools()).map(t => [t.name, t])
+    createHandlers(undefined as unknown as AppBackend, CORE_PRODUCT).flatMap(h => h.getTools()).map(t => [t.name, t])
 );
 
 const named = (name: ProfileName) => PROFILES[name].tools ?? [];

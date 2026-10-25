@@ -1,4 +1,3 @@
-import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 import { HelperError } from '../backend/skyrim/helperClient.js';
 import { InstallError } from '../backend/skyrim/installer.js';
 import { ModError } from '../backend/skyrim/modList.js';
@@ -6,6 +5,7 @@ import { NexusError } from '../backend/skyrim/nexus.js';
 import { ProjectError } from '../backend/skyrim/projects.js';
 import { ScriptCompileError } from '../backend/skyrim/externalTools.js';
 import type { ToolDefinition, ToolProperty } from '../types/tools.js';
+import { ToolError, ToolErrorCode } from './errors.js';
 
 /**
  * The arguments, with each one a caller sent as text turned into the JSON type the tool's schema
@@ -59,7 +59,7 @@ function fromText(value: string, property: ToolProperty): unknown {
 export function requireString(args: any, name: string, hint = ''): string {
     const value = args?.[name];
     if (typeof value !== 'string' || !value.trim()) {
-        throw new McpError(ErrorCode.InvalidParams, `'${name}' is required.${hint ? ` ${hint}` : ''}`);
+        throw new ToolError(ToolErrorCode.InvalidParams, `'${name}' is required.${hint ? ` ${hint}` : ''}`);
     }
     return value.trim();
 }
@@ -67,7 +67,7 @@ export function requireString(args: any, name: string, hint = ''): string {
 export function optionalString(args: any, name: string): string | undefined {
     const value = args?.[name];
     if (value === undefined || value === null || value === '') return undefined;
-    if (typeof value !== 'string') throw new McpError(ErrorCode.InvalidParams, `'${name}' must be a string.`);
+    if (typeof value !== 'string') throw new ToolError(ToolErrorCode.InvalidParams, `'${name}' must be a string.`);
     return value.trim() || undefined;
 }
 
@@ -89,14 +89,14 @@ export function optionalFieldValues(args: any, name: string, example: string): R
         const fields: Record<string, unknown> = {};
         for (const item of value) {
             if (typeof item !== 'object' || item === null || typeof item.path !== 'string' || !('value' in item)) {
-                throw new McpError(ErrorCode.InvalidParams, `'${name}' takes items of a field's path and its value, e.g. ${example}.`);
+                throw new ToolError(ToolErrorCode.InvalidParams, `'${name}' takes items of a field's path and its value, e.g. ${example}.`);
             }
             fields[item.path.trim()] = item.value;
         }
         return fields;
     }
     if (typeof value !== 'object' || value === null) {
-        throw new McpError(ErrorCode.InvalidParams, `'${name}' takes items of a field's path and its value, e.g. ${example}.`);
+        throw new ToolError(ToolErrorCode.InvalidParams, `'${name}' takes items of a field's path and its value, e.g. ${example}.`);
     }
     return value as Record<string, unknown>;
 }
@@ -105,7 +105,7 @@ export function optionalStringList(args: any, name: string, example: string): st
     const value = args?.[name];
     if (value === undefined || value === null) return undefined;
     if (!Array.isArray(value) || value.some(item => typeof item !== 'string')) {
-        throw new McpError(ErrorCode.InvalidParams, `'${name}' must be an array of strings, e.g. ${example}.`);
+        throw new ToolError(ToolErrorCode.InvalidParams, `'${name}' must be an array of strings, e.g. ${example}.`);
     }
     const items = value.map((item: string) => item.trim()).filter(Boolean);
     return items.length ? items : undefined;
@@ -121,14 +121,14 @@ export const recordRef = (text: string): string => text.replace(/\s+#.*$/, '').t
 export function optionalBoolean(args: any, name: string): boolean | undefined {
     const value = args?.[name];
     if (value === undefined || value === null) return undefined;
-    if (typeof value !== 'boolean') throw new McpError(ErrorCode.InvalidParams, `'${name}' must be true or false.`);
+    if (typeof value !== 'boolean') throw new ToolError(ToolErrorCode.InvalidParams, `'${name}' must be true or false.`);
     return value;
 }
 
 export function requirePositiveInteger(args: any, name: string, hint = ''): number {
     const value = args?.[name];
     if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) {
-        throw new McpError(ErrorCode.InvalidParams, `'${name}' must be a whole number from 1 up.${hint ? ` ${hint}` : ''}`);
+        throw new ToolError(ToolErrorCode.InvalidParams, `'${name}' must be a whole number from 1 up.${hint ? ` ${hint}` : ''}`);
     }
     return value;
 }
@@ -137,7 +137,7 @@ export function optionalChoice<T extends string>(args: any, name: string, choice
     const value = args?.[name];
     if (value === undefined || value === null || value === '') return undefined;
     const match = typeof value === 'string' ? choices.find(choice => choice === value.trim().toLowerCase()) : undefined;
-    if (!match) throw new McpError(ErrorCode.InvalidParams, `'${name}' must be one of ${choices.join(', ')}.`);
+    if (!match) throw new ToolError(ToolErrorCode.InvalidParams, `'${name}' must be one of ${choices.join(', ')}.`);
     return match;
 }
 
@@ -145,7 +145,7 @@ export function limitArg(args: any, fallback: number, max: number): number {
     const value = args?.limit;
     if (value === undefined || value === null) return fallback;
     if (typeof value !== 'number' || !Number.isFinite(value) || value < 1) {
-        throw new McpError(ErrorCode.InvalidParams, `'limit' must be a number from 1 to ${max}.`);
+        throw new ToolError(ToolErrorCode.InvalidParams, `'limit' must be a number from 1 to ${max}.`);
     }
     return Math.min(Math.floor(value), max);
 }
@@ -155,7 +155,7 @@ export function offsetArg(args: any): number {
     const value = args?.offset;
     if (value === undefined || value === null) return 0;
     if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
-        throw new McpError(ErrorCode.InvalidParams, `'offset' must be a whole number from 0 up — the \`offset\` a previous answer's \`next\` names.`);
+        throw new ToolError(ToolErrorCode.InvalidParams, `'offset' must be a whole number from 0 up — the \`offset\` a previous answer's \`next\` names.`);
     }
     return value;
 }
@@ -180,7 +180,7 @@ export async function asRequestError<T>(work: Promise<T> | T): Promise<T> {
             error instanceof InstallError ||
             error instanceof ModError ||
             error instanceof ScriptCompileError;
-        if (aboutTheRequest) throw new McpError(ErrorCode.InvalidParams, (error as Error).message);
+        if (aboutTheRequest) throw new ToolError(ToolErrorCode.InvalidParams, (error as Error).message);
         throw error;
     }
 }

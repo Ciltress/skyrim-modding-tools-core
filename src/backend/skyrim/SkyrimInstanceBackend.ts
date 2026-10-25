@@ -28,7 +28,7 @@ import type {
     NewProjectRequest, NexusAccount, NexusDownload, NexusMod, NexusSearchQuery, NexusSearchResult, ProjectFile, ProjectInfo,
     PullResult, RecordQuery, RecordRequest, RecordSearchResult, RecordVersion, RecordVersions, SkyrimBackend
 } from './SkyrimBackend.js';
-import { SERVER_INFO } from '../../lib/serverInfo.js';
+import { CORE_INFO } from '../../lib/product.js';
 
 /** What the helper's addOverrides answers: files relative to the project's plugin folder. */
 interface CopiedRecords {
@@ -42,7 +42,7 @@ export interface SkyrimInstanceBackendOptions {
     credential?: string;
     /** Tokens HTTP callers may present. Undefined in stdio mode, where nothing is checked. */
     acceptedCredentials?: readonly string[];
-    /** The Nexus Mods catalogue. Replaced in tests; by default the real one. */
+    /** The Nexus Mods catalogue: createBackend's, told the product's version. Replaced in tests; by default the real one. */
     nexus?: NexusCatalogue;
 }
 
@@ -61,7 +61,7 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
     private readonly nexus: NexusCatalogue;
 
     constructor(private readonly options: SkyrimInstanceBackendOptions) {
-        this.nexus = options.nexus ?? new NexusCatalogue({ appVersion: SERVER_INFO.version });
+        this.nexus = options.nexus ?? new NexusCatalogue({ appVersion: CORE_INFO.version });
     }
 
     private get engine(): SkyrimEngine {

@@ -1,21 +1,24 @@
-import { SessionExpiredError } from '../backend/Backend';
-import type { HealthReport } from '../backend/Backend';
-import type { AppBackend } from '../backend/index';
-import { HelperError } from '../backend/skyrim/helperClient';
-import { InstallError } from '../backend/skyrim/installer';
-import { ModError } from '../backend/skyrim/modList';
-import { NexusError } from '../backend/skyrim/nexus';
-import { ProjectError } from '../backend/skyrim/projects';
+import { SessionExpiredError } from '../backend/Backend.js';
+import type { HealthReport } from '../backend/Backend.js';
+import type { AppBackend } from '../backend/index.js';
+import { HelperError } from '../backend/skyrim/helperClient.js';
+import { InstallError } from '../backend/skyrim/installer.js';
+import { ModError } from '../backend/skyrim/modList.js';
+import { NexusError } from '../backend/skyrim/nexus.js';
+import { ProjectError } from '../backend/skyrim/projects.js';
 import type {
     AddPatchRequest, AddPatchResult, BuildResult, ProjectFile, DeployResult, DisableModRequest, DisableModResult, EditRecordRequest, EditRecordResult,
     InstallModRequest, InstallModResult,
     NewProjectRequest, NexusDownload, NexusMod, NexusModSummary,
     NexusSearchQuery, NexusSearchResult, ProjectInfo, PullResult, RecordQuery, RecordRequest, RecordSearchResult,
     RecordSummary, RecordVersions, ListedMod, ModList, ModListQuery, GameVersionCheck
-} from '../backend/skyrim/SkyrimBackend';
+} from '../backend/skyrim/SkyrimBackend.js';
+import { CORE_GUIDES } from '../lib/guides.js';
+import { CORE_INFO, CORE_ROOT, type Product } from '../lib/product.js';
 
 /**
- * Test doubles shared by the suites. Not a test file itself — vitest only runs `*.test.ts`.
+ * Test doubles shared by the suites — the core's, and a product's through `skyrim-modding-tools-core/testing`.
+ * Not a test file itself — vitest only runs `*.test.ts`.
  *
  * `recordingBackend` records every domain call and can fail all of them; `fakeBackend` counts
  * connects and can fail on demand. Both sit on InMemorySkyrimBackend, which keeps a few records and
@@ -28,6 +31,14 @@ import type {
  * to be held to, not only a not-found.
  */
 export const SAMPLE = 'sample';
+
+/** The product the core's suites serve the tools as: the core itself, with the core's guides. */
+export const CORE_PRODUCT: Product = {
+    name: CORE_INFO.name,
+    version: CORE_INFO.version,
+    root: CORE_ROOT,
+    guides: Object.values(CORE_GUIDES)
+};
 
 const RECORDS: RecordSummary[] = [
     {

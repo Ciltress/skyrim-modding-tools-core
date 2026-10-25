@@ -1,14 +1,14 @@
-import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
 import { performance } from 'perf_hooks';
 import type { AppBackend } from '../backend/index.js';
 import type { ToolDefinition } from "../types/tools.js";
 import { createLogger } from '../lib/logger.js';
 import { coerceArgs } from './args.js';
+import { ToolError, ToolErrorCode } from './errors.js';
 
 /**
  * One tool: what a caller must know to use it, and what it does.
  *
- * `run` returns the payload and nothing else. The timer, the MCP envelope, the
+ * `run` returns the payload and nothing else. The timer, the envelope, the
  * error mapping and the dispatch are BaseHandler's business, not the tool's —
  * most tools are a single call to the backend, and writing that ceremony out per
  * tool produces thousands of lines that hold no behaviour, several private
@@ -19,8 +19,8 @@ export interface ToolSpec {
   /** Does the work and returns the payload. Throwing is the way to fail. */
   run(args: any): Promise<any> | any;
   /**
-   * Prefix for the message when `run` throws something that is not already an
-   * McpError, e.g. 'Failed to update the note'. Kept per tool because it is the
+   * Prefix for the message when `run` throws something that is not already a
+   * ToolError, e.g. 'Failed to update the note'. Kept per tool because it is the
    * part of a failure that tells a reader which call went wrong.
    */
   onFailure?: string;
@@ -109,8 +109,8 @@ export abstract class BaseHandler {
   async handle(toolName: string, args: any): Promise<any> {
     const spec = this.specs().get(toolName);
     if (!spec) {
-      throw new McpError(
-        ErrorCode.MethodNotFound,
+      throw new ToolError(
+        ToolErrorCode.MethodNotFound,
         `${this.constructor.name} has no tool named '${toolName}'.`
       );
     }
@@ -125,12 +125,13 @@ export abstract class BaseHandler {
       return this.envelope(payload);
     } catch (error) {
       this.trackRequest(startTime, false);
-      throw this.asMcpError(error, spec.onFailure);
+      throw this.asToolError(error, spec.onFailure);
     }
   }
 
   /**
-   * Wraps a payload in the one MCP envelope this server speaks.
+   * Wraps a payload in the one envelope the tools answer with: MCP's tool result, text only, which an OpenClaw
+   * tool result also is.
    *
    * `status: 'success'` is added for a plain object that does not already carry a
    * `status`, which is what nearly every tool wants. A tool that returns its own
@@ -161,14 +162,14 @@ export abstract class BaseHandler {
   /**
    * The single place a failure becomes something a client can read.
    *
-   * An McpError is passed through untouched: the tools that raise one have
+   * A ToolError is passed through untouched: the tools that raise one have
    * already chosen the code and written the message, and both carry information
    * a generic wrapper would destroy. Anything else keeps the backend's own detail
    * when an HTTP client attached one, because `error.message` is frequently just
    * "Request failed with status code 400".
    */
-  protected asMcpError(error: unknown, onFailure?: string): McpError {
-    if (error instanceof McpError) return error;
+  protected asToolError(error: unknown, onFailure?: string): ToolError {
+    if (error instanceof ToolError) return error;
 
     const raw = error as any;
     const detail =
@@ -176,8 +177,8 @@ export abstract class BaseHandler {
       raw?.message ||
       'Unknown error';
 
-    const wrapped = new McpError(
-      ErrorCode.InternalError,
+    const wrapped = new ToolError(
+      ToolErrorCode.InternalError,
       onFailure ? `${onFailure}: ${detail}` : String(detail)
     );
     // Kept, because the server still has to recognise what this was: a session

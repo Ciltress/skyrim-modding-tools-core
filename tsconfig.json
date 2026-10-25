@@ -7,6 +7,7 @@
     "moduleResolution": "bundler",           /* Resolve the ESM-style './Foo.js' specifiers the sources use against their .ts originals. */
     "rootDir": "./src",
     "outDir": "./dist",
+    "declaration": true,                     /* The products compile against the core: they need its types beside its JavaScript. */
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "strict": true,

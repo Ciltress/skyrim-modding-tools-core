@@ -1,8 +1,8 @@
 import { vi, type MockInstance } from 'vitest';
-import { McpError } from '@modelcontextprotocol/sdk/types.js';
+import { ToolError } from '../handlers/errors';
 import { createHandlers } from '../handlers/index';
 import type { ToolDefinition, ToolProperty } from '../types/tools';
-import { SAMPLE, recordingBackend } from './fakes';
+import { CORE_PRODUCT, SAMPLE, recordingBackend } from '../testing/fakes';
 
 /**
  * The contract every handler owes its caller, checked for every tool in the
@@ -21,7 +21,7 @@ import { SAMPLE, recordingBackend } from './fakes';
  */
 
 type Stubs = ReturnType<typeof recordingBackend>;
-const handlersFrom = (stubs: Stubs) => createHandlers(stubs.backend);
+const handlersFrom = (stubs: Stubs) => createHandlers(stubs.backend, CORE_PRODUCT);
 
 /** A plausible value for one declared argument, derived from its schema. */
 function sampleValue(name: string, property: ToolProperty): any {
@@ -137,8 +137,8 @@ describe('every tool honours the response contract', () => {
             result = await handler.handle(tool.name, sampleArgs(tool));
         } catch (error) {
             // Rejecting is allowed; rejecting with something other than an
-            // McpError is not — that reaches the client as "Internal error".
-            expect(error).toBeInstanceOf(McpError);
+            // ToolError is not — that reaches the client as "Internal error".
+            expect(error).toBeInstanceOf(ToolError);
             return;
         }
 
@@ -155,7 +155,7 @@ describe('every tool honours the response contract', () => {
     });
 });
 
-describe('every tool reports a backend failure as an McpError', () => {
+describe('every tool reports a backend failure as a ToolError', () => {
     it.each(cases())('%s.%s surfaces the failure', async (handlerName, _name, tool) => {
         const handler = handlersFrom(recordingBackend({ fail: true })).find(h => h.constructor.name === handlerName)!;
 
@@ -163,7 +163,7 @@ describe('every tool reports a backend failure as an McpError', () => {
         try {
             result = await handler.handle(tool.name, sampleArgs(tool));
         } catch (error) {
-            expect(error).toBeInstanceOf(McpError);
+            expect(error).toBeInstanceOf(ToolError);
             return;
         }
 
@@ -208,9 +208,9 @@ describe('every tool survives being called with no arguments', () => {
             const result = await handler.handle(tool.name, {});
             expect(Array.isArray(result?.content)).toBe(true);
         } catch (error) {
-            // A missing mandatory argument must be an McpError, never a
+            // A missing mandatory argument must be a ToolError, never a
             // TypeError from reading a property of undefined.
-            expect(error).toBeInstanceOf(McpError);
+            expect(error).toBeInstanceOf(ToolError);
         }
     });
 
@@ -220,7 +220,7 @@ describe('every tool survives being called with no arguments', () => {
             const result = await handler.handle(tool.name, undefined);
             expect(Array.isArray(result?.content)).toBe(true);
         } catch (error) {
-            expect(error).toBeInstanceOf(McpError);
+            expect(error).toBeInstanceOf(ToolError);
         }
     });
 });

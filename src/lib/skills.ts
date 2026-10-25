@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { PROJECT_ROOT, RESOURCE_SCHEME } from './serverInfo.js';
+import { CORE_ROOT, resourceScheme, type Product } from './product.js';
 
 /**
  * Agent skills bundled under skills/, discovered from disk and served the same
@@ -28,7 +28,7 @@ export interface Skill {
     name: string;
     /** `description` from the frontmatter — what tells an agent when to use it. */
     description: string;
-    /** Skill directory, relative to the repository root. */
+    /** Skill directory, relative to the core's folder. */
     dir: string;
     /** Supporting files beside SKILL.md, relative to the skill directory. */
     files: string[];
@@ -46,12 +46,14 @@ export const FAMILY_SKILLS = [
     { skill: 'skyrim-modding-leveled-lists', covers: 'leveled lists' }
 ] as const;
 
-export const SKILL_URI_PREFIX = `${RESOURCE_SCHEME}://skills/`;
+/** URI prefix for the resource form of a skill, as a product serves it. */
+export const skillUriPrefix = (product: Product) => `${resourceScheme(product)}://skills/`;
 
-export const skillUri = (skill: Pick<Skill, 'collection' | 'name'>) =>
-    `${SKILL_URI_PREFIX}${skill.collection}/${skill.name}`;
+export const skillUri = (product: Product, skill: Pick<Skill, 'collection' | 'name'>) =>
+    `${skillUriPrefix(product)}${skill.collection}/${skill.name}`;
 
-const ROOT = PROJECT_ROOT;
+/** The skills are the core's, whichever product serves them. */
+const ROOT = CORE_ROOT;
 const SKILLS_ROOT = path.join(ROOT, 'skills');
 
 /**
@@ -224,9 +226,10 @@ export function resolveSkill(name: string, collection?: string): Skill | undefin
     return ranked.length && (ranked.length === 1 || ranked[0].at < ranked[1].at) ? ranked[0].skill : undefined;
 }
 
-export function skillByUri(uri: string): Skill | undefined {
-    if (!String(uri ?? '').startsWith(SKILL_URI_PREFIX)) return undefined;
-    const [collection, ...rest] = String(uri).slice(SKILL_URI_PREFIX.length).split('/');
+export function skillByUri(product: Product, uri: string): Skill | undefined {
+    const prefix = skillUriPrefix(product);
+    if (!String(uri ?? '').startsWith(prefix)) return undefined;
+    const [collection, ...rest] = String(uri).slice(prefix.length).split('/');
     return rest.length ? findSkill(rest.join('/'), collection) : undefined;
 }
 

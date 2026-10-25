@@ -1,9 +1,9 @@
 import fs from 'fs';
 import path from 'path';
-import { PROJECT_ROOT, RESOURCE_SCHEME } from './serverInfo.js';
+import { CORE_ROOT, resourceScheme, type Product } from './product.js';
 
 /**
- * The server's own documentation, exposed to clients both as MCP resources and
+ * A product's own documentation, exposed to clients both as MCP resources and
  * through the readServerGuide tool.
  *
  * Two ways out because they reach different consumers: resources are the
@@ -11,6 +11,9 @@ import { PROJECT_ROOT, RESOURCE_SCHEME } from './serverInfo.js';
  * an agent will not discover them on its own. Tools are always in the agent's
  * context, so the tool is what actually lets an agent look something up
  * mid-task. Both read the same files through this module.
+ *
+ * Which guides there are is the product's: `Product.guides`, the core's from
+ * CORE_GUIDES among its own, in the order it lists them.
  */
 
 export interface GuideDefinition {
@@ -18,81 +21,62 @@ export interface GuideDefinition {
     id: string;
     title: string;
     description: string;
-    /** Path relative to the repository root. */
+    /** The folder `file` is in: CORE_ROOT for the core's guides, the product's root for its own. */
+    root: string;
+    /** Path relative to `root`. */
     file: string;
 }
 
 /**
- * Add a guide by adding an entry here — it then appears as both a
- * resource and a readServerGuide topic. guides.test.ts reads the real files, so
- * a guide moved without updating this list fails the suite, not a client.
+ * The core's guides, for a product to list among its own. guides.test.ts reads
+ * the real files, so a guide moved without updating this fails the suite, not a
+ * client.
  */
-export const GUIDES: readonly GuideDefinition[] = [
-    {
-        // First on purpose: it is the cheapest useful thing to read, and the one
-        // that answers the question an agent actually has — "which tool does this?"
+export const CORE_GUIDES = {
+    // Listed first by the products on purpose: it is the cheapest useful thing to
+    // read, and the one that answers the question an agent actually has — "which
+    // tool does this?"
+    router: {
         id: 'router',
         title: 'Which tool does what you want',
+        root: CORE_ROOT,
         file: 'docs/Tool-Router.md',
         description:
             'Intent to tool, in the words people use. Hand-written, and the right first stop when you ' +
             'know the job but not the tool name.'
     },
-    {
-        id: 'tool-reference',
-        title: 'Every tool, with its arguments',
-        file: 'docs/Tool-Reference.md',
-        description:
-            'All tools grouped by family, with argument names, types and which are required — ' +
-            'generated from the tool definitions, so it cannot drift from the code. Ask for one ' +
-            'family by section rather than reading it whole.'
-    },
-    {
+    tools: {
         id: 'tools',
         title: 'How this server behaves',
+        root: CORE_ROOT,
         file: 'docs/MCP-Tools.md',
         description:
             'The rules that prevent most failures, the golden-path workflows, the response and error ' +
             'model, profiles and the response budget, and a troubleshooting matrix.'
-    },
-    {
-        id: 'hosting',
-        title: 'Running it: stdio and Streamable HTTP',
-        file: 'docs/Hosting.md',
-        description:
-            'The two transports, the per-session bearer token in HTTP mode, the origin and host ' +
-            'allow-lists, the rate limit, and why it runs beside the game rather than in a container.'
-    },
-    {
-        id: 'agents',
-        title: 'Working on this repository',
-        file: 'AGENTS.md',
-        description:
-            'For agents changing this server rather than using it: layout, conventions, how to test, ' +
-            'and how to add a tool.'
     }
-];
+} as const satisfies Record<string, GuideDefinition>;
 
-/** URI prefix for the resource form of a guide. */
-export const GUIDE_URI_PREFIX = `${RESOURCE_SCHEME}://guides/`;
+/** URI prefix for the resource form of a product's guide. */
+export const guideUriPrefix = (product: Product) => `${resourceScheme(product)}://guides/`;
 
-export const guideUri = (id: string) => `${GUIDE_URI_PREFIX}${id}`;
+export const guideUri = (product: Product, id: string) => `${guideUriPrefix(product)}${id}`;
 
-export function guideById(id: string): GuideDefinition | undefined {
-    return GUIDES.find(g => g.id === String(id ?? '').trim().toLowerCase());
+export function guideById(product: Product, id: string): GuideDefinition | undefined {
+    return product.guides.find(g => g.id === String(id ?? '').trim().toLowerCase());
 }
 
-export function guideByUri(uri: string): GuideDefinition | undefined {
-    const id = String(uri ?? '').startsWith(GUIDE_URI_PREFIX)
-        ? String(uri).slice(GUIDE_URI_PREFIX.length)
+export function guideByUri(product: Product, uri: string): GuideDefinition | undefined {
+    const prefix = guideUriPrefix(product);
+    const id = String(uri ?? '').startsWith(prefix)
+        ? String(uri).slice(prefix.length)
         : undefined;
-    return id ? guideById(id) : undefined;
+    return id ? guideById(product, id) : undefined;
 }
 
 export class GuideNotFoundError extends Error { }
 
 export function readGuideFile(guide: GuideDefinition): string {
-    const full = path.join(PROJECT_ROOT, guide.file);
+    const full = path.join(guide.root, guide.file);
     try {
         return fs.readFileSync(full, 'utf8');
     } catch {
@@ -175,8 +159,8 @@ export function extractSection(
 }
 
 /** One entry of the cheap index returned when no particular guide is asked for. */
-export function guideIndex() {
-    return GUIDES.map(guide => {
+export function guideIndex(product: Product) {
+    return product.guides.map(guide => {
         let sections: { number?: string; title: string; level: number }[] = [];
         let bytes = 0;
         try {
@@ -190,7 +174,7 @@ export function guideIndex() {
             id: guide.id,
             title: guide.title,
             description: guide.description,
-            uri: guideUri(guide.id),
+            uri: guideUri(product, guide.id),
             bytes,
             sections
         };

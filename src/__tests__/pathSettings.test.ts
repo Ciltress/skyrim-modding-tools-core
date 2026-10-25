@@ -5,7 +5,9 @@ import { createBackend } from '../backend/index';
 import { AMETHYST_FLATPAK_ID, findAmethyst } from '../backend/skyrim/amethyst';
 import { currentPlatform, linuxPlatform, windowsPlatform } from '../backend/skyrim/platform';
 import { PATH_SETTINGS, pathSetting, readPathSettings, type PathContext } from '../backend/skyrim/pathSettings';
-import { PROJECT_ROOT } from '../lib/serverInfo';
+// The core's suites serve the tools as the core itself: its folder is the product's.
+import { CORE_ROOT as PROJECT_ROOT } from '../lib/product';
+import { CORE_PRODUCT } from '../testing/fakes';
 
 /**
  * Every path setting, read as a user writes it — in `.env` or an MCP client's config, where no shell
@@ -214,11 +216,11 @@ describe('every path setting goes through the one resolver', () => {
 
     it('builds the backend from resolved paths: ~ is the home folder, a relative path the server\'s folder', () => {
         const flatpakDir = `~/.var/app/${AMETHYST_FLATPAK_ID}/config/AmethystModManager`;
-        expect(createBackend({ SKYRIM_MOD_MANAGER: 'amethyst', SKYRIM_AMETHYST_DIR: flatpakDir }).describe())
+        expect(createBackend({ SKYRIM_MOD_MANAGER: 'amethyst', SKYRIM_AMETHYST_DIR: flatpakDir }, { product: CORE_PRODUCT }).describe())
             .toContain(path.join(os.homedir(), '.var', 'app', AMETHYST_FLATPAK_ID, 'config', 'AmethystModManager'));
-        expect(createBackend({ SKYRIM_MO2_INSTANCE: '~/Games/mo2' }).describe())
+        expect(createBackend({ SKYRIM_MO2_INSTANCE: '~/Games/mo2' }, { product: CORE_PRODUCT }).describe())
             .toContain(path.join(os.homedir(), 'Games', 'mo2'));
-        expect(createBackend({ SKYRIM_MO2_INSTANCE: 'test-instance' }).describe())
+        expect(createBackend({ SKYRIM_MO2_INSTANCE: 'test-instance' }, { product: CORE_PRODUCT }).describe())
             .toContain(path.join(PROJECT_ROOT, 'test-instance'));
     });
 

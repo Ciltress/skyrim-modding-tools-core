@@ -1,7 +1,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import { parseList } from '../lib/env.js';
-import { PROJECT_ROOT, SERVER_INFO } from '../lib/serverInfo.js';
+import { CORE_ROOT, type Product } from '../lib/product.js';
 import { AmethystManager, amethystHasSkyrim, findAmethyst } from './skyrim/amethyst.js';
 import { SkyrimEngine } from './skyrim/engine.js';
 import { HelperClient } from './skyrim/helperClient.js';
@@ -74,15 +74,19 @@ export function explainMissingEnv(missing: readonly string[]): string {
         : `Set ${name}`).join('; ') + '.';
 }
 
-/** Where `npm run build:helper` puts the helper on this system. */
+/** Where the core's `npm run build:helper` puts the helper on this system. */
 export function defaultHelperPath(platform: Platform): string {
-    return path.join(PROJECT_ROOT, 'helper', 'bin', platform.helperFileName);
+    return path.join(CORE_ROOT, 'helper', 'bin', platform.helperFileName);
 }
 
-/** Where projects live unless SKYRIM_PROJECTS_DIR says otherwise. */
-export const DEFAULT_PROJECTS_DIR = path.join(PROJECT_ROOT, 'projects');
+/** Where a product's projects live unless SKYRIM_PROJECTS_DIR says otherwise: beside it. */
+export function defaultProjectsDir(root: string): string {
+    return path.join(root, 'projects');
+}
 
 export interface BackendOptions {
+    /** The product serving the tools: where its projects are, and the version Nexus is told. */
+    product: Pick<Product, 'root' | 'version'>;
     /**
      * The caller's own bearer token, in HTTP mode. Undefined in stdio mode, where the process belongs
      * to whoever started it.
@@ -105,7 +109,7 @@ function createModManager(env: NodeJS.ProcessEnv, paths: PathSettings, platform:
 let sharedEngine: SkyrimEngine | undefined;
 
 /** One Nexus catalogue per process too, so the key is checked once, not once per session. */
-let sharedNexus: { apiKey: string | undefined; catalogue: NexusCatalogue } | undefined;
+let sharedNexus: { apiKey: string | undefined; appVersion: string; catalogue: NexusCatalogue } | undefined;
 
 /** What a configuration comes to: the system, every path setting resolved, the mod manager chosen. */
 export interface Configuration {
@@ -119,25 +123,27 @@ export interface Configuration {
 
 /**
  * Reads a configuration as the server does — also for `npm run setup`, which finds what the server
- * will find. Throws on a path setting that cannot be read or a mod manager this server does not know.
+ * will find. `root` is the product's folder. Throws on a path setting that cannot be read or a mod
+ * manager this server does not know.
  */
-export function readConfiguration(env: NodeJS.ProcessEnv, options: { home?: string } = {}): Configuration {
+export function readConfiguration(env: NodeJS.ProcessEnv, options: { root: string; home?: string }): Configuration {
     // The one place the server asks which operating system it runs on (docs/adr/0007).
     const platform = currentPlatform();
     const home = options.home ?? os.homedir();
-    // Relative paths are the server's folder's, where .env is — not whichever folder a client started it in.
-    const paths = readPathSettings(env, { platform, home, base: PROJECT_ROOT });
+    // Relative paths are the product's folder's, where .env is — not whichever folder a client started it in.
+    const paths = readPathSettings(env, { platform, home, base: options.root });
     return {
         platform, home, paths,
         modManager: createModManager(env, paths, platform, home),
-        papyrusCompilerCandidates: platform.papyrusCompilerCandidates(env.PATH, home, PROJECT_ROOT)
+        papyrusCompilerCandidates: platform.papyrusCompilerCandidates(env.PATH, home, options.root)
     };
 }
 
 /** Builds the backend for one server: per process, or per session in HTTP mode. Starts nothing: the helper starts on connect(). */
-export function createBackend(env: NodeJS.ProcessEnv = process.env, options: BackendOptions = {}): AppBackend {
-    const { platform, paths, modManager, papyrusCompilerCandidates } = readConfiguration(env, options);
-    const projectsDir = paths.SKYRIM_PROJECTS_DIR ?? DEFAULT_PROJECTS_DIR;
+export function createBackend(env: NodeJS.ProcessEnv, options: BackendOptions): AppBackend {
+    const { platform, paths, modManager, papyrusCompilerCandidates } =
+        readConfiguration(env, { root: options.product.root, home: options.home });
+    const projectsDir = paths.SKYRIM_PROJECTS_DIR ?? defaultProjectsDir(options.product.root);
     const current = sharedEngine?.modManager;
     if (current?.name !== modManager.name || current.location !== modManager.location || sharedEngine?.projectsDir !== projectsDir) {
         sharedEngine?.stop();
@@ -154,8 +160,9 @@ export function createBackend(env: NodeJS.ProcessEnv = process.env, options: Bac
         );
     }
     const apiKey = env.NEXUS_API_KEY?.trim() || undefined;
-    if (!sharedNexus || sharedNexus.apiKey !== apiKey) {
-        sharedNexus = { apiKey, catalogue: new NexusCatalogue({ appVersion: SERVER_INFO.version, apiKey }) };
+    const appVersion = options.product.version;
+    if (!sharedNexus || sharedNexus.apiKey !== apiKey || sharedNexus.appVersion !== appVersion) {
+        sharedNexus = { apiKey, appVersion, catalogue: new NexusCatalogue({ appVersion, apiKey }) };
     }
     return new SkyrimInstanceBackend({
         engine: sharedEngine!,
