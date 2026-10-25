@@ -220,9 +220,9 @@ its mod.
 
 ## Measuring with a local model
 
-The eval runs fixed modding tasks with a local model through OpenClaw and scores them. From round 64 it lives in
-the OpenClaw plugin's repository and records its rounds there; rounds 1–63 are in the MCP server's
-`docs/research/local-model-evals.md`. The transcripts are where a model's wasted calls point at the tools: a
+The eval runs fixed modding tasks with a local model through OpenClaw and scores them. From round 64 it is the
+OpenClaw plugin's (`npm run eval` there; rounds 1–63 ran the MCP server's `scripts/eval-ollama.mjs`); every round
+is in `docs/research/local-model-evals.md` in the skyrim-modding-tools folder beside the repositories. The transcripts are where a model's wasted calls point at the tools: a
 relative path joined to the wrong folder, a misspelled type answered with "nothing found". Fix those here, for
 every client.
 

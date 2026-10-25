@@ -605,18 +605,18 @@ own `inputSchema`, so **a new tool is covered the moment it is listed**.
 `npm run smoke` drives the **built** server over real stdio and fails if anything but protocol frames
 reaches stdout.
 
-`npm run eval:ollama` measures how a local model drives the **built** server
-([`scripts/eval-ollama.mjs`](../scripts/eval-ollama.mjs)): eight fixed tasks — find a record, read two
-of its values, list a plugin's armor, patch a record, patch and build, and author and build a new
-enchanted sword, a new Destruction spell and a new NPC — through Ollama's `/api/chat`,
-with the server's tools and four file tools confined to a temporary projects folder. It checks each
-task against the instance itself, deploys nothing (`deployProject` is listed, but a call to it is
-refused), and writes every call with its arguments and answer to a JSON file. Then it measures the
-model's prompt and generation speed at the same context, apart from the tasks. `--model`, `--profile`,
-`--runs`, `--tasks` and `--ctx` choose what to measure. Run it after changing what a tool says or
-answers: the transcripts show where a model loses turns — they are how the relative paths
-`addPatch` used to answer with were found. Every round is recorded in
-[`research/local-model-evals.md`](./research/local-model-evals.md); the script prints its entry.
+The eval measures how a local model drives these tools: the OpenClaw plugin's `npm run eval`
+(skyrim-modding-tools-openclaw-plugin, `scripts/eval.mjs`; until round 63 the MCP server's
+`scripts/eval-ollama.mjs`). Nine fixed tasks — find a record, read two of its values, list a plugin's
+armor, patch a record, patch and build, and author and build a new enchanted sword, a new Destruction
+spell, a new NPC and a copy of a vanilla note — each through OpenClaw headless, on the user's own
+configuration, with the model behind a logging proxy before Ollama. It checks each task against the
+instance itself, deploys and installs nothing (those tools are denied), and writes every call with its
+arguments and answer to a JSON file. Then it measures the model's prompt and generation speed at the
+same context, apart from the tasks. Run it after changing what a tool says or answers: the transcripts
+show where a model loses turns — they are how the relative paths `addPatch` used to answer with were
+found. Every round is recorded in `docs/research/local-model-evals.md` in the skyrim-modding-tools folder
+beside the repositories; the script prints its entry.
 
 ---
 

@@ -31,7 +31,7 @@ spells, weapon and armor kinds, enchantments, potions, recipe stations and mater
 voices, classes, outfits, the leveled lists new things go into; models read `SKILL.md` and seldom its
 `REFERENCE.md`. Every table value is a Skyrim.esm record, so the tables say to write them without a
 search. Change an example or a table row only after building it, as written, against a test instance.
-Keep the examples unlike the authoring tasks of `scripts/eval-ollama.mjs` — another element, another
+Keep the examples unlike the eval's authoring tasks (the OpenClaw plugin's `scripts/eval.mjs`) — another element, another
 kind — so the eval measures a model working its record out of the tables rather than copying one. The tool workflow every task follows is in
 `skyrim-modding-basics`; each record family's `SKILL.md` adds what its records need, naming the real
 tools.
