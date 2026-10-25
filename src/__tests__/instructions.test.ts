@@ -46,10 +46,11 @@ describe('the instructions', () => {
         }
     });
 
-    it('name only skills there are, and every family of records', () => {
+    it('name only skills there are: every family of records, and the one for mods a game update broke', () => {
         const skills = new Set(discoverSkills().filter(skill => skill.collection === 'domain').map(skill => skill.name));
         for (const [name] of text.matchAll(/skyrim-modding-[a-z-]+/g)) expect(skills, name).toContain(name);
         for (const family of FAMILY_SKILLS) expect(text).toContain(family.skill);
+        expect(text).toContain('Mods that break after a game update: skyrim-modding-game-versions.');
     });
 
     it('say when a mod is delivered, beside the line that asks for it, and nowhere else', () => {

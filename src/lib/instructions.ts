@@ -31,7 +31,8 @@ export function serverInstructions(target: string): string {
         'answers `success`: after each edit or refusal, build again, and answer with what that build said.',
         '',
         'Before modding, read the skill skyrim-modding-basics, then the skill of the records you will write: ' +
-        `${FAMILY_SKILLS.map(family => `${family.skill} (${family.covers})`).join(', ')} (readSkill).`,
+        `${FAMILY_SKILLS.map(family => `${family.skill} (${family.covers})`).join(', ')} (readSkill). ` +
+        'Mods that break after a game update: skyrim-modding-game-versions.',
         '',
         'How a mod is made:',
         '- A mod is a project. newProject creates it and answers the full path where each record file goes: write the ' +
