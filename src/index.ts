@@ -13,6 +13,8 @@ export * from './backend/skyrim/paths.js';
 export * from './backend/skyrim/pathSettings.js';
 export * from './backend/skyrim/platform.js';
 export * from './handlers/index.js';
+// The repair BaseHandler makes on every call, for a product whose client checks arguments before they reach it.
+export { coerceArgs } from './handlers/args.js';
 export * from './lib/capabilityGate.js';
 export * from './lib/env.js';
 export * from './lib/guides.js';
