@@ -517,7 +517,7 @@ public sealed class Session : IDisposable
             ["masters"] = new JsonArray(written.ModHeader.MasterReferences.Select(m => (JsonNode)m.Master.FileName.String).ToArray()),
             ["headerVersion"] = written.ModHeader.Stats.Version,
             ["resolvedLinks"] = resolvedLinks,
-            ["notes"] = new JsonArray((await UnchangedOverrides(dir, mod.ModKey)).Select(n => (JsonNode)n).ToArray())
+            ["notes"] = new JsonArray((await OverrideNotes(dir, mod.ModKey)).Select(n => (JsonNode)n).ToArray())
         };
     }
 
@@ -528,8 +528,9 @@ public sealed class Session : IDisposable
     /// record from the load order without the project. e4b's "new note" was Maven's own, copied and built as it was
     /// (eval round 45's note+detailed #1); 9 records of rounds 30–45 were copied so and built, untouched, in 8 runs, and 2
     /// of them failed — the 6 that passed each left the Iron Sword or a fire enchantment in the plugin beside the new sword.
+    /// And a changed enchantment's copy no record of the project names (ProjectNotes.UnusedEnchantment).
     /// </summary>
-    private async Task<List<string>> UnchangedOverrides(string dir, ModKey own)
+    private async Task<List<string>> OverrideNotes(string dir, ModKey own)
     {
         var records = RecordFiles.FlatRecords(dir).Select(f => (f.Relative, f.Type, Text: File.ReadAllText(f.File))).ToList();
         var copies = records.Where(f => RecordFiles.Identity(f.Text).FormKey is { } key && key.ModKey != own).ToList();
@@ -549,7 +550,13 @@ public sealed class Session : IDisposable
         foreach (var (relative, type, text) in copies)
         {
             var key = RecordFiles.Identity(text).FormKey!.Value;
-            if (!asLoaded.TryGetValue(key, out var loaded) || loaded != Bare(text)) continue;
+            if (!asLoaded.TryGetValue(key, out var loaded)) continue;
+            if (loaded != Bare(text))
+            {
+                if (type == typeof(ObjectEffect) && ProjectNotes.UnusedEnchantment(dir, records, relative, text, Index, own) is { } unused)
+                    notes.Add(unused);
+                continue;
+            }
             var id = Index.ByFormKey.TryGetValue(key, out var entry) && entry.EditorId is { } editorId ? editorId : FormKeyText(key);
             var said = $"{relative}: overrides {id} of {key.ModKey.FileName} and changes nothing in it, every field as the load order " +
                 "has it — in game it only undoes what mods loaded before this one change there. ";

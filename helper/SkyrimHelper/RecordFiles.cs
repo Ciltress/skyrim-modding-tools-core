@@ -540,35 +540,43 @@ public static class RecordFiles
 
     /// <summary>
     /// The project's new enchantments no other record names — by editor ID, or by the FormID a build wrote in, an
-    /// override's too — each with the weapons and armors that carry none: the new ones, else the copies of the load
-    /// order's; armors first for an enchantment cast ConstantEffect, weapons first for any other. e4b's Flame Blade
-    /// carried its enchantment on a copy of IronSword (round 23).
+    /// override's too — each with the weapons and armors that carry none (Carriers). e4b's Flame Blade carried its
+    /// enchantment on a copy of IronSword (round 23).
     /// </summary>
     internal static List<(string Relative, string EditorId, List<Carrier> Carriers)> Unworn(
         IReadOnlyList<(string Relative, Type Type, string Text)> records, ModKey? own)
     {
-        bool IsNew(string text) => Identity(text).FormKey is not { } key || key.ModKey == own;
-        var bare = records.Where(r => (r.Type == typeof(Weapon) || r.Type == typeof(Armor)) && !ObjectEffectLine.IsMatch(r.Text)).ToList();
-        var fresh = bare.Where(r => IsNew(r.Text)).ToList();
         var unworn = new List<(string, string, List<Carrier>)>();
         foreach (var (relative, type, text) in records)
         {
-            if (type != typeof(ObjectEffect) || !IsNew(text) || Identity(text) is not { EditorId: { } enchantment }) continue;
+            if (type != typeof(ObjectEffect) || !IsNew(text, own) || Identity(text) is not { EditorId: { } enchantment }) continue;
             if (NamedElsewhere(records, relative, text)) continue;
-            var armorFirst = ConstantCast.IsMatch(text);
-            var carriers = (fresh.Count > 0 ? fresh : bare)
-                .OrderBy(r => r.Type == typeof(Armor) == armorFirst ? 0 : 1)
-                .Select(r =>
-                {
-                    var (key, id) = Identity(r.Text);
-                    if (key is not { } copied || copied.ModKey == own) return new Carrier(r.Relative, r.Type.Name, id ?? r.Relative, id, null);
-                    var name = id ?? Session.FormKeyText(copied);
-                    return new Carrier(r.Relative, r.Type.Name, name, id, $"{name} of {copied.ModKey.FileName}");
-                })
-                .ToList();
-            unworn.Add((relative, enchantment, carriers));
+            unworn.Add((relative, enchantment, Carriers(records, own, text)));
         }
         return unworn;
+    }
+
+    private static bool IsNew(string text, ModKey? own) => Identity(text).FormKey is not { } key || key.ModKey == own;
+
+    /// <summary>
+    /// The project's weapons and armors that carry no enchantment, for one to carry this enchantment: the new ones, else
+    /// the copies of the load order's; armors first for an enchantment cast ConstantEffect, weapons first for any other.
+    /// </summary>
+    internal static List<Carrier> Carriers(IReadOnlyList<(string Relative, Type Type, string Text)> records, ModKey? own, string enchantment)
+    {
+        var bare = records.Where(r => (r.Type == typeof(Weapon) || r.Type == typeof(Armor)) && !ObjectEffectLine.IsMatch(r.Text)).ToList();
+        var fresh = bare.Where(r => IsNew(r.Text, own)).ToList();
+        var armorFirst = ConstantCast.IsMatch(enchantment);
+        return (fresh.Count > 0 ? fresh : bare)
+            .OrderBy(r => r.Type == typeof(Armor) == armorFirst ? 0 : 1)
+            .Select(r =>
+            {
+                var (key, id) = Identity(r.Text);
+                if (key is not { } copied || copied.ModKey == own) return new Carrier(r.Relative, r.Type.Name, id ?? r.Relative, id, null);
+                var name = id ?? Session.FormKeyText(copied);
+                return new Carrier(r.Relative, r.Type.Name, name, id, $"{name} of {copied.ModKey.FileName}");
+            })
+            .ToList();
     }
 
     /// <summary>Whether another record of the project names this one — by editor ID, or by the FormID a build wrote in.</summary>

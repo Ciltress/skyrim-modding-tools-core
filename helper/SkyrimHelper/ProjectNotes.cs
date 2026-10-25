@@ -175,6 +175,43 @@ public static class ProjectNotes
         return notes;
     }
 
+    /// <summary>
+    /// A changed copy of the load order's enchantment that no record of the project names: every weapon and armor of the
+    /// game's that carries it carries what the file changes, and the project's own carry none of it. e4b's Flame Blade
+    /// copied EnchWeaponFireDamage01, set its charge to 500 and never gave it to the sword, which built with no word against
+    /// it, a sword with no enchantment (eval round 65's sword #2). A renamed copy has the rename's note (Of), an unchanged
+    /// one the build's own (Session.OverrideNotes).
+    /// </summary>
+    internal static string? UnusedEnchantment(string pluginDir, IReadOnlyList<(string Relative, Type Type, string Text)> records,
+        string relative, string text, RecordIndex index, ModKey own)
+    {
+        if (RecordFiles.Identity(text).FormKey is not { } key || key.ModKey == own || !index.ByFormKey.TryGetValue(key, out var entry)
+            || RecordFiles.NamedElsewhere(records, relative, text)
+            || entry.Name is { Length: > 0 } named && NameIn(text) is { } now && now != named)
+            return null;
+        var original = entry.EditorId ?? Session.FormKeyText(key);
+        var was = entry.Name is { Length: > 0 } name ? name : original;
+        var project = Path.GetFileName(Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(Path.GetFullPath(pluginDir)))) ?? "";
+        var editorIds = records.Select(r => RecordFiles.Identity(r.Text).EditorId).OfType<string>().ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var id = RecordFiles.Numbered(original + Regex.Replace(own.Name, "[^A-Za-z0-9]", ""),
+            candidate => !editorIds.Contains(candidate) && !index.ByEditorId.ContainsKey(candidate));
+        var made = $"editRecord {{\"project\": {Quoted(project)}, \"record\": {Quoted(relative)}, " +
+            $"\"set\": [{{\"path\": \"EditorID\", \"value\": {Quoted(id)}}}], \"remove\": [\"FormKey\"]}}";
+        // Where it goes, as the build's refusal of a new enchantment no record names writes it (RecordFiles.UnwornProblem).
+        var give = RecordFiles.Carriers(records, own, text) switch
+        {
+            [var one] => $"then give it to {one.Name}: editRecord {{\"project\": {Quoted(project)}, \"record\": {Quoted(one.Relative)}, " +
+                $"\"set\": [{{\"path\": \"ObjectEffect\", \"value\": {Quoted(id)}}}" +
+                (one.Type == "Weapon" ? ", {\"path\": \"EnchantmentAmount\", \"value\": 500}]}" : "]}"),
+            [_, ..] and var carriers => $"then give it to the one meant to carry it of {string.Join(", ", carriers.Take(4).Select(c => c.Name))}, " +
+                $"which carry none: `ObjectEffect: {id}`, with `EnchantmentAmount: 500` on a weapon",
+            _ => $"then give it to the weapon or armor meant to carry it: `ObjectEffect: {id}`, with `EnchantmentAmount: 500` on a weapon"
+        };
+        return $"{relative}: overrides {original} of {key.ModKey.FileName} ('{was}'), and no record of the project names it: every weapon " +
+            $"and armor in the game that carries {was} carries all this file changes, and the project's own carry none of it. " +
+            $"{Unless(was)} — one call does it: {made} — {give}; build again";
+    }
+
     /// <summary>A text as a JSON string, for a call written into a note.</summary>
     private static string Quoted(string text) => $"\"{text.Replace("\\", "\\\\").Replace("\"", "\\\"")}\"";
 
