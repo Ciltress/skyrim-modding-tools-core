@@ -52,8 +52,8 @@ Name:
   TargetLanguage: English
   Value: Dalvos Veran
 AIData:
-  Aggression: Unaggressive  # or Aggressive, VeryAggressive, Frenzied
-  Confidence: Average       # or Cowardly, Cautious, Brave, Foolhardy
+  Aggression: Unaggressive
+  Confidence: Average
   EnergyLevel: 50
   Responsibility: NoCrime
 Packages:
