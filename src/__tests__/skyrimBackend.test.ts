@@ -19,7 +19,7 @@ import { CompilerUnavailableError, ScriptCompileError } from '../backend/skyrim/
 import { asRequestError } from '../handlers/args';
 import { createHandlers } from '../handlers/index';
 import { CORE_PRODUCT } from '../testing/fakes';
-import type { AppBackend } from '../backend/index';
+import { createBackend, stopBackends, type AppBackend } from '../backend/index';
 import { ToolError, ToolErrorCode } from '../handlers/errors';
 
 /**
@@ -1796,5 +1796,20 @@ describe('which failures the client is asked to fix', () => {
         expect(await code(new CompilerUnavailableError('no Papyrus compiler'))).toBe('passed through');
         expect(await code(new HelperError('ioFailed', 'x'))).toBe('passed through');
         expect(await code(new HelperError('timeout', 'x'))).toBe('passed through');
+    });
+});
+
+describe('the helper a process shares', () => {
+    it('is stopped by stopBackends, for a host that outlives the tools it loaded', async () => {
+        // A helper that never answers: Node, given no script, reads one from its stdin and waits for the end of it.
+        const fixture = makeInstance();
+        const backend = createBackend({ SKYRIM_MO2_INSTANCE: fixture.instanceDir, SKYRIM_HELPER_PATH: process.execPath },
+            { product: { ...CORE_PRODUCT, root: fixture.root } });
+        await backend.connect();
+        expect((await backend.health!()).summary).toMatch(/helper is starting/);
+
+        stopBackends();
+        // Only a process that really ended fails the call it was waiting on.
+        await vi.waitFor(async () => expect((await backend.health!()).summary).toMatch(/helper exited/), { timeout: 5_000 });
     });
 });

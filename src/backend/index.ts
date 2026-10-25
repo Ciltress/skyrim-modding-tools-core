@@ -174,3 +174,13 @@ export function createBackend(env: NodeJS.ProcessEnv, options: BackendOptions): 
             : undefined
     });
 }
+
+/**
+ * Stops the helper every backend of this process shares, for a host that outlives the tools it loaded: the
+ * OpenClaw gateway loads each generation of a plugin as a new copy of this module, and the old copy's helper
+ * would run on beside the new one's. A backend called again starts it again. A process that exits needs none of
+ * this: the helper ends with its stdin.
+ */
+export function stopBackends(): void {
+    sharedEngine?.stop();
+}
