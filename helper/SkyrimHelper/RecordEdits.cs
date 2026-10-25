@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Reflection;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
@@ -194,6 +195,11 @@ public static class RecordEdits
     {
         var (steps, label) = Placed(type, path);
         var types = Types(type, steps, label);
+        if (value is JsonValue braced && braced.TryGetValue<string>(out var bracedText) && Fielded(bracedText, types[^1]) is { } parsed)
+        {
+            value = parsed;
+            label += " (fields, sent as a text)";
+        }
         // Fields of the part above, sent inside a part: an NPC's {"Level": {…, "CalcMinLevel": 5}} — set as Configuration's.
         if (value is JsonObject sent && sent.Where(f => f.Key != "MutagenObjectType" && Segment.IsMatch(f.Key)
                 && Place(type, Parse($"{path}.{f.Key}")) is var placed && !(placed.Count > steps.Count && placed.Take(steps.Count).SequenceEqual(steps)))
@@ -245,6 +251,38 @@ public static class RecordEdits
     }
 
     private static string Json(IEnumerable<string> names) => new JsonArray(names.Select(n => (JsonNode?)JsonValue.Create(n)).ToArray()).ToJsonString();
+
+    /// <summary>
+    /// A part's fields sent as the text a file writes them in — `{MutagenObjectType: NpcLevel, Level: 5}`, as the build's
+    /// refusal shows an NPC's level — as those fields, for a field that takes fields: set as that text, e4b's level was
+    /// refused five builds long (eval round 65's npc #1). Null for a text that reads as no mapping.
+    /// </summary>
+    private static JsonObject? Fielded(string said, Type type)
+    {
+        var written = said.Trim();
+        if (!written.StartsWith('{') || !written.EndsWith('}') || !type.IsClass || type == typeof(string) || Translated(type)
+            || Items(type) is not null || RecordLinks.LinkTarget(type) is not null)
+            return null;
+        var yaml = new YamlStream();
+        try
+        {
+            yaml.Load(new StringReader(written));
+            return yaml.Documents.Count > 0 && yaml.Documents[0].RootNode is YamlMappingNode mapping ? (JsonObject?)FromYaml(mapping) : null;
+        }
+        catch (Exception e) when (e is YamlException or ArgumentException or InvalidCastException) { return null; }
+    }
+
+    /// <summary>A YAML node as JSON: a plain scalar that reads as a number or true/false as one, any other as its text.</summary>
+    private static JsonNode? FromYaml(YamlNode node) => node switch
+    {
+        YamlMappingNode mapping => new JsonObject(mapping.Children.Select(f => KeyValuePair.Create(((YamlScalarNode)f.Key).Value ?? "", FromYaml(f.Value)))),
+        YamlSequenceNode list => new JsonArray(list.Children.Select(FromYaml).ToArray()),
+        YamlScalarNode { Style: ScalarStyle.Plain, Value: var plain } when long.TryParse(plain, NumberStyles.Integer, CultureInfo.InvariantCulture, out var whole) => whole,
+        YamlScalarNode { Style: ScalarStyle.Plain, Value: var plain } when double.TryParse(plain, NumberStyles.Float, CultureInfo.InvariantCulture, out var number) => number,
+        YamlScalarNode { Style: ScalarStyle.Plain, Value: var plain } when bool.TryParse(plain, out var flag) => flag,
+        YamlScalarNode scalar => scalar.Value,
+        _ => null
+    };
 
     /// <summary>
     /// A part given another kind, without the fields of the kind it was that this one has not: an NpcLevel's `Level: 1`,
