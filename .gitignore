@@ -13,3 +13,9 @@ node_modules
 helper/bin/
 helper/*/bin/
 helper/*/obj/
+
+# graphify: only the graph, which `graphify query` reads, and its community names, which took an LLM
+# to write. The page, the report, the cache, backups and this machine's state `graphify update .` rebuilds.
+graphify-out/*
+!graphify-out/graph.json
+!graphify-out/.graphify_labels.json
