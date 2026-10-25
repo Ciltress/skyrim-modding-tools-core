@@ -1,6 +1,4 @@
 {
-  "0": "Helper Session and FOMOD",
-  "3": "Nexus Catalogue Client",
   "5": "Record File Checks",
   "6": "Text Project Lifecycle",
   "7": "Helper Files and Imports",
@@ -11,7 +9,6 @@
   "13": "Package Manifest",
   "14": "Tool Args and Errors",
   "15": "Profiles and Response Budget",
-  "16": "Record Index and Links",
   "17": "Server Guides and Product",
   "20": "Tool Definitions and Gate",
   "21": "Skill Discovery Handlers",
@@ -30,7 +27,6 @@
   "38": "NPCs Skill",
   "40": "Modding Tool Landscape",
   "41": "MO2 File Parsing",
-  "43": "Amethyst Backend Tests",
   "44": "TypeScript Config",
   "45": "Magic Skill",
   "46": "Handler Contract Tests",
