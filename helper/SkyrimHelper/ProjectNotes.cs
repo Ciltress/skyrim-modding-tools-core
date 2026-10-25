@@ -127,6 +127,9 @@ public static class ProjectNotes
             .OfType<string>().ToHashSet(StringComparer.OrdinalIgnoreCase);
         // A record copied whole and renamed, its FormKey and EditorID kept, builds as a change to that record, not as
         // a new one beside it: e4b's "new note" was Maven's own, renamed (eval probe 19). A patch renames now and then.
+        var project = Path.GetFileName(Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(Path.GetFullPath(pluginDir)))) ?? "";
+        var editorIds = records.Select(r => RecordFiles.Identity(r.Text).EditorId).OfType<string>().ToHashSet(StringComparer.OrdinalIgnoreCase);
+        bool Free(string name) => !editorIds.Contains(name) && !index.ByEditorId.ContainsKey(name);
         foreach (var (relative, type, text) in records)
         {
             if (RecordFiles.Identity(text).FormKey is not { } key || key.ModKey == own) continue;
@@ -142,8 +145,8 @@ public static class ProjectNotes
                     notes.Add($"{relative}: overrides {entry.EditorId} of {key.ModKey.FileName} and gives it {link.Groups[1].Value}, the project's " +
                         $"new enchantment: every {was} in the game — the player's, the merchants', the ones NPCs carry and leveled lists hand " +
                         $"out — carries it, with all this file changes. {Unless(was)}: delete this file's FormKey line and give it an " +
-                        $"EditorID and a Name of its own — it builds as a new record, named '{was}' until its Name says otherwise, and " +
-                        $"{was} stays as it is");
+                        $"EditorID and a Name of its own — editRecord does it in one call, \"remove\": [\"FormKey\"] with the EditorID and " +
+                        $"Name in \"set\" — it builds as a new record, named '{was}' until its Name says otherwise, and {was} stays as it is");
                 continue;
             }
             // What it does in the game, and the one edit that makes the copy a new record: told the game shows that
@@ -158,12 +161,22 @@ public static class ProjectNotes
                 "Npc" => $"{was} becomes '{now}' wherever the game places them",
                 _ => $"the game shows that record as '{now}' wherever it is"
             };
+            // That edit as the one call it is: told to delete the FormKey line and give the copy an EditorID of its own, e4b
+            // judged it hard — "This requires knowing the *original* content of the record … patching over it is difficult" —
+            // kept the renamed Prisoner and answered (eval round 64's npc #3, the fifth such copy kept in rounds 50–64).
+            var id = RecordFiles.EditorIdFromName(now, Free) ?? RecordFiles.Numbered($"{entry.EditorId}New", Free);
+            editorIds.Add(id);
+            var call = $"editRecord {{\"project\": {Quoted(project)}, \"record\": {Quoted(relative)}, " +
+                $"\"set\": [{{\"path\": \"EditorID\", \"value\": {Quoted(id)}}}], \"remove\": [\"FormKey\"]}}";
             notes.Add($"{relative}: overrides {entry.EditorId} of {key.ModKey.FileName} and renames it from '{was}' to '{now}': {becomes}, " +
-                $"with all this file changes. {Unless(was)}: delete this file's FormKey line and give it an EditorID of its own — it " +
-                $"builds as a new record, and {was} stays as it is");
+                $"with all this file changes. {Unless(was)} — one call does it: {call}, which deletes this file's FormKey line and " +
+                $"gives it an EditorID of its own; build again, and it builds as a new record while {was} stays as it is");
         }
         return notes;
     }
+
+    /// <summary>A text as a JSON string, for a call written into a note.</summary>
+    private static string Quoted(string text) => $"\"{text.Replace("\\", "\\\\").Replace("\"", "\\\"")}\"";
 
     /// <summary>
     /// A new record, unless the copied one itself was to change. "If a new one was asked for" left it to the model: e4b

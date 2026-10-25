@@ -1156,12 +1156,9 @@ public static class RecordFiles
             if (Identity(text) is not { FormKey: null, EditorId: { } editorId } || !index.ByEditorId.TryGetValue(editorId, out var key)
                 || key.ModKey == own || !index.ByFormKey.TryGetValue(key, out var entry) || EditorIdLine.Match(text) is not { Success: true } line)
                 continue;
-            // The in-game name's words, each capitalized — Maven's Warning is MavensWarning — or the old name and the plugin's.
-            var named = ProjectNotes.NameIn(text) is { } words
-                ? string.Concat(Regex.Split(Regex.Replace(words, "['’]", ""), "[^A-Za-z0-9]+").Where(w => w.Length > 0).Select(w => char.ToUpperInvariant(w[0]) + w[1..]))
-                : "";
-            var stem = named.Length > 0 && char.IsLetter(named[0]) ? named : editorId + (own is { } plugin ? Regex.Replace(plugin.Name, "[^A-Za-z0-9]", "") : "New");
-            var name = Enumerable.Range(1, 99).Select(n => n == 1 ? stem : $"{stem}{n}").First(Free);
+            // From the in-game name, or the old name and the plugin's.
+            var name = EditorIdFromName(ProjectNotes.NameIn(text), Free)
+                ?? Numbered(editorId + (own is { } plugin ? Regex.Replace(plugin.Name, "[^A-Za-z0-9]", "") : "New"), Free);
             taken.Add(name);
             var value = line.Groups[1];
             File.WriteAllText(file, text[..value.Index] + name + text[(value.Index + value.Length)..]);
@@ -1171,6 +1168,21 @@ public static class RecordFiles
         }
         return changes;
     }
+
+    /// <summary>
+    /// An editor ID made from an in-game name — its words, each capitalized: Maven's Warning is MavensWarning — the first
+    /// of it, it numbered 2, 3… that `free` takes; null for a name with no letter to begin one.
+    /// </summary>
+    internal static string? EditorIdFromName(string? words, Func<string, bool> free)
+    {
+        var named = words is null ? ""
+            : string.Concat(Regex.Split(Regex.Replace(words, "['’]", ""), "[^A-Za-z0-9]+").Where(w => w.Length > 0).Select(w => char.ToUpperInvariant(w[0]) + w[1..]));
+        return named.Length > 0 && char.IsLetter(named[0]) ? Numbered(named, free) : null;
+    }
+
+    /// <summary>The name, or it numbered 2, 3… up to 99, the first that `free` takes.</summary>
+    internal static string Numbered(string stem, Func<string, bool> free) =>
+        Enumerable.Range(1, 99).Select(n => n == 1 ? stem : $"{stem}{n}").First(free);
 
     /// <summary>Throws what is wrong with the files, as the request's fault; answers how many there are, and those left out.</summary>
     public static (int Records, List<(string File, string Copy)> LeftOut) Require(string pluginDir, RecordIndex? index = null)
