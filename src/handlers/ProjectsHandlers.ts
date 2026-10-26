@@ -182,7 +182,7 @@ export class ProjectsHandlers extends BaseHandler {
                         '"value": "Flame Blade"}, {"path": "Effects[0].Data.Magnitude", "value": 40}] — a text field (Name, ' +
                         'Description) takes its words, a link a FormID or an editor ID, a list a list, written whole; an ' +
                         'object sets the fields it names inside that part and keeps its others, as {"path": "BasicStats", ' +
-                        '"value": {"Damage": 12}} does. `remove` takes paths to delete: ["Critical", "Effects[1]"]. Changes ' +
+                        '"value": {"Damage": 12}} does. `remove` takes paths to delete, any the file has: ["Critical", "Effects[1]"]. Changes ' +
                         'only those lines, refuses a field the record\'s type does not have, and answers the file\'s new text. ' +
                         'Then run buildProject.',
                     inputSchema: {

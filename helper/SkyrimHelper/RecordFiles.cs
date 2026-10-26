@@ -268,6 +268,7 @@ public static class RecordFiles
         if (known.FirstOrDefault(k => k.Equals(key, StringComparison.OrdinalIgnoreCase)) is { } spelled) return Rename(spelled, $"it is spelled {spelled}");
         foreach (var (types, keys, field, hint) in Synonyms)
             if (types.Contains(type.Name) && keys.Contains(key, StringComparer.OrdinalIgnoreCase)) return field is null ? hint : Rename(field, hint);
+        if (FlagHint(type, key) is { } flag) return flag;
         if (known.FirstOrDefault(k => k.Equals(key + "s", StringComparison.OrdinalIgnoreCase) || k.Equals(key + "es", StringComparison.OrdinalIgnoreCase)
                 || key.EndsWith('s') && k.Equals(key[..^1], StringComparison.OrdinalIgnoreCase)) is { } number)
             return Rename(number, $"it is spelled {number}");
@@ -277,6 +278,23 @@ public static class RecordFiles
         // One letter off one field of the type: HalflCostPerk, told "delete it", was deleted, written back and deleted
         // again until the turns ran out (eval round 37's spell+detailed #3).
         return known.Where(k => OneEditApart(k, key)).ToList() is [var near] ? Rename(near, $"it is spelled {near}") : null;
+    }
+
+    /// <summary>
+    /// Where a field named as a flag is one: "it is one of the Flags under Configuration: delete it here and list Unique there" — the
+    /// record's Flags, or those of one of its parts. An NPC's `Unique: 1` was "delete it: a Npc has it nowhere", and the
+    /// NPC lost its flag (eval round 69's npc+detailed #3). Null for a name no Flags of the record has.
+    /// </summary>
+    private static string? FlagHint(Type type, string key)
+    {
+        static Type? FlagsOf(Type part) => part.GetProperty("Flags", BindingFlags.Public | BindingFlags.Instance)?.PropertyType is { } flags
+            && (Nullable.GetUnderlyingType(flags) ?? flags) is { IsEnum: true } named && named.IsDefined(typeof(FlagsAttribute), false) ? named : null;
+        static string? Named(Type? flags, string key) => flags is null ? null : Enum.GetNames(flags).FirstOrDefault(n => n.Equals(key, StringComparison.OrdinalIgnoreCase));
+        if (Named(FlagsOf(type), key) is { } own) return $"it is one of the Flags: delete it here and list {own} there";
+        var parts = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Select(p => (p.Name, Flag: Named(FlagsOf(Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType), key)))
+            .Where(p => p.Flag is not null).ToList();
+        return parts is [var (part, flag)] ? $"it is one of the Flags under {part}: delete it here and list {flag} there" : null;
     }
 
     /// <summary>Whether two names differ, case aside, by one letter added, left out, changed, or two swapped.</summary>

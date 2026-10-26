@@ -73,7 +73,10 @@ arguments, see [`Tool-Reference.md`](./Tool-Reference.md), which is generated fr
      write the YAML files in a project's `plugin/` folder — or field by field with `editRecord`,
      which needs no old text to match: `{"set": [{"path": "BasicStats.Damage", "value": 12}],
      "remove": ["Critical"]}`. It changes only those fields' lines, refuses a field the record's type
-     does not have, and answers the file's new text (docs/adr/0008, since eval round 48). An object
+     does not have, and answers the file's new text (docs/adr/0008, since eval round 48). `remove`
+     takes out a field the file has as sent even where the type has it nowhere — the build's "delete
+     it" — and keeps one the same call sets (since eval round 69: e4b's `remove` of an NPC's `Unique`
+     was refused, and its `Level`, sent with it, was the one the call set under `Configuration`). An object
      for a part the file has sets the fields it names and keeps the others, as a JSON merge patch
      does — `{"path": "BasicStats", "value": {"Damage": 12}}` — and a text is set by its words or by
      its `Value` (`Name.Value`), as the file writes it (since eval round 49). `set` is a list of paths

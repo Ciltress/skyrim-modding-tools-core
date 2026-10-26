@@ -31,9 +31,26 @@ public static class RecordEdits
         var text = written.Replace("\r\n", "\n");
         var changes = new List<string>();
         foreach (var (path, value) in set ?? []) text = SetPath(text, type, path, value, changes);
+        var setting = (set ?? []).Select(f => Placed(type, f.Key).Steps).ToList();
         foreach (var path in (remove ?? []).Select(r => r?.GetValue<string>() ?? ""))
         {
+            // A field the file has, as sent, goes whatever its type has: told by the build to delete `Unique`, which an
+            // NPC has nowhere, e4b sent it to `remove`, and the call was refused for the field the type lacks (eval round
+            // 69's npc+detailed #3).
+            var sent = Parse(path);
+            if (FirstUnknown(type, sent).At >= 0 && At(text, sent) is not null)
+            {
+                text = Remove(text, sent, path, changes);
+                continue;
+            }
             var (steps, label) = Placed(type, path);
+            // One the same call sets is kept: in that call, `Level`, which the build had moved under Configuration, was
+            // to be removed after Configuration.Level was set.
+            if (setting.Any(s => s.Count >= steps.Count && s.Take(steps.Count).SequenceEqual(steps)))
+            {
+                changes.Add($"kept {label}: this call sets it");
+                continue;
+            }
             Types(type, steps, label);
             text = Remove(text, steps, label, changes);
         }
