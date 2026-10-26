@@ -308,6 +308,92 @@ function yamlFilesUnder(root: string, descend: (dir: string) => boolean): string
     return found.sort();
 }
 
+/**
+ * A file of the projects folder as moveRecord and deleteRecord take it: its path in the project's plugin folder, the
+ * record's EditorID, or a full path anywhere in the projects folder — a file written outside every project. Written
+ * where the build does not read it, a file stayed there: OpenClaw gives a model no tool that moves or deletes a file,
+ * and e4b wrote it again where it belonged, the first copy left behind (eval round 66: 6 runs, one of them failed).
+ */
+export function projectsFile(projectsDir: string, paths: ProjectPaths, given: string): string {
+    const name = given.trim();
+    if (!name) throw new ProjectError('Name the file: its path in the plugin folder, like "Weapons/FlameBlade.yaml", or its full path.');
+    const byEditorId = /[\\/]|\.\w+$/.test(name) ? undefined : recordFiles(paths.plugin).find(file =>
+        new RegExp(`^EditorID:[ \\t]*['"]?${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"]?[ \\t]*$`, 'mi').test(fs.readFileSync(file, 'utf8')));
+    const file = byEditorId ?? path.resolve(paths.plugin, name);
+    const real = (target: string) => fs.existsSync(target) ? fs.realpathSync.native(target) : path.resolve(target);
+    const relative = path.relative(real(projectsDir), real(file));
+    if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+        throw new ProjectError(`${file} is outside the projects folder, ${projectsDir}: only its record files are moved or deleted here.`);
+    }
+    if (relative.split(path.sep).some(part => part.toLowerCase() === '.git')) throw new ProjectError(`${file} is git's, no record file.`);
+    if (path.basename(file).toLowerCase() === 'recorddata.yaml') throw new ProjectError(`${file} is the project's header, no record file: it stays.`);
+    return file;
+}
+
+/** The project's record files, as a refusal names them: their paths in its plugin folder. */
+function recordFileList(paths: ProjectPaths): string {
+    const files = recordFiles(paths.plugin).map(file => path.relative(paths.plugin, file).split(path.sep).join('/'));
+    return files.length === 0 ? 'none yet' : files.slice(0, 20).join(', ') + (files.length > 20 ? ` and ${files.length - 20} more` : '');
+}
+
+function existingFile(file: string, given: string, paths: ProjectPaths, verb: string): void {
+    if (!fs.existsSync(file) || !fs.statSync(file).isFile()) {
+        throw new ProjectError(`No file at ${file} ('${given}'): nothing was ${verb}. The project's record files: ${recordFileList(paths)}.`);
+    }
+}
+
+/** Moves a record file into the project's plugin folder, its group folder made when there is none. */
+export function moveRecordFile(projectsDir: string, paths: ProjectPaths, from: string, to: string): { from: string; to: string } {
+    const source = projectsFile(projectsDir, paths, from);
+    existingFile(source, from, paths, 'moved');
+    const target = path.resolve(paths.plugin, to.trim());
+    const inPlugin = path.relative(paths.plugin, target);
+    if (!to.trim() || !inPlugin || inPlugin.startsWith('..') || path.isAbsolute(inPlugin)) {
+        throw new ProjectError(`'${to}' is not in ${paths.plugin}: give where the file goes as its path there, like "Weapons/FlameBlade.yaml".`);
+    }
+    if (!/\.yaml$/i.test(target) || path.basename(target).toLowerCase() === 'recorddata.yaml') {
+        throw new ProjectError(`'${to}': a record file is named for its record and ends in .yaml — the build reads no other — ` +
+            `like "${inPlugin.split(path.sep).join('/').replace(/\.[^./]*$/, '')}.yaml".`);
+    }
+    // Another letter case of the same name is a rename; the same path is already there.
+    if (source === target) throw new ProjectError(`${source} is already there: nothing to move.`);
+    if (fs.existsSync(target) && source.toLowerCase() !== target.toLowerCase()) {
+        throw new ProjectError(`${target} is there already. If ${source} is a copy of that record, delete it instead: ` +
+            `${deleteCall(paths, source)}. If it is another record, give it a file name of its own.`);
+    }
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.renameSync(source, target);
+    return { from: source, to: target };
+}
+
+export function deleteRecordFile(projectsDir: string, paths: ProjectPaths, record: string): string {
+    const file = projectsFile(projectsDir, paths, record);
+    existingFile(file, record, paths, 'deleted');
+    fs.rmSync(file);
+    return file;
+}
+
+/**
+ * A file as a call written into an answer names it: its path in the plugin folder, or its full path outside it, with
+ * forward slashes — a path's backslashes reached the model escaped once per layer of JSON, four times in OpenClaw's
+ * (eval round 65), and a model copies a call as it reads it.
+ */
+function callPath(paths: ProjectPaths, file: string): string {
+    const relative = path.relative(paths.plugin, file);
+    const inside = relative && !relative.startsWith('..') && !path.isAbsolute(relative);
+    return (inside ? relative : path.resolve(file)).split(path.sep).join('/');
+}
+
+/** The moveRecord call that puts a file where it belongs. Written out whole, a call is made as written: 3 of 3 renamed copies (eval rounds 65–66). */
+export function moveCall(paths: ProjectPaths, from: string, to: string): string {
+    return `moveRecord {"project": ${JSON.stringify(path.basename(paths.root))}, "from": ${JSON.stringify(callPath(paths, from))}, ` +
+        `"to": ${JSON.stringify(callPath(paths, to))}}`;
+}
+
+export function deleteCall(paths: ProjectPaths, file: string): string {
+    return `deleteRecord {"project": ${JSON.stringify(path.basename(paths.root))}, "record": ${JSON.stringify(callPath(paths, file))}}`;
+}
+
 export function createProject(paths: ProjectPaths, plugin: string, light: boolean): void {
     if (!/\.(esp|esm)$/i.test(plugin)) {
         throw new ProjectError(`'${plugin}' is not a plugin file name: end it in .esp (or .esm for a master).`);

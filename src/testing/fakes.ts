@@ -7,7 +7,8 @@ import { ModError } from '../backend/skyrim/modList.js';
 import { NexusError } from '../backend/skyrim/nexus.js';
 import { ProjectError } from '../backend/skyrim/projects.js';
 import type {
-    AddPatchRequest, AddPatchResult, BuildResult, ProjectFile, DeployResult, DisableModRequest, DisableModResult, EditRecordRequest, EditRecordResult,
+    AddPatchRequest, AddPatchResult, BuildResult, ProjectFile, DeleteRecordRequest, DeleteRecordResult, DeployResult, DisableModRequest, DisableModResult,
+    EditRecordRequest, EditRecordResult, MoveRecordRequest, MoveRecordResult,
     InstallModRequest, InstallModResult,
     NewProjectRequest, NexusDownload, NexusMod, NexusModSummary,
     NexusSearchQuery, NexusSearchResult, ProjectInfo, PullResult, RecordQuery, RecordRequest, RecordSearchResult,
@@ -167,6 +168,16 @@ export class InMemorySkyrimBackend implements AppBackend {
             ...(request.remove ?? []).map(field => `removed ${field}`)
         ];
         return { file: `/projects/${request.project}/plugin/${request.record}`, changed, text: '' };
+    }
+
+    async moveRecord(request: MoveRecordRequest): Promise<MoveRecordResult> {
+        this.existing(request.project);
+        return { moved: { from: `/projects/${request.project}/plugin/${request.from}`, to: `/projects/${request.project}/plugin/${request.to}` } };
+    }
+
+    async deleteRecord(request: DeleteRecordRequest): Promise<DeleteRecordResult> {
+        this.existing(request.project);
+        return { deleted: `/projects/${request.project}/plugin/${request.record}` };
     }
 
     private copiedFile(project: string, record: RecordSummary): ProjectFile {

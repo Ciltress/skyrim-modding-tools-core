@@ -16,6 +16,10 @@ export interface SkyrimBackend extends Backend {
     addPatch(request: AddPatchRequest): Promise<AddPatchResult>;
     /** Changes fields of one record file of a project by their paths, with no text to match (docs/adr/0008). */
     editRecord(request: EditRecordRequest): Promise<EditRecordResult>;
+    /** Moves a record file into a project's plugin folder: from a wrong folder, a wrong name, or from outside every project. */
+    moveRecord(request: MoveRecordRequest): Promise<MoveRecordResult>;
+    /** Deletes a record file of the projects folder: a stray copy, or a record the mod no longer needs. */
+    deleteRecord(request: DeleteRecordRequest): Promise<DeleteRecordResult>;
     buildProject(project: string): Promise<BuildResult>;
     deployProject(project: string): Promise<DeployResult>;
     pullProject(project: string): Promise<PullResult>;
@@ -223,6 +227,33 @@ export interface EditRecordResult {
     changed: string[];
     /** The file's text after the change. */
     text: string;
+}
+
+export interface MoveRecordRequest {
+    project: string;
+    /**
+     * The file to move: its path in the project's plugin folder (`Notes/MavenWarning.yaml`), the record's EditorID, or a
+     * full path anywhere in the projects folder, for a file written outside the plugin folder.
+     */
+    from: string;
+    /** Where it goes: its path in the project's plugin folder, `Books/MavenWarning.yaml`. */
+    to: string;
+}
+
+export interface MoveRecordResult {
+    /** Both full paths. */
+    moved: { from: string; to: string };
+}
+
+export interface DeleteRecordRequest {
+    project: string;
+    /** As MoveRecordRequest's `from`. */
+    record: string;
+}
+
+export interface DeleteRecordResult {
+    /** The full path of the file deleted. */
+    deleted: string;
 }
 
 export interface AddPatchResult {

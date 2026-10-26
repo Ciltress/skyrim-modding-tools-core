@@ -427,7 +427,7 @@ public static class RecordFiles
     /// nowhere are to be deleted, and said so first: "has no field Description" alone was read as one
     /// missing, and a model wrote it back build after build (eval probe 9 after round 11).
     /// </summary>
-    private static string Unknown(Type type, HashSet<string> known, IEnumerable<string> keys, string text)
+    private static string Unknown(Type type, HashSet<string> known, IEnumerable<string> keys, string text, string pluginDir, string relative)
     {
         var hinted = keys.Select(key => (Key: key, Hint: HintIn(type, known, key, text))).ToList();
         var named = hinted.Where(f => f.Hint is not null).GroupBy(f => f.Hint!).Select(group => group.Count() == 1
@@ -445,7 +445,7 @@ public static class RecordFiles
             .DistinctBy(g => g.Value).ToList();
         var deleted = owner is [var (folder, of)]
             ? $"{(bare.Count == 1 ? "it is" : "they are")} {Article(of!.Name)}'s, which {Article(type.Name)} has nowhere: if this is " +
-                $"{Article(of.Name)}, write it in {folder}/, and this file empty — the build leaves an empty record file out"
+                $"{Article(of.Name)}, move the file into {folder}/ — {ToolCalls.Move(pluginDir, relative, $"{folder}/{Path.GetFileName(relative)}")}"
             : $"delete {them}: {Article(type.Name)} has {them} nowhere";
         return string.Join(", ", named.Append(bare.Count == 0 ? "" : $"{string.Join(", ", bare)} ({deleted})")
             .Where(s => s.Length > 0));
@@ -677,7 +677,8 @@ public static class RecordFiles
                 if (File.Exists(twin))
                     leftOut.Add((relative, Path.GetRelativePath(pluginDir, twin).Replace('\\', '/')));
                 else
-                    problems.Add($"{relative} ends in .yml, which the build does not read: name it .yaml");
+                    problems.Add($"{relative} ends in .yml, which the build does not read: name it .yaml — " +
+                        ToolCalls.Move(pluginDir, relative, Path.ChangeExtension(relative, ".yaml")));
                 continue;
             }
             // Any other ending in a group's folder too: an enchantment saved as FlameBladeBurn.nhs went unread,
@@ -686,8 +687,8 @@ public static class RecordFiles
             {
                 var folder = relative.Split('/')[0];
                 if (relative.Contains('/') && Groups.ContainsKey(folder))
-                    problems.Add($"{relative} ends in {Path.GetExtension(file)}, which the build does not read: write it as " +
-                        $"{Path.ChangeExtension(relative, ".yaml")}");
+                    problems.Add($"{relative} ends in {Path.GetExtension(file)}, which the build does not read: name it .yaml — " +
+                        ToolCalls.Move(pluginDir, relative, Path.ChangeExtension(relative, ".yaml")));
                 continue;
             }
             // An empty record file holds no record, and is left out: the way to drop a record without deleting
@@ -702,7 +703,7 @@ public static class RecordFiles
             var parts = relative.Split('/');
             if (parts.Length == 1)
             {
-                problems.Add($"{relative} is in no group folder: put it into its type's, e.g. Weapons/{relative}");
+                problems.Add($"{relative} is in no group folder: move it into its type's, as {ToolCalls.Move(pluginDir, relative, $"Weapons/{relative}")} does for a weapon");
                 continue;
             }
             if (!Groups.TryGetValue(parts[0], out var type))
@@ -718,7 +719,7 @@ public static class RecordFiles
                 var spelled = Groups.Keys.FirstOrDefault(g => g.Equals(parts[0], StringComparison.OrdinalIgnoreCase));
                 problems.Add(spelled is not null ? $"{relative}: the folder is spelled {spelled}, not {parts[0]}"
                     : GroupCalled(parts[0]) is { } group
-                        ? $"{relative}: '{parts[0]}' is no group folder — the folder for them is {group}: write the file as {group}/{parts[^1]}"
+                        ? $"{relative}: '{parts[0]}' is no group folder — the folder for them is {group}: move the file there — {ToolCalls.Move(pluginDir, relative, $"{group}/{parts[^1]}")}"
                         : $"{relative}: '{parts[0]}' is no group folder — use the one readRecord's pathInPluginFolder names for the type, such as {CommonGroups}");
                 continue;
             }
@@ -739,7 +740,7 @@ public static class RecordFiles
                     records--;
                     continue;
                 }
-                problems.Add($"{relative} is in a folder below {parts[0]}/, where the build reads no record: put it directly into its group's folder, as {into}");
+                problems.Add($"{relative} is in a folder below {parts[0]}/, where the build reads no record: move it directly into its group's folder — {ToolCalls.Move(pluginDir, relative, into)}");
                 continue;
             }
 
@@ -780,8 +781,8 @@ public static class RecordFiles
             var read = index is not null && ExampleOf(kind ?? type, index) is { } example
                 ? $" — read {skill}a vanilla one, readRecord {{\"record\": \"{example}\"}}, and write yours with its field names and nesting"
                 : "";
-            problems.Add($"{relative}: {Droppable(kind ?? type, relative, text, texts.Value)}" +
-                $"{Article(type.Name)} has no field {Unknown(kind ?? type, known, unknown, text)}{read}");
+            problems.Add($"{relative}: {Droppable(kind ?? type, relative, text, texts.Value, pluginDir)}" +
+                $"{Article(type.Name)} has no field {Unknown(kind ?? type, known, unknown, text, pluginDir, relative)}{read}");
         }
         // Two files of one record: the reader names the FormKey but neither file (eval round 11: 000000 in each new record).
         foreach (var (formKey, holders) in formKeys.Where(pair => pair.Value.Count > 1))
@@ -801,9 +802,9 @@ public static class RecordFiles
             problems.Add($"{string.Join(" and ", files.Select(f => f.Relative))} have the same EditorID {editorId} — " +
                 (numbered.Count == 1 && fresh.Count == files.Count - 1
                     ? $"one record written twice: a build numbered it in {numbered[0].Relative}. Make the changes " +
-                        $"there, and write {string.Join(" and ", fresh.Select(f => f.Relative))} empty — the build leaves an empty record file out"
-                    : "an editor ID names one record: give each new one an EditorID of its own, or write the file of one not needed " +
-                        "empty — the build leaves an empty record file out"));
+                        $"there, and delete {string.Join(" and ", fresh.Select(f => f.Relative))} — {string.Join("; ", fresh.Select(f => ToolCalls.Delete(pluginDir, f.Relative)))}"
+                    : "an editor ID names one record: give each new one an EditorID of its own, or delete the file of the one not needed — " +
+                        string.Join(" or ", files.Select(f => ToolCalls.Delete(pluginDir, f.Relative)))));
         }
         return (records, problems, leftOut);
     }
@@ -852,13 +853,13 @@ public static class RecordFiles
     }
 
     /// <summary>
-    /// For a new record of the project that no other record names, how to drop it without deleting its
-    /// file — written empty, it is left out — as words before what is wrong with it; else nothing. A model
+    /// For a new record of the project that no other record names, how to drop it — the deleteRecord call — as
+    /// words before what is wrong with it; else nothing. A model
     /// wrote a magic effect of its own, then named a vanilla one in its spell, and the broken file it no
     /// longer needed failed every build (probe 16). Said after the fields, e4b went back to the file it had
     /// fixed instead (eval round 24).
     /// </summary>
-    internal static string Droppable(Type type, string relative, string text, IEnumerable<(string Relative, string Text)> others)
+    internal static string Droppable(Type type, string relative, string text, IEnumerable<(string Relative, string Text)> others, string pluginDir)
     {
         // Only a part another record names — an effect, an enchantment, an addon — and beside other records:
         // offered on an NPC that was the whole mod, emptying it would have left nothing to build.
@@ -866,7 +867,7 @@ public static class RecordFiles
         var rest = others.Where(o => o.Relative != relative).ToList();
         return rest.Count > 0 && Identity(text) is { FormKey: null, EditorId: { } id }
             && !rest.Any(o => Regex.IsMatch(o.Text, $@"\b{Regex.Escape(id)}\b"))
-            ? $"no other record names {id}: if it is not needed, write its file empty — the build leaves an empty record file out. If it is needed: "
+            ? $"no other record names {id}: if it is not needed, delete it — {ToolCalls.Delete(pluginDir, relative)}. If it is needed: "
             : "";
     }
 

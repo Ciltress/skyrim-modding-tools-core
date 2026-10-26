@@ -184,11 +184,10 @@ public static class RecordLinks
                 }
                 problems.Add($"{relative}: {problem}");
             });
-            // A new record nothing else names can be dropped by writing its file empty, said first, after the file's
-            // name (RecordFiles.Droppable).
+            // A new record nothing else names can be deleted, said first, after the file's name (RecordFiles.Droppable).
             if (problems.Count > before)
                 problems[before] = problems[before].Insert(relative.Length + 2, RecordFiles.Droppable(type, relative, text,
-                    RecordFiles.FlatRecords(pluginDir).Where(f => f.Relative != relative).Select(f => (f.Relative, File.ReadAllText(f.File)))));
+                    RecordFiles.FlatRecords(pluginDir).Where(f => f.Relative != relative).Select(f => (f.Relative, File.ReadAllText(f.File))), pluginDir));
             if (replacements.Count == 0) continue;
             var withFormIds = text;
             foreach (var r in replacements.OrderByDescending(r => r.Start))

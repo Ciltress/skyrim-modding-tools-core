@@ -15,16 +15,17 @@ import { ModError, findMod, listedMods, ownerOf, pluginFiles } from './modList.j
 import { checkGameVersion } from './gameVersion.js';
 import { findCaseInsensitive } from './paths.js';
 import {
-    ProjectError, assignFormIds, belongsAt, correctCopiedEscapes, createProject, type CopiedEscape, fencedRecordFiles, fileHash, keepRecordTexts, misnamedRecordFiles, looseRecordFiles, newestSourceTime, projectExists,
+    ProjectError, assignFormIds, belongsAt, correctCopiedEscapes, createProject, type CopiedEscape, deleteCall, deleteRecordFile, fencedRecordFiles, fileHash,
+    keepRecordTexts, misnamedRecordFiles, looseRecordFiles, moveCall, moveRecordFile, newestSourceTime, projectExists,
     projectInfo, projectPaths, readDeployState, readProjectHeader, recordFiles, strayRecordFiles, syncFolder, syncYaml,
     whereRecordsGo, writeDeployState
 } from './projects.js';
 import type { SkyrimEngine } from './engine.js';
 import { NexusCatalogue, markDownloadInstalled, readDownloadMeta } from './nexus.js';
 import type {
-    AddPatchRequest, AddPatchResult, BuildResult, DeployResult, DisableModRequest, DisableModResult, EditRecordRequest, EditRecordResult,
-    InstallModQuestions, InstallModRequest,
-    InstallModResult, GameVersionCheck, ModList, ModListQuery,
+    AddPatchRequest, AddPatchResult, BuildResult, DeleteRecordRequest, DeleteRecordResult, DeployResult, DisableModRequest, DisableModResult,
+    EditRecordRequest, EditRecordResult, InstallModQuestions, InstallModRequest,
+    InstallModResult, GameVersionCheck, ModList, ModListQuery, MoveRecordRequest, MoveRecordResult,
     NewProjectRequest, NexusAccount, NexusDownload, NexusMod, NexusSearchQuery, NexusSearchResult, ProjectFile, ProjectInfo,
     PullResult, RecordQuery, RecordRequest, RecordSearchResult, RecordVersion, RecordVersions, SkyrimBackend
 } from './SkyrimBackend.js';
@@ -230,6 +231,18 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
         return { ...edited, file: path.resolve(paths.plugin, edited.file) };
     }
 
+    async moveRecord(request: MoveRecordRequest): Promise<MoveRecordResult> {
+        const paths = projectPaths(this.engine.projectsDir, request.project);
+        readProjectHeader(paths); // names a project that is not there
+        return { moved: moveRecordFile(this.engine.projectsDir, paths, request.from, request.to) };
+    }
+
+    async deleteRecord(request: DeleteRecordRequest): Promise<DeleteRecordResult> {
+        const paths = projectPaths(this.engine.projectsDir, request.project);
+        readProjectHeader(paths);
+        return { deleted: deleteRecordFile(this.engine.projectsDir, paths, request.record) };
+    }
+
     async addPatch(request: AddPatchRequest): Promise<AddPatchResult> {
         await this.engine.ensureFresh();
         const paths = projectPaths(this.engine.projectsDir, request.project);
@@ -286,19 +299,20 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
         const files = recordFiles(paths.plugin).length;
         if (files === 0) {
             const loose = looseRecordFiles(this.engine.projectsDir);
+            // Told where each belonged, e4b wrote it there again and left the first copy behind (eval round 66): one call moves it.
             const where = (file: string) => {
                 const target = belongsAt(file, paths, this.engine.projectsDir);
-                return target ? `${file} as ${target}` : file;
+                return target ? moveCall(paths, file, target) : `${file} (move it into its type's group folder with moveRecord)`;
             };
             // The way out first: placed after the general text, it went unread, three builds in a row (eval probe 15).
             const misnamed = misnamedRecordFiles(paths.plugin);
             throw new ProjectError(
                 `'${project}' has no records to build.` +
-                (misnamed.length > 0 ? ` Files the build does not read for their ending — write each as .yaml: ` +
-                    `${misnamed.map(({ file, as }) => `${file} as ${as}`).join('; ')}.` : '') +
-                (strays.length > 0 ? ` Its record files outside its plugin folder, where no build reads them — write each where it ` +
+                (misnamed.length > 0 ? ` Files the build does not read for their ending — move each to its .yaml name: ` +
+                    `${misnamed.map(({ file, as }) => moveCall(paths, file, as)).join('; ')}.` : '') +
+                (strays.length > 0 ? ` Its record files outside its plugin folder, where no build reads them — move each where it ` +
                     `belongs: ${strays.map(where).join('; ')}.` : '') +
-                (loose.length > 0 ? ` Record files that belong to no project — write each of this project's where it belongs: ` +
+                (loose.length > 0 ? ` Record files that belong to no project — move each of this project's where it belongs: ` +
                     `${loose.map(where).join('; ')}.` : '') +
                 ` ${whereRecordsGo(paths)} Mirror a vanilla record of the same type (readRecord), leaving FormKey out.`);
         }
@@ -330,11 +344,28 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
             return error instanceof HelperError ? new HelperError(error.code, message) : new ProjectError(message);
         };
         // With records to build, files elsewhere are named but stop nothing: a refusal only deleting a
-        // file could satisfy trapped a model whose file tools could not delete (eval round 10).
+        // file could satisfy trapped a model whose file tools could not delete (eval round 10). Each with its call: moved
+        // where it belongs, or deleted where the plugin folder has its file already.
         const warnings: string[] = [];
+        const placed = (file: string) => {
+            const target = belongsAt(file, paths, this.engine.projectsDir);
+            return !target ? `${file} (move it into its type's group folder with moveRecord)`
+                : fs.existsSync(target) ? deleteCall(paths, file) : moveCall(paths, file, target);
+        };
         if (strays.length > 0) {
-            warnings.push(`${strays.length} record file(s) outside the plugin folder were not built — no build reads them: ${strays.join(', ')}. ` +
-                `A record meant for this mod goes into its group's folder in ${paths.plugin}; a copy of one already there can stay.`);
+            warnings.push(`${strays.length} record file(s) outside the plugin folder were not built — no build reads them. Move each ` +
+                `record meant for this mod into the plugin folder, and delete each copy of a file already there: ${strays.map(placed).join('; ')}.`);
+        }
+        // Written again in its project after a refusal, a record's first copy stayed outside every project, and the eval found a
+        // copied escape in it (eval round 66's sword+detailed #3).
+        const copiedOutside = looseRecordFiles(this.engine.projectsDir).filter(file => {
+            const target = belongsAt(file, paths, this.engine.projectsDir);
+            return target !== null && fs.existsSync(target);
+        });
+        if (copiedOutside.length > 0) {
+            warnings.push(`${copiedOutside.length} record file(s) outside every project have the name of one in this project's plugin ` +
+                `folder — no build reads them, and the project's file is the one built. Delete each: ` +
+                `${copiedOutside.map(file => deleteCall(paths, file)).join('; ')}.`);
         }
         // Fields a record type does not have, folders that are no group, copied FormKeys, links that name no
         // record: named before any record is numbered. A file in a folder that is no group, whose record its
@@ -353,13 +384,15 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
         if (copies.length > 0) {
             warnings.push(`${copies.length} record file(s) the build does not read were not built: ` +
                 `${copies.map(({ file, copy }) => `${file}, whose record ${copy} holds`).join('; ')}. The build reads a record ` +
-                `only from a .yaml file directly in its group's folder.`);
+                // e4b took this for a note on its FormKey line and answered with the copy in Notes/ (eval round 66's note #5).
+                `only from a .yaml file directly in its group's folder — delete each copy: ` +
+                `${copies.map(({ file }) => deleteCall(paths, file)).join('; ')}.`);
         }
-        // A file written empty holds no record: the way to drop one without deleting its file (eval probe 16).
+        // A file written empty holds no record: the way to drop one before a model had a tool to delete it (eval probe 16).
         const emptied = leftOut.filter(({ copy }) => !copy);
         if (emptied.length > 0) {
-            warnings.push(`${emptied.length} record file(s) are empty, so they hold no record and were left out: ` +
-                `${emptied.map(({ file }) => file).join(', ')} — delete them when you can.`);
+            warnings.push(`${emptied.length} record file(s) are empty, so they hold no record and were left out — delete each: ` +
+                `${emptied.map(({ file }) => deleteCall(paths, file)).join('; ')}.`);
         }
         const skip = new Set(leftOut.map(({ file }) => file));
 

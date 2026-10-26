@@ -42,6 +42,7 @@ Workflows and the error model: [`MCP-Tools.md`](./MCP-Tools.md). The vocabulary:
 | Start a new mod | `newProject` — then write record files into its `plugin/` folder |
 | Add a record (a new sword, spell, NPC…) | Write a YAML file into the project, without `FormKey`; mirror a vanilla record |
 | Turn the text into a plugin | `buildProject` — it also checks every link, and turns links written as editor IDs into FormIDs |
+| Put a record file where the build reads it, or drop one | `moveRecord`, `deleteRecord` — a build's answer names each misplaced or left-over file with its call |
 | Put the mod into the game | `deployProject` — enables it in the mod manager; with Amethyst, also deploys or says to |
 | Bring back what you did in the Creation Kit or xEdit | `pullProject` — commit first, review with `git diff` after |
 

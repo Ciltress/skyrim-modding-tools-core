@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using Mutagen.Bethesda.Plugins;
 using Mutagen.Bethesda.Plugins.Cache;
 using Mutagen.Bethesda.Skyrim;
+using static SkyrimHelper.ToolCalls;
 
 namespace SkyrimHelper;
 
@@ -127,7 +128,7 @@ public static class ProjectNotes
             .OfType<string>().ToHashSet(StringComparer.OrdinalIgnoreCase);
         // A record copied whole and renamed, its FormKey and EditorID kept, builds as a change to that record, not as
         // a new one beside it: e4b's "new note" was Maven's own, renamed (eval probe 19). A patch renames now and then.
-        var project = Path.GetFileName(Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(Path.GetFullPath(pluginDir)))) ?? "";
+        var project = ToolCalls.ProjectOf(pluginDir);
         var editorIds = records.Select(r => RecordFiles.Identity(r.Text).EditorId).OfType<string>().ToHashSet(StringComparer.OrdinalIgnoreCase);
         bool Free(string name) => !editorIds.Contains(name) && !index.ByEditorId.ContainsKey(name);
         foreach (var (relative, type, text) in records)
@@ -191,7 +192,7 @@ public static class ProjectNotes
             return null;
         var original = entry.EditorId ?? Session.FormKeyText(key);
         var was = entry.Name is { Length: > 0 } name ? name : original;
-        var project = Path.GetFileName(Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(Path.GetFullPath(pluginDir)))) ?? "";
+        var project = ToolCalls.ProjectOf(pluginDir);
         var editorIds = records.Select(r => RecordFiles.Identity(r.Text).EditorId).OfType<string>().ToHashSet(StringComparer.OrdinalIgnoreCase);
         var id = RecordFiles.Numbered(original + Regex.Replace(own.Name, "[^A-Za-z0-9]", ""),
             candidate => !editorIds.Contains(candidate) && !index.ByEditorId.ContainsKey(candidate));
@@ -212,8 +213,6 @@ public static class ProjectNotes
             $"{Unless(was)} — one call does it: {made} — {give}; build again";
     }
 
-    /// <summary>A text as a JSON string, for a call written into a note.</summary>
-    private static string Quoted(string text) => $"\"{text.Replace("\\", "\\\\").Replace("\"", "\\\"")}\"";
 
     /// <summary>
     /// A new record, unless the copied one itself was to change. "If a new one was asked for" left it to the model: e4b

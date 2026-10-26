@@ -128,7 +128,7 @@ export class ProjectsHandlers extends BaseHandler {
                         // every Iron Sword in the game became its Flame Blade (eval probe 16). Said after every copied
                         // file's text, it left e4b making its "new" sword or note this way in four of six misses
                         // (eval round 22): first now, naming the records, as a build's warnings went first (round 21).
-                        // The copy written empty, not deleted: OpenClaw gives a model no tool to delete a file (round 26).
+                        // The copy was written empty while OpenClaw gave a model no tool to delete a file (round 26): deleteRecord now.
                         const copies = [
                             ...result.added.map(record => record.editorId ? `${record.editorId} (${record.formId})` : record.formId),
                             ...result.alreadyInProject.map(record => record.formId)
@@ -144,13 +144,17 @@ export class ProjectsHandlers extends BaseHandler {
                             Weapon: '{"path": "BasicStats.Damage", "value": 12}', Armor: '{"path": "ArmorRating", "value": 30}',
                             Spell: '{"path": "BaseCost", "value": 60}', Npc: '{"path": "AIData.Aggression", "value": "Unaggressive"}'
                         } as Record<string, string>)[first?.type ?? 'Weapon'] ?? '{"path": "<the field>", "value": <its new value>}';
+                        const folder = result.project.pluginFolder;
+                        const copied = first?.files[0]?.path ?? result.alreadyInProject[0]?.files[0]?.path;
+                        const drop = `deleteRecord {"project": ${JSON.stringify(result.project.project)}, "record": ` +
+                            `${JSON.stringify(copied?.startsWith(folder) ? copied.slice(folder.length + 1).replace(/\\/g, '/') : example)}}`;
                         return {
                             note: `${copies.join(', ')} ${one ? 'is' : 'are'} copied as ${one ? 'an override' : 'overrides'}: ` +
                                 `${one ? 'it changes that record' : 'each changes its record'} itself, everywhere the game uses ` +
                                 `${one ? 'it' : 'them'} — a new name renames ${one ? 'it' : 'them'} everywhere. If a new record ` +
                                 'like it was meant, write a new file instead, mirroring it without the FormKey line and with an ' +
-                                'EditorID of its own, where newProject\'s writeRecordsTo says — and write the copy empty — the build ' +
-                                'leaves an empty record file out.',
+                                `EditorID of its own, where newProject's writeRecordsTo says — and delete ` +
+                                (one ? `the copy: ${drop}.` : `each copy, the first with ${drop}.`),
                             nextStep: `Change a copy's fields with editRecord, which needs no old text to match — {"record": ` +
                                 `"${example}", "set": [${field}]} — then run buildProject.`,
                             ...result
@@ -222,6 +226,87 @@ export class ProjectsHandlers extends BaseHandler {
                     record: requireString(args, 'record', 'The record file, like "Weapons/FlameBlade.yaml", or its EditorID.'),
                     set: optionalFieldValues(args, 'set', '[{"path": "BasicStats.Damage", "value": 12}]'),
                     remove: optionalStringList(args, 'remove', '["Critical"]')
+                }).then(result => ({
+                    nextStep: 'Run buildProject next — the plugin has this change only once a build answers success.',
+                    ...result
+                })))
+            },
+            // A file written where the build does not read it stayed there: OpenClaw gives a model no tool that moves or deletes
+            // a file, so e4b wrote it again where it belonged and left the first (eval round 66: 6 runs; the eval failed one on a
+            // copied escape in the copy left behind, another ended on a warning it could not act on). The build's answers write
+            // these calls out, as the rename warning writes editRecord's.
+            {
+                definition: {
+                    name: 'moveRecord',
+                    annotations: {
+                        title: 'Move record file',
+                        readOnlyHint: false,
+                        // Overwrites nothing — a file already at `to` is refused — and the file's text goes with it.
+                        destructiveHint: false,
+                        // Moved once, the file is no longer at `from`: a second call is refused and changes nothing.
+                        idempotentHint: true,
+                        openWorldHint: false
+                    },
+                    description:
+                        'Move one record file into a project\'s plugin folder: out of a folder the build does not read, to ' +
+                        'its .yaml name, or in from outside every project. The build\'s answers write this call out for each ' +
+                        'misplaced file. Then run buildProject.',
+                    inputSchema: {
+                        type: 'object',
+                        properties: {
+                            project: PROJECT,
+                            from: {
+                                type: 'string',
+                                description: 'The file: its path in the plugin folder, like "Notes/MavenWarning.yaml", the record\'s EditorID, ' +
+                                    'or its full path in the projects folder, for a file outside the plugin folder.'
+                            },
+                            to: { type: 'string', description: 'Its path in the plugin folder, like "Books/MavenWarning.yaml".' }
+                        },
+                        required: ['project', 'from', 'to']
+                    }
+                },
+                onFailure: 'Failed to move the record file',
+                run: args => asRequestError(this.backend.moveRecord({
+                    project: requireString(args, 'project'),
+                    from: requireString(args, 'from', 'The file: its path in the plugin folder, its EditorID, or its full path.'),
+                    to: requireString(args, 'to', 'Its path in the plugin folder, like "Books/MavenWarning.yaml".')
+                }).then(result => ({
+                    nextStep: 'Run buildProject next — the plugin has this change only once a build answers success.',
+                    ...result
+                })))
+            },
+            {
+                definition: {
+                    name: 'deleteRecord',
+                    annotations: {
+                        title: 'Delete record file',
+                        readOnlyHint: false,
+                        destructiveHint: true,
+                        // A second call finds no file and changes nothing.
+                        idempotentHint: true,
+                        openWorldHint: false
+                    },
+                    description:
+                        'Delete one record file of the projects folder: a copy left behind where the build does not read it, ' +
+                        'or a record the mod no longer needs. The build\'s answers write this call out for each copy left ' +
+                        'behind. Then run buildProject.',
+                    inputSchema: {
+                        type: 'object',
+                        properties: {
+                            project: PROJECT,
+                            record: {
+                                type: 'string',
+                                description: 'The file: its path in the plugin folder, like "Notes/MavenWarning.yaml", the record\'s EditorID, ' +
+                                    'or its full path in the projects folder, for a file outside the plugin folder.'
+                            }
+                        },
+                        required: ['project', 'record']
+                    }
+                },
+                onFailure: 'Failed to delete the record file',
+                run: args => asRequestError(this.backend.deleteRecord({
+                    project: requireString(args, 'project'),
+                    record: requireString(args, 'record', 'The file: its path in the plugin folder, its EditorID, or its full path.')
                 }).then(result => ({
                     nextStep: 'Run buildProject next — the plugin has this change only once a build answers success.',
                     ...result

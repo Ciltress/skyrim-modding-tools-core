@@ -45,6 +45,9 @@ const qt = (value: string) => value.replace(/\\/g, '\\\\');
 /** A path as a regular expression matches it. */
 const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+/** A full path as a call written into an answer names it: forward slashes, which no layer of JSON escapes. */
+const slashed = (file: string) => file.split(path.sep).join('/');
+
 /** A Skyrim SE instance with a high- and a low-priority mod shipping the same plugin. */
 function makeInstance(options: { edition?: string; gameName?: string } = {}) {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'skyrim-mcp-test-'));
@@ -557,24 +560,25 @@ describe('the Skyrim backend', () => {
         await backend.newProject({ project: 'FlameBlade' });
         await expect(backend.buildProject('FlameBlade')).rejects.toThrow(/has no records.*Weapons/);
 
+        // Each named with the moveRecord call that puts it where it belongs: told only where, e4b wrote the file there again
+        // and the first copy stayed (eval round 66).
         const misplaced = path.join(fixture.projects, 'FlameBlade', 'Weapons', 'FlameBlade.yaml');
-        const plugin = path.join(fixture.projects, 'FlameBlade', 'plugin');
         write(misplaced, 'EditorID: FlameBlade\n');
-        await expect(backend.buildProject('FlameBlade')).rejects.toThrow(
-            new RegExp(`has no records.*outside its plugin folder.*${escape(misplaced)} as ${escape(path.join(plugin, 'Weapons', 'FlameBlade.yaml'))}`));
+        await expect(backend.buildProject('FlameBlade')).rejects.toThrow(new RegExp(`has no records.*outside its plugin folder.*` +
+            escape(`moveRecord {"project": "FlameBlade", "from": "${slashed(misplaced)}", "to": "Weapons/FlameBlade.yaml"}`)));
 
         fs.rmSync(path.dirname(misplaced), { recursive: true });
         const loose = path.join(fixture.projects, 'Spells', 'StormBolt.yaml');
         write(loose, 'EditorID: StormBolt\n');
-        await expect(backend.buildProject('FlameBlade')).rejects.toThrow(
-            new RegExp(`has no records.*${escape(loose)} as ${escape(path.join(plugin, 'Spells', 'StormBolt.yaml'))}`));
+        await expect(backend.buildProject('FlameBlade')).rejects.toThrow(new RegExp('has no records.*' +
+            escape(`moveRecord {"project": "FlameBlade", "from": "${slashed(loose)}", "to": "Spells/StormBolt.yaml"}`)));
 
         // Written as plugin/Spells/StormBolt.yaml, without the project's folder, three builds in a row (eval probe 14).
         fs.rmSync(path.dirname(loose), { recursive: true });
         const unrooted = path.join(fixture.projects, 'plugin', 'Spells', 'StormBolt.yaml');
         write(unrooted, 'EditorID: StormBolt\n');
-        await expect(backend.buildProject('FlameBlade')).rejects.toThrow(
-            new RegExp(`has no records.*${escape(unrooted)} as ${escape(path.join(plugin, 'Spells', 'StormBolt.yaml'))}`));
+        await expect(backend.buildProject('FlameBlade')).rejects.toThrow(new RegExp('has no records.*' +
+            escape(`moveRecord {"project": "FlameBlade", "from": "${slashed(unrooted)}", "to": "Spells/StormBolt.yaml"}`)));
         expect(calls.some(c => c.method === 'build')).toBe(false);
     });
 
@@ -588,10 +592,104 @@ describe('the Skyrim backend', () => {
         const built = await backend.buildProject('FlameBlade');
 
         expect(built.records).toBe(1);
-        expect(built.warnings).toEqual([expect.stringMatching(new RegExp(`outside .*plugin folder.*${escape(misplaced)}`))]);
-        expect((await backend.buildProject('FlameBlade')).warnings).toHaveLength(1);
+        expect(built.warnings).toEqual([expect.stringMatching(new RegExp(`outside .*plugin folder.*` +
+            escape(`moveRecord {"project": "FlameBlade", "from": "${slashed(misplaced)}", "to": "Weapons/FlameBlade.yaml"}`)))]);
+        // A copy of a file the plugin folder has already is deleted, not moved over it.
+        write(path.join(fixture.projects, 'FlameBlade', 'plugin', 'Weapons', 'FlameBlade.yaml'), 'EditorID: FlameBlade\n');
+        expect((await backend.buildProject('FlameBlade')).warnings).toEqual([expect.stringMatching(
+            escape(`deleteRecord {"project": "FlameBlade", "record": "${slashed(misplaced)}"}`))]);
         fs.rmSync(path.dirname(misplaced), { recursive: true });
         expect((await backend.buildProject('FlameBlade')).warnings).toBeUndefined();
+    });
+
+    it('warns of a copy outside every project of a file its plugin folder has, with the call that deletes it', async () => {
+        // Refused for it, e4b wrote the file again in its project, and the first copy stayed: the eval found an escape
+        // copied into it (eval round 66's sword+detailed #3).
+        const { backend, fixture } = makeBackend();
+        await newProjectWithRecord(backend, fixture.projects, 'FlameBlade');
+        write(path.join(fixture.projects, 'FlameBlade', 'plugin', 'Weapons', 'FlameBlade.yaml'), 'EditorID: FlameBlade\n');
+        const copy = path.join(fixture.projects, 'Weapons', 'FlameBlade.yaml');
+        write(copy, 'EditorID: FlameBlade\n');
+        const other = path.join(fixture.projects, 'Spells', 'StormBolt.yaml');
+        write(other, 'EditorID: StormBolt\n');
+
+        const built = await backend.buildProject('FlameBlade');
+
+        expect(built.warnings).toEqual([expect.stringMatching(new RegExp('outside every project.*' +
+            escape(`deleteRecord {"project": "FlameBlade", "record": "${slashed(copy)}"}`)))]);
+        expect(built.warnings?.[0]).not.toContain('StormBolt');
+        await backend.deleteRecord({ project: 'FlameBlade', record: slashed(copy) });
+        expect((await backend.buildProject('FlameBlade')).warnings).toBeUndefined();
+        expect(fs.existsSync(other)).toBe(true);
+    });
+
+    it('moves a record file into the project\'s plugin folder — from a folder the build does not read, by EditorID, or from outside it', async () => {
+        const { backend, fixture } = makeBackend();
+        await newProjectWithRecord(backend, fixture.projects, 'MavenNote');
+        const plugin = path.join(fixture.projects, 'MavenNote', 'plugin');
+        write(path.join(plugin, 'Notes', 'MavenWarning.yaml'), 'EditorID: MavenWarning\n');
+
+        const moved = await backend.moveRecord({ project: 'MavenNote', from: 'Notes/MavenWarning.yaml', to: 'Books/MavenWarning.yaml' });
+
+        expect(moved.moved).toEqual({ from: path.join(plugin, 'Notes', 'MavenWarning.yaml'), to: path.join(plugin, 'Books', 'MavenWarning.yaml') });
+        expect(fs.readFileSync(moved.moved.to, 'utf8')).toBe('EditorID: MavenWarning\n');
+        expect(fs.existsSync(moved.moved.from)).toBe(false);
+        // A second call finds nothing at `from`, names the project's files and changes nothing.
+        await expect(backend.moveRecord({ project: 'MavenNote', from: 'Notes/MavenWarning.yaml', to: 'Books/MavenWarning.yaml' }))
+            .rejects.toThrow(/No file at .*nothing was moved.*Books\/MavenWarning\.yaml/);
+        expect(fs.existsSync(moved.moved.to)).toBe(true);
+
+        // By its EditorID, and from outside the project by its full path.
+        expect((await backend.moveRecord({ project: 'MavenNote', from: 'MavenWarning', to: 'Books/Warning.yaml' })).moved.to)
+            .toBe(path.join(plugin, 'Books', 'Warning.yaml'));
+        const loose = path.join(fixture.projects, 'Books', 'MavenLetter.yaml');
+        write(loose, 'EditorID: MavenLetter\n');
+        await backend.moveRecord({ project: 'MavenNote', from: slashed(loose), to: 'Books/MavenLetter.yaml' });
+        expect(fs.existsSync(path.join(plugin, 'Books', 'MavenLetter.yaml'))).toBe(true);
+        expect(fs.existsSync(loose)).toBe(false);
+    });
+
+    it('moves no record file over another, out of the projects folder, onto the header or to a name the build does not read', async () => {
+        const { backend, fixture } = makeBackend();
+        await newProjectWithRecord(backend, fixture.projects, 'MavenNote');
+        const plugin = path.join(fixture.projects, 'MavenNote', 'plugin');
+        write(path.join(plugin, 'Notes', 'MavenWarning.yaml'), 'EditorID: MavenWarning\n');
+        write(path.join(plugin, 'Books', 'MavenWarning.yaml'), 'EditorID: MavenWarning\n');
+        const outside = path.join(path.dirname(fixture.projects), 'Elsewhere.yaml');
+        write(outside, 'EditorID: Elsewhere\n');
+
+        await expect(backend.moveRecord({ project: 'MavenNote', from: 'Notes/MavenWarning.yaml', to: 'Books/MavenWarning.yaml' }))
+            .rejects.toThrow(new RegExp('there already.*' + escape('deleteRecord {"project": "MavenNote", "record": "Notes/MavenWarning.yaml"}')));
+        await expect(backend.moveRecord({ project: 'MavenNote', from: outside, to: 'Books/Elsewhere.yaml' })).rejects.toThrow(/outside the projects folder/);
+        await expect(backend.moveRecord({ project: 'MavenNote', from: 'Notes/MavenWarning.yaml', to: '../Notes.yaml' })).rejects.toThrow(/is not in/);
+        await expect(backend.moveRecord({ project: 'MavenNote', from: 'Notes/MavenWarning.yaml', to: 'Books/MavenWarning.txt' })).rejects.toThrow(/ends in \.yaml/);
+        await expect(backend.moveRecord({ project: 'MavenNote', from: 'RecordData.yaml', to: 'Books/Header.yaml' })).rejects.toThrow(/header/);
+        await expect(backend.moveRecord({ project: 'MavenNote', from: 'Notes/MavenWarning.yaml', to: 'RecordData.yaml' })).rejects.toThrow(/ends in \.yaml/);
+        expect(fs.existsSync(path.join(plugin, 'Notes', 'MavenWarning.yaml'))).toBe(true);
+        expect(fs.existsSync(outside)).toBe(true);
+    });
+
+    it('deletes a record file of the projects folder, and nothing outside it', async () => {
+        const { backend, fixture } = makeBackend();
+        await newProjectWithRecord(backend, fixture.projects, 'FlameBlade');
+        const stray = path.join(fixture.projects, 'Weapons', 'FlameBlade.yaml');
+        write(stray, 'EditorID: FlameBlade\n');
+        const own = path.join(fixture.projects, 'FlameBlade', 'plugin', 'ObjectEffects', 'EnchFlameBladeBurn.yaml');
+        write(own, 'EditorID: EnchFlameBladeBurn\n');
+        const outside = path.join(path.dirname(fixture.projects), 'Elsewhere.yaml');
+        write(outside, 'EditorID: Elsewhere\n');
+
+        expect((await backend.deleteRecord({ project: 'FlameBlade', record: slashed(stray) })).deleted).toBe(stray);
+        expect(fs.existsSync(stray)).toBe(false);
+        expect((await backend.deleteRecord({ project: 'FlameBlade', record: 'EnchFlameBladeBurn' })).deleted).toBe(own);
+        // Gone, a second call changes nothing.
+        await expect(backend.deleteRecord({ project: 'FlameBlade', record: slashed(stray) })).rejects.toThrow(/No file at .*nothing was deleted/);
+
+        await expect(backend.deleteRecord({ project: 'FlameBlade', record: outside })).rejects.toThrow(/outside the projects folder/);
+        await expect(backend.deleteRecord({ project: 'FlameBlade', record: 'RecordData.yaml' })).rejects.toThrow(/header/);
+        await expect(backend.deleteRecord({ project: 'Nowhere', record: 'Weapons/FlameBlade.yaml' })).rejects.toThrow(/no project/);
+        expect(fs.existsSync(outside)).toBe(true);
+        expect(fs.existsSync(path.join(fixture.projects, 'FlameBlade', 'plugin', 'RecordData.yaml'))).toBe(true);
     });
 
     it('builds past a record file in a folder that is no group, once its group\'s folder has it — numbering nothing in it', async () => {
@@ -609,7 +707,8 @@ describe('the Skyrim backend', () => {
 
         const built = await backend.buildProject('FlameBlade');
 
-        expect(built.warnings).toEqual([expect.stringMatching(new RegExp(`not built.*${escape(leftover)}.*ObjectEffects`))]);
+        expect(built.warnings).toEqual([expect.stringMatching(new RegExp(`not built.*${escape(leftover)}.*ObjectEffects.*` +
+            escape('deleteRecord {"project": "FlameBlade", "record": "Enchantments/FireDamageEnchantment.yaml"}')))]);
         expect(fs.readFileSync(leftover, 'utf8')).toBe('EditorID: FireDamageEnchantment\n');
         expect(fs.existsSync(leftover)).toBe(true);
         expect(built.assignedFormIds.map(record => record.editorId)).not.toContain(null);
@@ -623,9 +722,9 @@ describe('the Skyrim backend', () => {
         const misnamed = path.join(fixture.projects, 'FlameBlade', 'plugin', 'ObjectEffects', 'FlameBladeBurn.nhs');
         write(misnamed, 'EditorID: FlameBladeBurn\n');
 
-        await expect(backend.buildProject('FlameBlade')).rejects.toThrow(
-            new RegExp(`has no records to build\\. Files the build does not read for their ending.*${escape(misnamed)} as ` +
-                escape(misnamed.replace(/\.nhs$/, '.yaml'))));
+        await expect(backend.buildProject('FlameBlade')).rejects.toThrow(new RegExp('has no records to build\\. Files the build does not ' +
+            'read for their ending.*' + escape('moveRecord {"project": "FlameBlade", "from": "ObjectEffects/FlameBladeBurn.nhs", ' +
+                '"to": "ObjectEffects/FlameBladeBurn.yaml"}')));
     });
 
     it('leaves a record file written empty out of the build, numbering nothing in it, and says so', async () => {
@@ -642,7 +741,8 @@ describe('the Skyrim backend', () => {
 
         expect(fs.readFileSync(emptied, 'utf8')).toBe('');
         expect(built.assignedFormIds).toEqual([]);
-        expect(built.warnings).toEqual([expect.stringMatching(new RegExp(`empty.*left out: ${escape(emptied)}`))]);
+        expect(built.warnings).toEqual([expect.stringMatching(new RegExp('empty.*left out — delete each: ' +
+            escape('deleteRecord {"project": "StormBolt", "record": "MagicEffects/StormBoltEffect.yaml"}')))]);
     });
 
     it('passes on the helper\'s notes on what builds but likely not as meant, as warnings of a build that succeeds', async () => {

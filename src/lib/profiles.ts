@@ -28,10 +28,11 @@ const READ = ['findRecords', 'readRecord'] as const;
 
 /**
  * The smallest write set that can still finish a job it starts: patch existing records, change their
- * fields with no text to match (editRecord, for the small models this profile is for), build the patch,
- * put it into Mod Organizer. A new mod from scratch and pulling Creation Kit work back need the full profile.
+ * fields with no text to match (editRecord, for the small models this profile is for), move or delete a
+ * record file the build names as misplaced or left over — its answers write those calls out — build the
+ * patch, put it into Mod Organizer. A new mod from scratch and pulling Creation Kit work back need the full profile.
  */
-const CORE_WRITE = ['addPatch', 'editRecord', 'buildProject', 'deployProject'] as const;
+const CORE_WRITE = ['addPatch', 'editRecord', 'moveRecord', 'deleteRecord', 'buildProject', 'deployProject'] as const;
 
 /** The mod manager's mods, read: what is installed, and whether it fits the game. */
 const INSTALLED = ['listMods', 'checkGameVersion'] as const;

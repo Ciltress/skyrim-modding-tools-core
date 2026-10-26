@@ -561,10 +561,10 @@ public sealed class Session : IDisposable
             var said = $"{relative}: overrides {id} of {key.ModKey.FileName} and changes nothing in it, every field as the load order " +
                 "has it — in game it only undoes what mods loaded before this one change there. ";
             notes.Add(made.FirstOrDefault(m => m.Type == type).Id is { } mine
-                ? said + $"{mine} is the project's new {type.Name}: where it is what was asked for, this copy is left over — write this " +
-                    $"file empty, and the build leaves it out; where {id} was to change too, write the change into this file"
+                ? said + $"{mine} is the project's new {type.Name}: where it is what was asked for, this copy is left over — delete " +
+                    $"it, {ToolCalls.Delete(dir, relative)}; where {id} was to change too, write the change into this file"
                 : said + $"A new record like it is this file without its FormKey line, with an EditorID of its own; a change to {id} is " +
-                    "written into this file; a copy that is neither is written empty, and the build leaves it out");
+                    $"written into this file; a copy that is neither is deleted: {ToolCalls.Delete(dir, relative)}");
         }
         return notes;
     }
