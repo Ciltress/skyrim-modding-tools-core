@@ -16,7 +16,7 @@ import { checkGameVersion } from './gameVersion.js';
 import { findCaseInsensitive } from './paths.js';
 import {
     ProjectError, assignFormIds, belongsAt, correctCopiedEscapes, createProject, type CopiedEscape, deleteCall, deleteRecordFile, fencedRecordFiles, fileHash,
-    keepRecordTexts, misnamedRecordFiles, looseRecordFiles, moveCall, moveRecordFile, newestSourceTime, projectExists,
+    keepRecordTexts, misnamedRecordFiles, looseRecordFiles, moveCall, moveRecordFile, newestSourceTime, placeCall, projectExists,
     projectInfo, projectPaths, readDeployState, readProjectHeader, recordFiles, strayRecordFiles, syncFolder, syncYaml,
     whereRecordsGo, writeDeployState
 } from './projects.js';
@@ -296,14 +296,12 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
         // A build of nothing succeeded, and small models took it for done (eval round 9): name what is
         // missing, and the record files no build would read.
         const strays = strayRecordFiles(paths);
+        // Told where each belonged, e4b wrote it there again and left the first copy behind (eval round 66): one call moves it,
+        // or deletes it where the plugin folder has its file already.
+        const where = (file: string) => placeCall(this.engine.projectsDir, paths, file);
         const files = recordFiles(paths.plugin).length;
         if (files === 0) {
             const loose = looseRecordFiles(this.engine.projectsDir);
-            // Told where each belonged, e4b wrote it there again and left the first copy behind (eval round 66): one call moves it.
-            const where = (file: string) => {
-                const target = belongsAt(file, paths, this.engine.projectsDir);
-                return target ? moveCall(paths, file, target) : `${file} (move it into its type's group folder with moveRecord)`;
-            };
             // The way out first: placed after the general text, it went unread, three builds in a row (eval probe 15).
             const misnamed = misnamedRecordFiles(paths.plugin);
             throw new ProjectError(
@@ -344,17 +342,11 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
             return error instanceof HelperError ? new HelperError(error.code, message) : new ProjectError(message);
         };
         // With records to build, files elsewhere are named but stop nothing: a refusal only deleting a
-        // file could satisfy trapped a model whose file tools could not delete (eval round 10). Each with its call: moved
-        // where it belongs, or deleted where the plugin folder has its file already.
+        // file could satisfy trapped a model whose file tools could not delete (eval round 10). Each with its call.
         const warnings: string[] = [];
-        const placed = (file: string) => {
-            const target = belongsAt(file, paths, this.engine.projectsDir);
-            return !target ? `${file} (move it into its type's group folder with moveRecord)`
-                : fs.existsSync(target) ? deleteCall(paths, file) : moveCall(paths, file, target);
-        };
         if (strays.length > 0) {
             warnings.push(`${strays.length} record file(s) outside the plugin folder were not built — no build reads them. Move each ` +
-                `record meant for this mod into the plugin folder, and delete each copy of a file already there: ${strays.map(placed).join('; ')}.`);
+                `record meant for this mod into the plugin folder, and delete each copy of a file already there: ${strays.map(where).join('; ')}.`);
         }
         // Written again in its project after a refusal, a record's first copy stayed outside every project, and the eval found a
         // copied escape in it (eval round 66's sword+detailed #3).

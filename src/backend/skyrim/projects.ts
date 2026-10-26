@@ -313,13 +313,19 @@ function yamlFilesUnder(root: string, descend: (dir: string) => boolean): string
  * record's EditorID, or a full path anywhere in the projects folder — a file written outside every project. Written
  * where the build does not read it, a file stayed there: OpenClaw gives a model no tool that moves or deletes a file,
  * and e4b wrote it again where it belonged, the first copy left behind (eval round 66: 6 runs, one of them failed).
+ *
+ * A path the plugin folder has no file at — or only `besides`, where moveRecord puts the file — is looked for from the
+ * projects folder, where OpenClaw's file tools put a Skyrim agent's relative path. e4b gave moveRecord the path it had
+ * written, `Spells/StormBolt.yaml` as `from` and `to`, and was refused 11 times in 3 runs, none of which built (eval round 67).
  */
-export function projectsFile(projectsDir: string, paths: ProjectPaths, given: string): string {
+export function projectsFile(projectsDir: string, paths: ProjectPaths, given: string, besides?: string): string {
     const name = given.trim();
     if (!name) throw new ProjectError('Name the file: its path in the plugin folder, like "Weapons/FlameBlade.yaml", or its full path.');
     const byEditorId = /[\\/]|\.\w+$/.test(name) ? undefined : recordFiles(paths.plugin).find(file =>
         new RegExp(`^EditorID:[ \\t]*['"]?${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"]?[ \\t]*$`, 'mi').test(fs.readFileSync(file, 'utf8')));
-    const file = byEditorId ?? path.resolve(paths.plugin, name);
+    const inPlugin = path.resolve(paths.plugin, name);
+    const file = byEditorId ?? [inPlugin, path.resolve(projectsDir, name)]
+        .find(candidate => candidate !== besides && fs.existsSync(candidate) && fs.statSync(candidate).isFile()) ?? inPlugin;
     // A path not there yet resolved through the nearest folder that is: Windows CI's temp folder has a short 8.3 name,
     // and a missing file's path kept it while the projects folder resolved to the long one.
     const real = (target: string): string => {
@@ -346,17 +352,26 @@ function recordFileList(paths: ProjectPaths): string {
     return files.length === 0 ? 'none yet' : files.slice(0, 20).join(', ') + (files.length > 20 ? ` and ${files.length - 20} more` : '');
 }
 
-function existingFile(file: string, given: string, paths: ProjectPaths, verb: string): void {
+/**
+ * A file not there, with the calls for the record files no build of the project reads: told only "No file", e4b made the
+ * same call again, up to 7 times in a run (eval round 67).
+ */
+function existingFile(projectsDir: string, file: string, given: string, paths: ProjectPaths, verb: string): void {
     if (!fs.existsSync(file) || !fs.statSync(file).isFile()) {
-        throw new ProjectError(`No file at ${file} ('${given}'): nothing was ${verb}. The project's record files: ${recordFileList(paths)}.`);
+        const outside = [...strayRecordFiles(paths), ...looseRecordFiles(projectsDir)];
+        throw new ProjectError(`No file at ${file} ('${given}'): nothing was ${verb}.` +
+            (outside.length > 0 ? ` The record files outside the plugin folder, each with the call that puts it where it belongs: ` +
+                `${outside.slice(0, 10).map(stray => placeCall(projectsDir, paths, stray)).join('; ')}` +
+                `${outside.length > 10 ? ` and ${outside.length - 10} more` : ''}.` : '') +
+            ` The project's record files: ${recordFileList(paths)}.`);
     }
 }
 
 /** Moves a record file into the project's plugin folder, its group folder made when there is none. */
 export function moveRecordFile(projectsDir: string, paths: ProjectPaths, from: string, to: string): { from: string; to: string } {
-    const source = projectsFile(projectsDir, paths, from);
-    existingFile(source, from, paths, 'moved');
     const target = path.resolve(paths.plugin, to.trim());
+    const source = projectsFile(projectsDir, paths, from, target);
+    existingFile(projectsDir, source, from, paths, 'moved');
     const inPlugin = path.relative(paths.plugin, target);
     if (!to.trim() || !inPlugin || inPlugin.startsWith('..') || path.isAbsolute(inPlugin)) {
         throw new ProjectError(`'${to}' is not in ${paths.plugin}: give where the file goes as its path there, like "Weapons/FlameBlade.yaml".`);
@@ -378,7 +393,7 @@ export function moveRecordFile(projectsDir: string, paths: ProjectPaths, from: s
 
 export function deleteRecordFile(projectsDir: string, paths: ProjectPaths, record: string): string {
     const file = projectsFile(projectsDir, paths, record);
-    existingFile(file, record, paths, 'deleted');
+    existingFile(projectsDir, file, record, paths, 'deleted');
     fs.rmSync(file);
     return file;
 }
@@ -402,6 +417,13 @@ export function moveCall(paths: ProjectPaths, from: string, to: string): string 
 
 export function deleteCall(paths: ProjectPaths, file: string): string {
     return `deleteRecord {"project": ${JSON.stringify(path.basename(paths.root))}, "record": ${JSON.stringify(callPath(paths, file))}}`;
+}
+
+/** The call for a record file outside the plugin folder: moved where it belongs, or deleted where the plugin folder has its file already. */
+export function placeCall(projectsDir: string, paths: ProjectPaths, file: string): string {
+    const target = belongsAt(file, paths, projectsDir);
+    return !target ? `${file} (move it into its type's group folder with moveRecord)`
+        : fs.existsSync(target) ? deleteCall(paths, file) : moveCall(paths, file, target);
 }
 
 export function createProject(paths: ProjectPaths, plugin: string, light: boolean): void {

@@ -258,7 +258,7 @@ export class ProjectsHandlers extends BaseHandler {
                             from: {
                                 type: 'string',
                                 description: 'The file: its path in the plugin folder, like "Notes/MavenWarning.yaml", the record\'s EditorID, ' +
-                                    'or its full path in the projects folder, for a file outside the plugin folder.'
+                                    'or, for a file outside the plugin folder, its path from the projects folder or its full path.'
                             },
                             to: { type: 'string', description: 'Its path in the plugin folder, like "Books/MavenWarning.yaml".' }
                         },
@@ -297,7 +297,7 @@ export class ProjectsHandlers extends BaseHandler {
                             record: {
                                 type: 'string',
                                 description: 'The file: its path in the plugin folder, like "Notes/MavenWarning.yaml", the record\'s EditorID, ' +
-                                    'or its full path in the projects folder, for a file outside the plugin folder.'
+                                    'or, for a file outside the plugin folder, its path from the projects folder or its full path.'
                             }
                         },
                         required: ['project', 'record']

@@ -669,6 +669,37 @@ describe('the Skyrim backend', () => {
         expect(fs.existsSync(outside)).toBe(true);
     });
 
+    it('takes a path the plugin folder has no file at from the projects folder, and names the files outside it when none is there', async () => {
+        // e4b gave moveRecord the path it had written from the projects folder — the same as `to`, or with plugin/ before
+        // it — and was refused 11 times in 3 runs, told only "No file" (eval round 67).
+        const { backend, fixture } = makeBackend();
+        await backend.newProject({ project: 'StormBolt' });
+        const plugin = path.join(fixture.projects, 'StormBolt', 'plugin');
+        const written = path.join(fixture.projects, 'Spells', 'StormBolt.yaml');
+        write(written, 'EditorID: StormBolt\n');
+        const unrooted = path.join(fixture.projects, 'plugin', 'Spells', 'StormBolt.yaml');
+        write(unrooted, 'EditorID: StormBolt\n');
+
+        const refused = await backend.moveRecord({ project: 'StormBolt', from: 'Spells/Storm.yaml', to: 'Spells/StormBolt.yaml' })
+            .catch((error: Error) => error.message);
+        expect(refused).toMatch(/^No file at .*nothing was moved\. The record files outside the plugin folder/);
+        for (const file of [written, unrooted]) {
+            expect(refused).toContain(`moveRecord {"project": "StormBolt", "from": "${slashed(file)}", "to": "Spells/StormBolt.yaml"}`);
+        }
+
+        expect((await backend.moveRecord({ project: 'StormBolt', from: 'Spells/StormBolt.yaml', to: 'Spells/StormBolt.yaml' })).moved)
+            .toEqual({ from: written, to: path.join(plugin, 'Spells', 'StormBolt.yaml') });
+        // The second copy, now that the plugin folder has the file: deleted, not moved over it.
+        await expect(backend.moveRecord({ project: 'StormBolt', from: 'plugin/Spells/StormBolt.yaml', to: 'Spells/StormBolt.yaml' }))
+            .rejects.toThrow(new RegExp('there already.*' + escape(`deleteRecord {"project": "StormBolt", "record": "${slashed(unrooted)}"}`)));
+        expect((await backend.deleteRecord({ project: 'StormBolt', record: 'plugin/Spells/StormBolt.yaml' })).deleted).toBe(unrooted);
+        // The plugin folder's file comes first: given again, the path is that file, already where it goes.
+        await expect(backend.moveRecord({ project: 'StormBolt', from: 'Spells/StormBolt.yaml', to: 'Spells/StormBolt.yaml' }))
+            .rejects.toThrow(/already there: nothing to move/);
+        expect(fs.existsSync(path.join(plugin, 'Spells', 'StormBolt.yaml'))).toBe(true);
+        expect((await backend.buildProject('StormBolt')).warnings).toBeUndefined();
+    });
+
     it('takes a file of a projects folder reached through a link: one not there is missing, not outside', () => {
         // Windows CI's temp folder has a short 8.3 name: the projects folder resolved to its long name, a missing file's
         // path kept the short one, and the file was refused as outside the projects folder.

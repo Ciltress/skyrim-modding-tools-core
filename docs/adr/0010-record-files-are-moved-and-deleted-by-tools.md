@@ -19,6 +19,11 @@ for a renamed copy writes its `editRecord` call — made as written 3 times of 3
 plugin folder is named by its full path with forward slashes: a backslash reached the model escaped once per layer
 of JSON, four times through OpenClaw (round 65).
 
+A path the plugin folder has no file at is looked for from the projects folder too: that is where OpenClaw's file
+tools put a Skyrim agent's relative path, and e4b gave `moveRecord` the path it had written, `Spells/StormBolt.yaml` as
+`from` and `to`, and was refused 11 times in 3 runs that never built (round 67). A file found in neither place is
+refused with the call for each record file outside the plugin folder.
+
 ## Consequences
 
 - Two more tools in every session's prompt (ADR 0001), and in the `core` profile too: its build answers name
