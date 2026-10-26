@@ -7,7 +7,7 @@ import {
 } from '../backend/skyrim/mo2';
 import { InstallError, type FomodConfig } from '../backend/skyrim/installer';
 import { activatePlugins, enableMod } from '../backend/skyrim/mo2Profile';
-import { ProjectError, assignFormIds, copiedEscapes, projectPaths, readProjectHeader, syncYaml } from '../backend/skyrim/projects';
+import { ProjectError, assignFormIds, copiedEscapes, projectPaths, projectsFile, readProjectHeader, syncYaml } from '../backend/skyrim/projects';
 import { SkyrimEngine } from '../backend/skyrim/engine';
 import { SkyrimInstanceBackend } from '../backend/skyrim/SkyrimInstanceBackend';
 import { Mo2Manager } from '../backend/skyrim/mo2Manager';
@@ -667,6 +667,22 @@ describe('the Skyrim backend', () => {
         await expect(backend.moveRecord({ project: 'MavenNote', from: 'Notes/MavenWarning.yaml', to: 'RecordData.yaml' })).rejects.toThrow(/ends in \.yaml/);
         expect(fs.existsSync(path.join(plugin, 'Notes', 'MavenWarning.yaml'))).toBe(true);
         expect(fs.existsSync(outside)).toBe(true);
+    });
+
+    it('takes a file of a projects folder reached through a link: one not there is missing, not outside', () => {
+        // Windows CI's temp folder has a short 8.3 name: the projects folder resolved to its long name, a missing file's
+        // path kept the short one, and the file was refused as outside the projects folder.
+        const real = fs.mkdtempSync(path.join(os.tmpdir(), 'projects-real-'));
+        const link = `${real}-link`;
+        fs.symlinkSync(real, link, 'junction');
+        try {
+            const paths = projectPaths(link, 'FlameBlade');
+            expect(projectsFile(link, paths, 'Weapons/Missing.yaml')).toBe(path.join(link, 'FlameBlade', 'plugin', 'Weapons', 'Missing.yaml'));
+            expect(() => projectsFile(link, paths, path.join(path.dirname(real), 'Elsewhere.yaml'))).toThrow(/outside the projects folder/);
+        } finally {
+            fs.unlinkSync(link);
+            fs.rmSync(real, { recursive: true, force: true });
+        }
     });
 
     it('deletes a record file of the projects folder, and nothing outside it', async () => {

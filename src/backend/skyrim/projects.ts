@@ -320,7 +320,17 @@ export function projectsFile(projectsDir: string, paths: ProjectPaths, given: st
     const byEditorId = /[\\/]|\.\w+$/.test(name) ? undefined : recordFiles(paths.plugin).find(file =>
         new RegExp(`^EditorID:[ \\t]*['"]?${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"]?[ \\t]*$`, 'mi').test(fs.readFileSync(file, 'utf8')));
     const file = byEditorId ?? path.resolve(paths.plugin, name);
-    const real = (target: string) => fs.existsSync(target) ? fs.realpathSync.native(target) : path.resolve(target);
+    // A path not there yet resolved through the nearest folder that is: Windows CI's temp folder has a short 8.3 name,
+    // and a missing file's path kept it while the projects folder resolved to the long one.
+    const real = (target: string): string => {
+        const missing: string[] = [];
+        let existing = path.resolve(target);
+        while (!fs.existsSync(existing) && path.dirname(existing) !== existing) {
+            missing.unshift(path.basename(existing));
+            existing = path.dirname(existing);
+        }
+        return path.join(fs.existsSync(existing) ? fs.realpathSync.native(existing) : existing, ...missing);
+    };
     const relative = path.relative(real(projectsDir), real(file));
     if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
         throw new ProjectError(`${file} is outside the projects folder, ${projectsDir}: only its record files are moved or deleted here.`);
