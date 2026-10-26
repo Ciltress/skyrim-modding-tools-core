@@ -256,18 +256,28 @@ public static class RecordEdits
     /// A part's fields sent as the text a file writes them in — `{MutagenObjectType: NpcLevel, Level: 5}`, as the build's
     /// refusal shows an NPC's level — as those fields, for a field that takes fields: set as that text, e4b's level was
     /// refused five builds long (eval round 65's npc #1). Null for a text that reads as no mapping.
+    ///
+    /// A text — Name, Description — takes its words, braces and all, except its own two fields: e4b sent a Name as
+    /// `{"TargetLanguage": "English", "Value": "Hilda"}`, and the NPC was called that in game (eval round 68's
+    /// npc+detailed #3). `{Hilda}` stays the words.
     /// </summary>
     private static JsonObject? Fielded(string said, Type type)
     {
         var written = said.Trim();
-        if (!written.StartsWith('{') || !written.EndsWith('}') || !type.IsClass || type == typeof(string) || Translated(type)
-            || Items(type) is not null || RecordLinks.LinkTarget(type) is not null)
+        // A text lists its languages, so it is read as a text before anything else.
+        if (!written.StartsWith('{') || !written.EndsWith('}') || !Translated(type) && (!type.IsClass || type == typeof(string)
+            || Items(type) is not null || RecordLinks.LinkTarget(type) is not null))
             return null;
         var yaml = new YamlStream();
         try
         {
             yaml.Load(new StringReader(written));
-            return yaml.Documents.Count > 0 && yaml.Documents[0].RootNode is YamlMappingNode mapping ? (JsonObject?)FromYaml(mapping) : null;
+            if (yaml.Documents.Count == 0 || yaml.Documents[0].RootNode is not YamlMappingNode mapping) return null;
+            var fields = (JsonObject)FromYaml(mapping)!;
+            if (!Translated(type)) return fields;
+            return fields.ContainsKey("Value") && fields.All(f => f.Key is "Value" or "TargetLanguage")
+                ? new JsonObject { ["TargetLanguage"] = fields["TargetLanguage"]?.DeepClone() ?? "English", ["Value"] = fields["Value"]?.DeepClone() }
+                : null;
         }
         catch (Exception e) when (e is YamlException or ArgumentException or InvalidCastException) { return null; }
     }
