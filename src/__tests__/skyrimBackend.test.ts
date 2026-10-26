@@ -700,6 +700,28 @@ describe('the Skyrim backend', () => {
         expect((await backend.buildProject('StormBolt')).warnings).toBeUndefined();
     });
 
+    it('refuses editRecord for a file outside the plugin folder with the call that moves it there', async () => {
+        // Told "none yet; write one first", e4b wrote the NPC outside the project again (eval round 67's npc+detailed #3).
+        const { backend, fixture, helperAnswers } = makeBackend();
+        await backend.newProject({ project: 'HildaTheNord' });
+        const notFound = 'No record file \'Npcs/Hilda.yaml\' in the project — its record files: none yet; write one first.';
+        helperAnswers.editRecord = () => { throw new HelperError('notFound', notFound); };
+        const edit = { project: 'HildaTheNord', record: 'Npcs/Hilda.yaml', set: { DefaultOutfit: 'ArmorIronAllOutfit' } };
+        await expect(backend.editRecord(edit)).rejects.toThrow(notFound);
+
+        const written = path.join(fixture.projects, 'Npcs', 'Hilda.yaml');
+        write(written, 'EditorID: Hilda\n');
+        const refused = await backend.editRecord(edit).catch((error: unknown) => error);
+        expect(refused).toBeInstanceOf(HelperError);
+        expect((refused as HelperError).code).toBe('notFound');
+        expect((refused as HelperError).message).toBe('No record file \'Npcs/Hilda.yaml\' in the project\'s plugin folder, where editRecord ' +
+            'changes records. The record files outside the plugin folder, each with the call that puts it where it belongs: ' +
+            `moveRecord {"project": "HildaTheNord", "from": "${slashed(written)}", "to": "Npcs/Hilda.yaml"}. The project's record files: none yet.`);
+        // Other refusals pass as the helper wrote them.
+        helperAnswers.editRecord = () => { throw new HelperError('badRequest', 'Nothing to change'); };
+        await expect(backend.editRecord(edit)).rejects.toThrow(/^Nothing to change$/);
+    });
+
     it('takes a file of a projects folder reached through a link: one not there is missing, not outside', () => {
         // Windows CI's temp folder has a short 8.3 name: the projects folder resolved to its long name, a missing file's
         // path kept the short one, and the file was refused as outside the projects folder.

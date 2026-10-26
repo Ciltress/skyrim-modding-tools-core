@@ -347,23 +347,27 @@ export function projectsFile(projectsDir: string, paths: ProjectPaths, given: st
 }
 
 /** The project's record files, as a refusal names them: their paths in its plugin folder. */
-function recordFileList(paths: ProjectPaths): string {
+export function recordFileList(paths: ProjectPaths): string {
     const files = recordFiles(paths.plugin).map(file => path.relative(paths.plugin, file).split(path.sep).join('/'));
     return files.length === 0 ? 'none yet' : files.slice(0, 20).join(', ') + (files.length > 20 ? ` and ${files.length - 20} more` : '');
 }
 
 /**
- * A file not there, with the calls for the record files no build of the project reads: told only "No file", e4b made the
- * same call again, up to 7 times in a run (eval round 67).
+ * The record files no build of the project reads — in its folder outside the plugin folder, or in no project — each with
+ * its call, as a sentence for a refusal of a file not there; empty when there are none. Told only "No file", e4b made the
+ * same moveRecord call again, up to 7 times in a run (eval round 67).
  */
+export function outsideRecordCalls(projectsDir: string, paths: ProjectPaths): string {
+    const outside = [...strayRecordFiles(paths), ...looseRecordFiles(projectsDir)];
+    return outside.length === 0 ? '' : ` The record files outside the plugin folder, each with the call that puts it where it belongs: ` +
+        `${outside.slice(0, 10).map(file => placeCall(projectsDir, paths, file)).join('; ')}` +
+        `${outside.length > 10 ? ` and ${outside.length - 10} more` : ''}.`;
+}
+
 function existingFile(projectsDir: string, file: string, given: string, paths: ProjectPaths, verb: string): void {
     if (!fs.existsSync(file) || !fs.statSync(file).isFile()) {
-        const outside = [...strayRecordFiles(paths), ...looseRecordFiles(projectsDir)];
-        throw new ProjectError(`No file at ${file} ('${given}'): nothing was ${verb}.` +
-            (outside.length > 0 ? ` The record files outside the plugin folder, each with the call that puts it where it belongs: ` +
-                `${outside.slice(0, 10).map(stray => placeCall(projectsDir, paths, stray)).join('; ')}` +
-                `${outside.length > 10 ? ` and ${outside.length - 10} more` : ''}.` : '') +
-            ` The project's record files: ${recordFileList(paths)}.`);
+        throw new ProjectError(`No file at ${file} ('${given}'): nothing was ${verb}.${outsideRecordCalls(projectsDir, paths)} ` +
+            `The project's record files: ${recordFileList(paths)}.`);
     }
 }
 

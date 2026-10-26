@@ -16,8 +16,8 @@ import { checkGameVersion } from './gameVersion.js';
 import { findCaseInsensitive } from './paths.js';
 import {
     ProjectError, assignFormIds, belongsAt, correctCopiedEscapes, createProject, type CopiedEscape, deleteCall, deleteRecordFile, fencedRecordFiles, fileHash,
-    keepRecordTexts, misnamedRecordFiles, looseRecordFiles, moveCall, moveRecordFile, newestSourceTime, placeCall, projectExists,
-    projectInfo, projectPaths, readDeployState, readProjectHeader, recordFiles, strayRecordFiles, syncFolder, syncYaml,
+    keepRecordTexts, misnamedRecordFiles, looseRecordFiles, moveCall, moveRecordFile, newestSourceTime, outsideRecordCalls, placeCall,
+    projectExists, projectInfo, projectPaths, readDeployState, readProjectHeader, recordFileList, recordFiles, strayRecordFiles, syncFolder, syncYaml,
     whereRecordsGo, writeDeployState
 } from './projects.js';
 import type { SkyrimEngine } from './engine.js';
@@ -227,6 +227,13 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
             record: request.record,
             ...(request.set ? { set: request.set } : {}),
             ...(request.remove ? { remove: request.remove } : {})
+        }).catch((error: unknown) => {
+            // Refused for a file written outside the project — "none yet; write one first" — e4b wrote it outside again
+            // (eval round 67's npc+detailed #3): the files outside the plugin folder first, each with its call.
+            if (!(error instanceof HelperError) || error.code !== 'notFound') throw error;
+            const outside = outsideRecordCalls(this.engine.projectsDir, paths);
+            throw outside ? new HelperError(error.code, `No record file '${request.record}' in the project's plugin folder, where ` +
+                `editRecord changes records.${outside} The project's record files: ${recordFileList(paths)}.`) : error;
         });
         return { ...edited, file: path.resolve(paths.plugin, edited.file) };
     }
