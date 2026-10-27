@@ -77,6 +77,7 @@ src/
   backend/skyrim/engine.ts          the shared helper process and its load order, kept in step with
                                     the mod manager
   backend/skyrim/helperClient.ts    the helper's JSON-lines client
+  backend/skyrim/helperBuild.ts     what `npm run build:helper` does; an installed core keeps no C# project
   backend/skyrim/modManager.ts      the ModManager seam (ADR-0007) and the types every manager shares
   backend/skyrim/mo2Manager.ts      Mod Organizer 2 as the mod manager, over mo2.ts and mo2Profile.ts
   backend/skyrim/mo2.ts             reading an MO2 instance: ini, profile, mod order, load order, files;
@@ -121,6 +122,7 @@ helper/SkyrimHelper/       the C# plugin helper: Session.cs (the methods), Recor
                            RecordFiles.cs (a project's record files checked before a build: folders, fields,
                            copied FormKeys), RecordLinks.cs (links written as editor IDs made FormIDs)
 skills/Domain              the modding skills — ours, edit freely
+scripts/build-helper.mjs   npm run build:helper, over helperBuild.ts
 scripts/check-helper.mjs   starts the built helper and checks it answers; CI runs it on both systems
 ```
 
@@ -191,7 +193,8 @@ scripts/check-helper.mjs   starts the built helper and checks it answers; CI run
 
 ```bash
 npm install            # also builds dist/ (the prepare script)
-npm run build:helper   # dotnet publish helper/SkyrimHelper -> helper/bin (needs the .NET 10 SDK)
+npm run build:helper   # dotnet publish helper/SkyrimHelper -> helper/bin (needs the .NET 10 SDK and dist/);
+                       # in an installed core it then removes helper/SkyrimHelper (helperBuild.ts)
 npm run build          # tsc -> dist/, with the types a product compiles against
 npm test               # vitest, fully offline
 npx tsc --noEmit       # type check only

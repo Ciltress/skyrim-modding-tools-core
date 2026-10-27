@@ -43,6 +43,11 @@ hidden by Tool Search).
   then on a tag of its GitHub repository. Installed from GitHub, its `prepare` script builds it, and npm runs
   that only for a package allowed to run scripts.
 - The helper is built in the core's folder (`helper/bin`), whichever product starts it; setup builds it there.
+  In an installed core the build then removes `helper/SkyrimHelper`, the C# project with its `bin` and `obj`
+  (2026-10-27). OpenClaw copies the whole package, 96 MB of it, into its plugin captures for every
+  generation. VS Code's C# extension found the `.csproj` in such a copy and built it there, and its MSBuild
+  nodes held the copy open, so OpenClaw failed with EPERM on every load. A product that builds the helper
+  again needs the core reinstalled.
 - A product's CI checks the core out beside it, where the `file:` link points.
 - The guide `tools` (`docs/MCP-Tools.md`) still describes the MCP server's behaviour. It is the core's, and
   becomes product-neutral when the plugin serves it.
