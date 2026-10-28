@@ -56,11 +56,10 @@ public static class EffectCasting
     /// <summary>The new records of the plugin whose effects are cast otherwise than they are, as messages naming the file and the way out.</summary>
     public static List<string> Mismatches(ISkyrimModGetter mod, ILinkCache lookup, RecordIndex index, string pluginDir)
     {
-        var files = RecordFiles.FlatRecords(pluginDir)
-            .Select(f => (f.Relative, RecordFiles.Identity(File.ReadAllText(f.File)).FormKey))
-            .Where(f => f.FormKey is not null)
-            .GroupBy(f => f.FormKey!.Value).ToDictionary(g => g.Key, g => g.First().Relative);
+        var files = Files(pluginDir);
         var problems = new List<string>();
+        // The project's effects offered the game's in their place already: one refusal says it once.
+        var offered = new HashSet<FormKey>();
         foreach (var caster in Casters(mod).Where(c => c.Record.FormKey.ModKey == mod.ModKey))
         {
             var name = caster.Record.EditorID ?? Session.FormKeyText(caster.Record.FormKey);
@@ -94,9 +93,15 @@ public static class EffectCasting
                         $"{RecordFiles.Article(caster.Kind)} without them is cast ConstantEffect on Self");
                     continue;
                 }
+                // Or the game's effect in its place: told only to give both the same, e4b kept its own Storm Bolt effect,
+                // wrote it field by field through four refusals, and built it with no school and no resistance (eval
+                // round 73's spell+detailed #3) — where 29 of its 30 other spell runs of rounds 71 and 73 named ShockDamageFFAimed.
                 if (ownEffect is not null)
                 {
-                    problems.Add(said + $"give both the same CastType and TargetType, the ones the {caster.Kind} is meant to have");
+                    var instead = InPlace(ownEffect, caster, i, mod, lookup, index, pluginDir, files);
+                    if (instead is not null) offered.Add(key);
+                    problems.Add(said + $"give both the same CastType and TargetType, the ones the {caster.Kind} is meant to have" +
+                        (instead is null ? "" : $"; or {instead}"));
                     continue;
                 }
                 var ways = Ways(effect, caster, i, lookup, index, mod.ModKey);
@@ -115,15 +120,179 @@ public static class EffectCasting
             var written = relative is not null && Regex.IsMatch(File.ReadAllText(Path.Combine(pluginDir, relative)), @"^Archetype:", RegexOptions.Multiline);
             var official = $"the official plugins' {effect.Archetype.Type} effects name Health most often: {usual} — each of their {ModifierCount} " +
                 "modifier and absorb effects names an actor value";
+            var use = offered.Contains(effect.FormKey) ? null : Uses(effect, mod).Select(u => ((Caster Caster, int Item)?)u).FirstOrDefault();
+            var instead = use is { } found ? InPlace(effect, found.Caster, found.Item, mod, lookup, index, pluginDir, files) : null;
             problems.Add($"{relative ?? name}: " + (written
                 ? $"{name} is a {effect.Archetype.Type} that names no actor value, so it changes nothing — write the one it changes under " +
                     $"Archetype, as deep as its other lines: `ActorValue: Health` for damage ({official})"
                 : $"{name} has no Archetype, so it is a ValueModifier that names no actor value, and changes nothing — write `Archetype:` " +
                     $"at the margin with `MutagenObjectType: MagicEffectArchetype` and the actor value it changes below it, two spaces in: " +
-                    $"`ActorValue: Health` for damage ({official})"));
+                    $"`ActorValue: Health` for damage ({official})") + (instead is null ? "" : $"; or {instead}"));
         }
         return problems;
     }
+
+    /// <summary>
+    /// The project's new effects that damage Health and name no school or no resistance, as notes beside a build that
+    /// succeeds: such an effect does its damage, but a spell of it belongs to no school — casting it trains no skill, and
+    /// no skill lowers its cost — and no resistance lowers it. e4b's Storm Bolt effect, written field by field through
+    /// four refusals, was built so and passed for a Destruction spell of shock damage (eval round 73's spell+detailed #3).
+    /// Each note names the lines the game's effect most like it has, and that effect in its place.
+    /// </summary>
+    public static List<string> Notes(ISkyrimModGetter mod, ILinkCache lookup, RecordIndex index, string pluginDir)
+    {
+        var files = Files(pluginDir);
+        var notes = new List<string>();
+        foreach (var effect in mod.MagicEffects.Where(m => m.FormKey.ModKey == mod.ModKey && Damages(m)))
+        {
+            // One no record names has its own note (ProjectNotes): it does nothing yet.
+            var uses = Uses(effect, mod).OrderBy(u => u.Caster.Kind == "Spell" && u.Caster.Type == "Spell" ? 0 : 1).ToList();
+            if (uses.Count == 0) continue;
+            var (caster, item) = uses[0];
+            var game = GameEffect(effect, caster, lookup, index, mod.ModKey);
+            // A school is a spell's, cast by the player or an NPC as a player does; a resistance, where the game's effect most
+            // like it has one — or, with none found, the five schools and no resistance to claim.
+            var school = effect.MagicSkill == ActorValue.None && caster.Kind == "Spell" && caster.Type == "Spell";
+            var resist = effect.ResistValue == ActorValue.None && game is { } like && like.Effect.ResistValue != ActorValue.None;
+            if (!school && !resist) continue;
+
+            var name = effect.EditorID ?? Session.FormKeyText(effect.FormKey);
+            var spell = caster.Record.EditorID ?? Session.FormKeyText(caster.Record.FormKey);
+            var relative = files.GetValueOrDefault(effect.FormKey);
+            var lacks = school && resist ? "no MagicSkill and no ResistValue" : school ? "no MagicSkill" : "no ResistValue";
+            var means = string.Join(", and ", new[]
+            {
+                school ? $"{spell} belongs to no school: casting it trains no skill, and no skill lowers its cost" : null,
+                resist ? "no resistance lowers its damage" : null
+            }.OfType<string>());
+            var gameSchool = game?.Effect.MagicSkill is { } skill && skill != ActorValue.None ? skill.ToString() : null;
+            var set = new[]
+            {
+                school && gameSchool is not null ? ("MagicSkill", gameSchool) : default,
+                resist ? ("ResistValue", game!.Value.Effect.ResistValue.ToString()) : default
+            }.Where(s => s.Item1 is not null).ToList();
+            string write;
+            if (set.Count > 0 && relative is not null)
+                write = $"one call writes {(set.Count == 1 ? "it" : "both")}, as {Shown(game!.Value.Effect)}, the effect of {Shown(game.Value.Example)}, " +
+                    $"{RecordFiles.Article(caster.Kind)} like {spell}, has {(set.Count == 1 ? "it" : "them")}: editRecord {{\"project\": " +
+                    $"{ToolCalls.Quoted(ToolCalls.ProjectOf(pluginDir))}, \"record\": {ToolCalls.Quoted(relative.Replace('\\', '/'))}, \"set\": [" +
+                    string.Join(", ", set.Select(s => $"{{\"path\": \"{s.Item1}\", \"value\": \"{s.Item2}\"}}")) + "]}";
+            else
+                write = "write " + string.Join(" and ", set.Select(s => $"`{s.Item1}: {s.Item2}`")) + " at the margin";
+            if (school && gameSchool is null)
+                write = (set.Count > 0 ? write + ", and " : "write ") +
+                    "`MagicSkill:` with its school at the margin — Alteration, Conjuration, Destruction, Illusion or Restoration";
+            var instead = InPlace(effect, caster, item, mod, lookup, index, pluginDir, files);
+            notes.Add($"{relative ?? name}: {name} damages Health and names {lacks}, so {means} — {write}" +
+                (instead is null ? "" : $"; or, with the game's art and sounds too, {instead}"));
+        }
+        return notes;
+    }
+
+    /// <summary>The project's record files by the FormKey each writes.</summary>
+    private static Dictionary<FormKey, string> Files(string pluginDir) => RecordFiles.FlatRecords(pluginDir)
+        .Select(f => (f.Relative, RecordFiles.Identity(File.ReadAllText(f.File)).FormKey))
+        .Where(f => f.FormKey is not null)
+        .GroupBy(f => f.FormKey!.Value).ToDictionary(g => g.Key, g => g.First().Relative);
+
+    /// <summary>An effect that takes Health by its magnitude: a value modifier on Health, flagged Detrimental.</summary>
+    private static bool Damages(IMagicEffectGetter effect) =>
+        effect.Archetype.Type is MagicEffectArchetype.TypeEnum.ValueModifier or MagicEffectArchetype.TypeEnum.DualValueModifier
+        && effect.Archetype.ActorValue == ActorValue.Health
+        && effect.Flags.HasFlag(MagicEffect.Flag.Detrimental);
+
+    /// <summary>The project's spells, enchantments and scrolls that name the effect, each with the item that does.</summary>
+    private static IEnumerable<(Caster Caster, int Item)> Uses(IMagicEffectGetter effect, ISkyrimModGetter mod) =>
+        Casters(mod).Where(c => c.Record.FormKey.ModKey == mod.ModKey)
+            .SelectMany(c => c.Effects.Select((e, i) => (Caster: c, Item: i, Effect: e)))
+            .Where(u => !u.Effect.BaseEffect.IsNull && u.Effect.BaseEffect.FormKey == effect.FormKey)
+            .Select(u => (u.Caster, u.Item));
+
+    /// <summary>
+    /// The game's effect to name in the record in place of the project's own, as the words that say so — the file deleted
+    /// where no other record of the project names it; null where the load order has none like it.
+    /// </summary>
+    private static string? InPlace(IMagicEffectGetter own, Caster caster, int item, ISkyrimModGetter mod, ILinkCache lookup, RecordIndex index,
+        string pluginDir, Dictionary<FormKey, string> files)
+    {
+        if (GameEffect(own, caster, lookup, index, mod.ModKey) is not { } game) return null;
+        var (effect, example) = game;
+        var name = caster.Record.EditorID ?? Session.FormKeyText(caster.Record.FormKey);
+        var gameName = effect.EditorID ?? Session.FormKeyText(effect.FormKey);
+        var said = $"name the game's {gameName} in its place, as {Shown(example)} does — in {name}'s Effects[{item}] `BaseEffect: {gameName}`";
+        var alone = Uses(own, mod).All(u => u.Caster.Record.FormKey == caster.Record.FormKey);
+        return files.GetValueOrDefault(own.FormKey) is { } relative && alone
+            ? said + $" — and delete {relative.Replace('\\', '/')}: {ToolCalls.Delete(pluginDir, relative)}"
+            : said;
+    }
+
+    /// <summary>
+    /// The load order's effect most like the project's own, and a record that names it: among the records of the kind
+    /// cast as the project's is — the player's, where any is — each effect they cast as it is, by what it and its record
+    /// share with the project's: keywords most (MagicDamageShock), then the spell's half-cost perk and menu art, the
+    /// effect's resistance and school where it names them, its actor value, its place among the Effects, and a word of
+    /// the editor IDs (Storm Bolt, Lightning Bolt). One that shares nothing is none: no effect is offered by chance.
+    /// For a spell, only an effect with a school, where any has one: Storm Call's lightning, a shout's spell with Lightning
+    /// Bolt's perk and art, has none, and was offered for Storm Bolt over Lightning Bolt's on two words of its name.
+    /// </summary>
+    private static (IMagicEffectGetter Effect, IMajorRecordGetter Example)? GameEffect(IMagicEffectGetter own, Caster caster, ILinkCache lookup,
+        RecordIndex index, ModKey mine)
+    {
+        var item = caster.Effects.ToList().FindIndex(e => !e.BaseEffect.IsNull && e.BaseEffect.FormKey == own.FormKey);
+        var kin = Kin(caster, lookup, index, mine).Where(k => k.Cast == caster.Cast && k.Target == caster.Target).ToList();
+        if (kin.Any(k => k.Players)) kin = kin.Where(k => k.Players).ToList();
+        var effects = new Dictionary<FormKey, IMagicEffectGetter?>();
+        IMagicEffectGetter? EffectOf(FormKey key) => effects.TryGetValue(key, out var known) ? known
+            : effects[key] = lookup.TryResolve<IMagicEffectGetter>(key, out var found) ? found : null;
+
+        var keywords = Keywords(own);
+        var perk = PerkOf(caster.Record);
+        var art = ArtOf(caster.Record);
+        var words = RecordLinks.WordsOf(caster.Record.EditorID ?? "");
+        // Ice Spike's damage is its first of four effects, all with its perk and art: its slow was offered by a shorter name.
+        int Score(Caster record, IMagicEffectGetter effect, int at) =>
+            3 * Keywords(effect).Intersect(keywords).Count()
+            + (perk is not null && PerkOf(record.Record) == perk ? 2 : 0)
+            + (art is not null && ArtOf(record.Record) == art ? 2 : 0)
+            + (own.ResistValue != ActorValue.None && effect.ResistValue == own.ResistValue ? 2 : 0)
+            + (own.MagicSkill != ActorValue.None && effect.MagicSkill == own.MagicSkill ? 2 : 0)
+            + (own.Archetype.ActorValue != ActorValue.None && effect.Archetype.ActorValue == own.Archetype.ActorValue ? 1 : 0)
+            + (at == item ? 1 : 0)
+            + (RecordLinks.SharedWords(words, RecordLinks.WordsOf(record.Record.EditorID ?? "")).Count > 0 ? 1 : 0);
+        // Like it where it says what it does: damage to Health is not offered a cloak's or a heal's effect.
+        bool Fits(IMagicEffectGetter effect) =>
+            (own.Archetype.ActorValue == ActorValue.None || effect.Archetype.ActorValue == own.Archetype.ActorValue)
+            && (!own.Flags.HasFlag(MagicEffect.Flag.Detrimental) || effect.Flags.HasFlag(MagicEffect.Flag.Detrimental));
+
+        var scored = kin.SelectMany(record => record.Effects.Select((e, at) => (Record: record, At: at,
+                Effect: e.BaseEffect.IsNull ? null : EffectOf(e.BaseEffect.FormKey))))
+            .Where(use => use.Effect is { } effect && effect.CastType == use.Record.Cast && effect.TargetType == use.Record.Target && Fits(effect))
+            .Select(use => (use.Record, Effect: use.Effect!, Score: Score(use.Record, use.Effect!, use.At)))
+            .Where(use => use.Score > 0)
+            .ToList();
+        if (caster.Kind == "Spell" && caster.Type == "Spell" && scored.Any(use => use.Effect.MagicSkill != ActorValue.None))
+            scored = scored.Where(use => use.Effect.MagicSkill != ActorValue.None).ToList();
+        if (scored.Count == 0) return null;
+        var best = scored.GroupBy(use => use.Effect.FormKey)
+            .OrderByDescending(g => g.Max(use => use.Score))
+            .ThenByDescending(g => g.Count())
+            .ThenBy(g => g.First().Effect.EditorID?.Length ?? int.MaxValue)
+            .First();
+        var example = best.OrderByDescending(use => use.Score)
+            .ThenBy(use => use.Record.Record.EditorID?.Length ?? int.MaxValue)
+            .ThenBy(use => use.Record.Record.EditorID, StringComparer.Ordinal)
+            .First();
+        return (example.Effect, example.Record.Record);
+    }
+
+    private static HashSet<FormKey> Keywords(IMagicEffectGetter effect) =>
+        effect.Keywords?.Where(k => !k.IsNull).Select(k => k.FormKey).ToHashSet() ?? [];
+
+    private static FormKey? PerkOf(IMajorRecordGetter record) =>
+        record is ISpellGetter spell && !spell.HalfCostPerk.IsNull ? spell.HalfCostPerk.FormKey : null;
+
+    private static FormKey? ArtOf(IMajorRecordGetter record) =>
+        record is ISpellGetter spell && !spell.MenuDisplayObject.IsNull ? spell.MenuDisplayObject.FormKey : null;
 
     /// <summary>
     /// The archetypes that change an actor value, and how many of the official plugins' effects of each name Health,

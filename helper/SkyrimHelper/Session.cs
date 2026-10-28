@@ -517,7 +517,8 @@ public sealed class Session : IDisposable
             ["masters"] = new JsonArray(written.ModHeader.MasterReferences.Select(m => (JsonNode)m.Master.FileName.String).ToArray()),
             ["headerVersion"] = written.ModHeader.Stats.Version,
             ["resolvedLinks"] = resolvedLinks,
-            ["notes"] = new JsonArray((await OverrideNotes(dir, mod.ModKey)).Select(n => (JsonNode)n).ToArray())
+            ["notes"] = new JsonArray((await OverrideNotes(dir, mod.ModKey)).Concat(EffectCasting.Notes(mod, lookup, Index, dir))
+                .Select(n => (JsonNode)n).ToArray())
         };
     }
 
