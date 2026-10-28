@@ -180,12 +180,47 @@ public static class ProjectNotes
             // kept the renamed Prisoner and answered (eval round 64's npc #3, the fifth such copy kept in rounds 50–64).
             var id = RecordFiles.EditorIdFromName(now, Free) ?? RecordFiles.Numbered($"{entry.EditorId}New", Free);
             editorIds.Add(id);
-            var call = ToolCalls.Edit(project, relative, $"{{\"path\": \"EditorID\", \"value\": {Quoted(id)}}}", "\"FormKey\"", build: true);
-            notes.Add($"{relative}: overrides {entry.EditorId} of {key.ModKey.FileName} and renames it from '{was}' to '{now}': {becomes}, " +
-                $"with all this file changes. {Unless(was)} — one call does it: {call}, which deletes this file's FormKey line, " +
-                $"gives it an EditorID of its own and builds again — a new record, while {was} stays as it is");
+            var namers = Namers(records, relative, text, key);
+            var call = ToolCalls.Edit(project, relative, $"{{\"path\": \"EditorID\", \"value\": {Quoted(id)}}}", "\"FormKey\"", build: namers.Count == 0);
+            var start = $"{relative}: overrides {entry.EditorId} of {key.ModKey.FileName} and renames it from '{was}' to '{now}': {becomes}, " +
+                $"with all this file changes. {Unless(was)} — ";
+            if (namers.Count == 0)
+            {
+                notes.Add(start + $"one call does it: {call}, which deletes this file's FormKey line, gives it an EditorID of its own and " +
+                    $"builds again — a new record, while {was} stays as it is");
+                continue;
+            }
+            // The records of the project that link to the copy, pointed at it once it is new, the last call building: the model's
+            // sword linked its enchantment's copy as EnchWeaponFireDamage01, made the copy new as this warning said, and the sword
+            // carried the game's Fire Damage from then on, built with a warning and told the user as done (eval round 76's
+            // sword+detailed #3).
+            var repoints = namers.Select((n, at) => ToolCalls.Edit(project, n.Relative,
+                string.Join(", ", n.Paths.Select(p => $"{{\"path\": {Quoted(p)}, \"value\": {Quoted(id)}}}")), build: at == namers.Count - 1));
+            var linking = string.Join(" and ", namers.Select(n => $"{n.Relative}'s {string.Join(", ", n.Paths)}"));
+            notes.Add(start + $"{(namers.Count == 1 ? "two calls do" : $"{namers.Count + 1} calls do")} it: {call}, which deletes this file's " +
+                $"FormKey line and gives it an EditorID of its own; then, as {linking} {(namers.Count == 1 ? "links" : "link")} to it — " +
+                $"{(namers.Count == 1 ? "a link" : "links")} that would name {key.ModKey.FileName}'s own {entry.EditorId} once this file is " +
+                $"new — {string.Join("; then ", repoints)}, which {(namers.Count == 1 ? "points it" : "point them")} at {id} and builds again " +
+                $"— a new record, while {was} stays as it is");
         }
         return notes;
+    }
+
+    /// <summary>
+    /// The other records of the project that link to a copy of the load order's record — by its editor ID or its FormID —
+    /// each with the paths of those links: once the copy is a new record, they name the load order's.
+    /// </summary>
+    private static List<(string Relative, List<string> Paths)> Namers(IReadOnlyList<(string Relative, Type Type, string Text)> records,
+        string relative, string text, FormKey key)
+    {
+        var editorId = RecordFiles.Identity(text).EditorId;
+        return records.Where(r => r.Relative != relative)
+            .Select(r => (r.Relative, Paths: RecordLinks.LinksIn(r.Text, r.Type)
+                .Where(l => FormKey.TryFactory(l.Value, out var linked) ? linked == key
+                    : editorId is not null && l.Value.Equals(editorId, StringComparison.OrdinalIgnoreCase))
+                .Select(l => l.Path).ToList()))
+            .Where(n => n.Paths.Count > 0)
+            .ToList();
     }
 
     /// <summary>

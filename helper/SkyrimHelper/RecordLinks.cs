@@ -665,6 +665,27 @@ public static class RecordLinks
         .Where(t => !t.IsAbstract && !t.IsInterface && type.IsAssignableFrom(t))
         .Select(t => t.Name).Order(StringComparer.Ordinal).Take(8).ToList();
 
+    /// <summary>
+    /// A record file's links as written — an editor ID or a FormID — each with its field's path as editRecord takes it:
+    /// `ObjectEffect`, `Effects[0].BaseEffect`, `Keywords[2]`. None for a file that does not read as YAML.
+    /// </summary>
+    internal static List<(string Path, string Value)> LinksIn(string text, Type type)
+    {
+        var yaml = new YamlStream();
+        try
+        {
+            yaml.Load(new StringReader(text));
+        }
+        catch (YamlException)
+        {
+            return [];
+        }
+        if (yaml.Documents.Count == 0 || yaml.Documents[0].RootNode is not YamlMappingNode root) return [];
+        var links = new List<(string, string)>();
+        Walk(root, type, "", (value, _, field) => { if (value.Value?.Trim() is { Length: > 0 } raw) links.Add((field, raw)); }, _ => { });
+        return links;
+    }
+
     /// <summary>The record type a link field takes — IMagicEffectGetter for an effect's BaseEffect — or null for a field that is no link.</summary>
     internal static Type? LinkTarget(Type type) =>
         typeof(IFormLinkGetter).IsAssignableFrom(type)
