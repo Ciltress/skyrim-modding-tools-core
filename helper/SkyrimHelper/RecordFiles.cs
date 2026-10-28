@@ -1260,9 +1260,20 @@ public static class RecordFiles
     /// </summary>
     private static string BytesWritten(string[] lines, Type type)
     {
-        // Each line's field found in the part its indent puts it in: Critical's Unused is a number, Data's three bytes.
-        var parts = new List<(int Column, Type Part)>();
-        var wrong = new List<string>();
+        var wrong = ByteFields(lines, type).Where(f => !WholeBytes(f.Value)).Select(f => $"line {f.Line + 1}, `{lines[f.Line].Trim()}`").ToList();
+        return wrong.Count == 0 ? ""
+            : $" Of bytes, written otherwise: {string.Join(", ", wrong)} — a field of bytes is written as readRecord shows it, 0x and two hex " +
+                "digits a byte, as `Unused2: 0x000000`.";
+    }
+
+    /// <summary>
+    /// Each field of bytes a record file writes, with a value, found line by line in the part its indent puts it in — Critical's
+    /// Unused is a number, Data's three bytes: its line (from 0), the part it is a field of and that part's key, the field, the value.
+    /// </summary>
+    private static List<(int Line, Type? Part, string? PartKey, string Key, string Value)> ByteFields(string[] lines, Type type)
+    {
+        var parts = new List<(int Column, Type Part, string Key)>();
+        var found = new List<(int, Type?, string?, string, string)>();
         for (var i = 0; i < lines.Length; i++)
         {
             if (Regex.Match(lines[i], @"^(?<lead>[ \t]*(?:-[ \t]+)?)(?<key>[A-Za-z_]\w*)[ \t]*:[ \t]*(?<value>[^\s#]*)") is not { Success: true } field) continue;
@@ -1276,15 +1287,46 @@ public static class RecordFiles
             var value = field.Groups["value"].Value;
             if (held == typeof(byte[]) || held.IsGenericType && held.GetGenericArguments() is [var of] && of == typeof(byte) && held.Name.Contains("MemorySlice"))
             {
-                if (value.Length > 0 && !Regex.IsMatch(value, "^0x(?:[0-9A-Fa-f]{2})+$")) wrong.Add($"line {i + 1}, `{lines[i].Trim()}`");
+                if (value.Length > 0) found.Add((i, parts.Count > 0 ? parts[^1].Part : null, parts.Count > 0 ? parts[^1].Key : null, key, value));
             }
             else if (value.Length == 0)
                 parts.Add((column, held != typeof(string) && held.IsGenericType && typeof(System.Collections.IEnumerable).IsAssignableFrom(held)
-                    ? held.GetGenericArguments()[0] : held));
+                    ? held.GetGenericArguments()[0] : held, key));
         }
-        return wrong.Count == 0 ? ""
-            : $" Of bytes, written otherwise: {string.Join(", ", wrong)} — a field of bytes is written as readRecord shows it, 0x and two hex " +
-                "digits a byte, as `Unused2: 0x000000`.";
+        return found;
+    }
+
+    /// <summary>Bytes as readRecord writes them: 0x and two hex digits a byte.</summary>
+    private static bool WholeBytes(string value) => Regex.IsMatch(value, "^0x(?:[0-9A-Fa-f]{2})+$");
+
+    /// <summary>
+    /// Takes out a model's texture hashes — the `Data` of a `Model` — copied otherwise than as whole bytes, which the reader
+    /// refuses as "not a valid hex string": the model's note copied Maven's note's 122 hex digits as 123, and, refused for
+    /// its text's lines before the reader came to them, built no more (eval round 78's note #4). The game shows a model
+    /// without them, and the Creation Kit writes them anew; any other field of bytes is still refused, named by its line.
+    /// </summary>
+    public static List<(string File, string Change)> DropBrokenModelData(string pluginDir)
+    {
+        var changes = new List<(string File, string Change)>();
+        foreach (var (file, relative, type) in FlatRecords(pluginDir))
+        {
+            var lines = File.ReadAllText(file).Split('\n').ToList();
+            var broken = ByteFields(lines.ToArray(), type)
+                .Where(f => f.Key == "Data" && f.Part?.Name.EndsWith("Model", StringComparison.Ordinal) == true && !WholeBytes(f.Value))
+                .ToList();
+            if (broken.Count == 0) continue;
+            foreach (var f in broken.OrderByDescending(f => f.Line)) lines.RemoveAt(f.Line);
+            File.WriteAllText(file, string.Join('\n', lines));
+            foreach (var f in broken)
+            {
+                var digits = Regex.Match(f.Value, "^0x([0-9A-Fa-f]*)$") is { Success: true } hex ? $"{hex.Groups[1].Length} hex digits" : "no hex number";
+                var shown = f.Value.Length > 14 ? $"{f.Value[..14]}…" : f.Value;
+                changes.Add((relative, $"removed line {f.Line + 1}, {f.PartKey}'s `Data: {shown}` — a model's texture hashes, written as " +
+                    $"{digits} where they are whole bytes, two hex digits each; the game shows the model without them, and the " +
+                    "Creation Kit writes them anew"));
+            }
+        }
+        return changes;
     }
 
     /// <summary>What the reader's "Expected X, got Y" means for the line it names.</summary>
