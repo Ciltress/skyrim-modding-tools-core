@@ -2,6 +2,8 @@ using System.Text.RegularExpressions;
 using Mutagen.Bethesda.Plugins;
 using Mutagen.Bethesda.Plugins.Cache;
 using Mutagen.Bethesda.Skyrim;
+using YamlDotNet.Core;
+using YamlDotNet.RepresentationModel;
 using static SkyrimHelper.ToolCalls;
 
 namespace SkyrimHelper;
@@ -14,6 +16,7 @@ namespace SkyrimHelper;
 public static class ProjectNotes
 {
     private static readonly Regex VoiceLine = new(@"^Voice:[ \t]*([^\s#]+)", RegexOptions.Multiline);
+    private static readonly Regex RaceLine = new(@"^Race:[ \t]*([^\s#]+)", RegexOptions.Multiline);
     private static readonly Regex FemaleFlag = new(@"^[ \t]+-[ \t]*Female[ \t]*\r?$|^[ \t]+Flags:[ \t]*\[[^\]\r\n]*\bFemale\b", RegexOptions.Multiline);
     private static readonly Regex TemplateLine = new(@"^Template:[ \t]*\S", RegexOptions.Multiline);
     private static readonly Regex ObjectEffectLink = new(@"^ObjectEffect:[ \t]*([^\s#]+)", RegexOptions.Multiline);
@@ -103,12 +106,23 @@ public static class ProjectNotes
                 var name = RecordFiles.Identity(text).EditorId ?? relative;
                 var woman = FemaleFlag.IsMatch(text);
                 var womansVoice = voice.Flags.HasFlag(VoiceType.Flag.Female);
+                // Each with the one call that makes the change: told only "a woman has `- Female` there", the model made no
+                // call, and answered that it had added the flag and built again (eval round 74's npc #2) — the five
+                // warnings of that round that named their call were each followed.
                 if (womansVoice && !woman)
                     notes.Add($"{relative}: {name} speaks with {voice.EditorID}, a woman's voice, but has no Female among Configuration.Flags, " +
-                        "so the game makes this NPC a man — a woman has `- Female` there");
+                        "so the game makes this NPC a man — a woman has `- Female` there" + (ConfigurationFlags(text) is { } flags
+                            ? $"; one call lists it beside the flags it has: editRecord {{\"project\": {Quoted(ProjectOf(pluginDir))}, " +
+                                $"\"record\": {Quoted(relative.Replace('\\', '/'))}, \"set\": [{{\"path\": \"Configuration.Flags\", " +
+                                $"\"value\": [{string.Join(", ", flags.Append("Female").Select(Quoted))}]}}]}}"
+                            : ""));
                 else if (woman && !womansVoice && voice.EditorID?.StartsWith("Male", StringComparison.Ordinal) == true)
                     notes.Add($"{relative}: {name} is a woman (Female) who speaks with {voice.EditorID}, a man's voice — " +
-                        "the npcs skill names each race's woman's voice");
+                        (WomansVoice(text, index, cache) is { } hers
+                            ? $"one call gives her {hers.Race}'s own woman's voice: editRecord {{\"project\": {Quoted(ProjectOf(pluginDir))}, " +
+                                $"\"record\": {Quoted(relative.Replace('\\', '/'))}, \"set\": [{{\"path\": \"Voice\", \"value\": {Quoted(hers.Voice)}}}]}}" +
+                                "; the npcs skill names the other women's voices of each race"
+                            : "the npcs skill names each race's woman's voice"));
             }
             // With no weapon or armor in the project, said so: the model wrote Flame Blade's enchantment alone, and answered that
             // the sword was written and carried it (eval round 46's sword #5).
@@ -240,12 +254,50 @@ public static class ProjectNotes
     }
 
     /// <summary>The voice type an NPC's file names, by editor ID or FormID; null for none or one the load order lacks.</summary>
-    private static IVoiceTypeGetter? Voice(string text, RecordIndex index, ILinkCache cache)
+    private static IVoiceTypeGetter? Voice(string text, RecordIndex index, ILinkCache cache) =>
+        Linked(VoiceLine, text, index) is { } found && cache.TryResolve<IVoiceTypeGetter>(found, out var voice) ? voice : null;
+
+    /// <summary>
+    /// The NPC's race, by its editor ID, and the woman's voice the race record gives — NordRace's is FemaleEvenToned; null
+    /// where the file names no race the load order has, or the race no woman's voice.
+    /// </summary>
+    private static (string Race, string Voice)? WomansVoice(string text, RecordIndex index, ILinkCache cache)
     {
-        if (VoiceLine.Match(text) is not { Success: true } line) return null;
-        var raw = line.Groups[1].Value;
-        var key = raw.Contains(':') ? FormKey.TryFactory(raw, out var formKey) ? formKey : (FormKey?)null
+        if (Linked(RaceLine, text, index) is not { } key || !cache.TryResolve<IRaceGetter>(key, out var race)) return null;
+        var hers = race.Voices.Female;
+        return !hers.IsNull && cache.TryResolve<IVoiceTypeGetter>(hers.FormKey, out var voice) && voice.EditorID is { } id
+            ? (race.EditorID ?? Session.FormKeyText(race.FormKey), id)
+            : null;
+    }
+
+    /// <summary>The record a line of the file links, by editor ID or FormID; null for none or one the load order lacks.</summary>
+    private static FormKey? Linked(Regex line, string text, RecordIndex index)
+    {
+        if (line.Match(text) is not { Success: true } match) return null;
+        var raw = match.Groups[1].Value;
+        return raw.Contains(':') ? FormKey.TryFactory(raw, out var formKey) ? formKey : (FormKey?)null
             : index.ByEditorId.TryGetValue(raw, out var byId) ? byId : null;
-        return key is { } found && cache.TryResolve<IVoiceTypeGetter>(found, out var voice) ? voice : null;
+    }
+
+    /// <summary>
+    /// The flags an NPC's file lists under Configuration — none where it has no Flags there; null where the file does not
+    /// read as YAML, or its Flags as a list. editRecord sets a list whole, so a call adding one names them all.
+    /// </summary>
+    private static List<string>? ConfigurationFlags(string text)
+    {
+        var yaml = new YamlStream();
+        try
+        {
+            yaml.Load(new StringReader(text));
+        }
+        catch (YamlException)
+        {
+            return null;
+        }
+        if (yaml.Documents.Count == 0 || yaml.Documents[0].RootNode is not YamlMappingNode root) return null;
+        if (!root.Children.TryGetValue(new YamlScalarNode("Configuration"), out var configuration)) return [];
+        if (configuration is not YamlMappingNode fields) return null;
+        if (!fields.Children.TryGetValue(new YamlScalarNode("Flags"), out var flags)) return [];
+        return flags is YamlSequenceNode list ? list.Children.OfType<YamlScalarNode>().Select(s => s.Value ?? "").ToList() : null;
     }
 }
