@@ -130,13 +130,13 @@ export function fencedRecordFiles(pluginDir: string): { file: string; lines: num
 
 /**
  * Lines of record files that carry the escapes a JSON answer shows — two backslashes where the record
- * has one, a backslash before a quote — copied as they read: e4b wrote `File: Weapons\\Iron\\Sword.nif`
+ * has one, a backslash before a quote — copied as they read: the model wrote `File: Weapons\\Iron\\Sword.nif`
  * in about one run of seventeen (eval rounds 12–15), and the build took it. A double-quoted string is
  * judged once decoded, since YAML escapes there too; on 6,038 files Spriggit wrote, nothing is found.
  *
- * Each comes with the line as written and as it is to be: told only "line 12 (two backslashes)", e4b
+ * Each comes with the line as written and as it is to be: told only "line 12 (two backslashes)", the model
  * edited another line, built again and gave up (eval probe 17). A text's line breaks copied as `\n`
- * become the lines they were (e4b copied a note's whole text onto one line, round 18), and an apostrophe
+ * become the lines they were (the model copied a note's whole text onto one line, round 18), and an apostrophe
  * escaped in single quotes is written twice, as YAML writes it.
  */
 export function copiedEscapes(pluginDir: string): CopiedEscape[] {
@@ -212,7 +212,7 @@ function lineEscape(text: string, inBlock: boolean, endsInBackslash = false): Pi
     fixed += unescape(rest);
     if (COPIED_LINE_BREAK.test(outside)) return { kind: 'line breaks written as \\n', fixed: textLines(text, inBlock) };
     // What a `\n` leaves when its line break is written for real: a backslash at the line's end. `Value: >-\` broke a
-    // note's YAML, and a text whose every line ended so kept them in the line given back for its quotes (12b, round 21).
+    // note's YAML, and a text whose every line ended so kept them in the line given back for its quotes (round 21).
     if (!endsInBackslash && /\\\s*$/.test(outside)) {
         kind ??= 'a backslash at the end of the line';
         fixed = fixed.replace(/\\+\s*$/, '');
@@ -312,10 +312,10 @@ function yamlFilesUnder(root: string, descend: (dir: string) => boolean): string
  * A file of the projects folder as moveRecord and deleteRecord take it: its path in the project's plugin folder, the
  * record's EditorID, or a full path anywhere in the projects folder — a file written outside every project. Written
  * where the build does not read it, a file stayed there: OpenClaw gives a model no tool that moves or deletes a file,
- * and e4b wrote it again where it belonged, the first copy left behind (eval round 66: 6 runs, one of them failed).
+ * and the model wrote it again where it belonged, the first copy left behind (eval round 66: 6 runs, one of them failed).
  *
  * A path the plugin folder has no file at — or only `besides`, where moveRecord puts the file — is looked for from the
- * projects folder, where OpenClaw's file tools put a Skyrim agent's relative path. e4b gave moveRecord the path it had
+ * projects folder, where OpenClaw's file tools put a Skyrim agent's relative path. The model gave moveRecord the path it had
  * written, `Spells/StormBolt.yaml` as `from` and `to`, and was refused 11 times in 3 runs, none of which built (eval round 67).
  */
 export function projectsFile(projectsDir: string, paths: ProjectPaths, given: string, besides?: string): string {
@@ -354,7 +354,7 @@ export function recordFileList(paths: ProjectPaths): string {
 
 /**
  * The record files no build of the project reads — in its folder outside the plugin folder, or in no project — each with
- * its call, as a sentence for a refusal of a file not there; empty when there are none. Told only "No file", e4b made the
+ * its call, as a sentence for a refusal of a file not there; empty when there are none. Told only "No file", the model made the
  * same moveRecord call again, up to 7 times in a run (eval round 67).
  */
 export function outsideRecordCalls(projectsDir: string, paths: ProjectPaths): string {

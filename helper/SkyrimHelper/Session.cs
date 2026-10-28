@@ -182,12 +182,12 @@ public sealed class Session : IDisposable
                 .ThenBy(e => e.Name is { } name && word.IsMatch(name) ? 0 : 1)
                 .ThenBy(e => e.EditorId?.Contains(text.Replace(" ", ""), StringComparison.OrdinalIgnoreCase) == true ? 0 : 1)
                 // Then what the player can have: "sword" answered the Bound Sword first, NonPlayable and a bound weapon,
-                // and 10 of e4b's new swords of eval rounds 31–44 were copied from it so (round 44's sword #1 and #3).
+                // and 10 of the new swords of eval rounds 31–44 were copied from it so (round 44's sword #1 and #3).
                 .ThenBy(e => e.Unplayable ? 1 : 0)
                 // Then, with a plugin named, the records it adds before those it changes: put Skyrim.esm's first, the
-                // search answered Dawnguard's armor with the Falmer armor Dawnguard changes, which e4b gave as Dawnguard's
+                // search answered Dawnguard's armor with the Falmer armor Dawnguard changes, which the model gave as Dawnguard's
                 // (eval round 42's filter). Else Skyrim.esm's own, as a copy's example is chosen: among the NPCs named
-                // Nord, the Creation Club's dead one came first by its editor ID, and e4b copied it, twice (rounds 37, 41).
+                // Nord, the Creation Club's dead one came first by its editor ID, and the model copied it, twice (rounds 37, 41).
                 .ThenBy(e => plugin is not null ? e.FormKey.ModKey.FileName.String.Equals(plugin, StringComparison.OrdinalIgnoreCase) ? 0 : 1
                     : e.FormKey.ModKey == SkyrimMaster ? 0 : 1)
                 .ThenBy(e => e.EditorId, StringComparer.OrdinalIgnoreCase);
@@ -207,7 +207,7 @@ public sealed class Session : IDisposable
             answer["nextStep"] = "records takes exact FormIDs and editor IDs only; to search in-game names and parts of " +
                 $"editor IDs, send text instead: {{\"text\": \"{notFound[0]!.GetValue<string>().Replace("\"", "")}\"}}";
         }
-        // Maven's note searched as a MISC record found nothing, and e4b asked the user for its FormID (eval round 46's
+        // Maven's note searched as a MISC record found nothing, and the model asked the user for its FormID (eval round 46's
         // note+detailed #3; round 39's failed so too): what the search finds of other types, named with them.
         else if (all.Count == 0 && types is { Count: > 0 } && untyped.ToList() is { Count: > 0 } other)
         {
@@ -330,7 +330,7 @@ public sealed class Session : IDisposable
 
         var added = new JsonArray();
         var already = new JsonArray();
-        // A record named twice — e4b's ["012EB7:Skyrim.esm", "IronSword"] — is copied once, not reported in the project as well.
+        // A record named twice — the model's ["012EB7:Skyrim.esm", "IronSword"] — is copied once, not reported in the project as well.
         foreach (var formKey in requested.Select(raw => Resolve(raw)).Distinct())
         {
             if (ProjectFileFor(projectDir, formKey) is { } existing)
@@ -526,7 +526,7 @@ public sealed class Session : IDisposable
 
     /// <summary>
     /// The project's overrides that change nothing: each file reads, its link comments aside, as addPatch writes the
-    /// record from the load order without the project. e4b's "new note" was Maven's own, copied and built as it was
+    /// record from the load order without the project. The model's "new note" was Maven's own, copied and built as it was
     /// (eval round 45's note+detailed #1); 9 records of rounds 30–45 were copied so and built, untouched, in 8 runs, and 2
     /// of them failed — the 6 that passed each left the Iron Sword or a fire enchantment in the plugin beside the new sword.
     /// And a changed enchantment's copy no record of the project names (ProjectNotes.UnusedEnchantment).
@@ -535,7 +535,7 @@ public sealed class Session : IDisposable
     {
         var records = RecordFiles.FlatRecords(dir).Select(f => (f.Relative, f.Type, Text: File.ReadAllText(f.File))).ToList();
         var copies = records.Where(f => RecordFiles.Identity(f.Text).FormKey is { } key && key.ModKey != own).ToList();
-        // The project's new records: told the three ways out, e4b answered with its new sword and its new note built and
+        // The project's new records: told the three ways out, the model answered with its new sword and its new note built and
         // the copy each was made from left beside it (eval round 46's sword #4 and note+detailed #2) — named, the copy is left over.
         var made = records.Select(f => (f.Type, Identity: RecordFiles.Identity(f.Text)))
             .Where(f => f.Identity.EditorId is not null && (f.Identity.FormKey is not { } key || key.ModKey == own))
@@ -651,7 +651,7 @@ public sealed class Session : IDisposable
     }
 
     /// <param name="byName">
-    /// Whether an in-game name that one record alone has finds that record — for reading. e4b asked for "Note
+    /// Whether an in-game name that one record alone has finds that record — for reading. The model asked for "Note
     /// From Maven", was told its editor ID, and never read it (eval round 18). Copying keeps to exact names.
     /// </param>
     private FormKey Resolve(string raw, bool byName = false)

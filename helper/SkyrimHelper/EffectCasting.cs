@@ -93,7 +93,7 @@ public static class EffectCasting
                         $"{RecordFiles.Article(caster.Kind)} without them is cast ConstantEffect on Self");
                     continue;
                 }
-                // Or the game's effect in its place: told only to give both the same, e4b kept its own Storm Bolt effect,
+                // Or the game's effect in its place: told only to give both the same, the model kept its own Storm Bolt effect,
                 // wrote it field by field through four refusals, and built it with no school and no resistance (eval
                 // round 73's spell+detailed #3) — where 29 of its 30 other spell runs of rounds 71 and 73 named ShockDamageFFAimed.
                 if (ownEffect is not null)
@@ -110,7 +110,7 @@ public static class EffectCasting
                     : $"find an effect cast {caster.Cast} on {caster.Target} with findRecords (types [\"MGEF\"]) and readRecord"));
             }
         }
-        // A modifier that names no actor value changes nothing: e4b's Storm Bolt effect, its Archetype written over at last,
+        // A modifier that names no actor value changes nothing: the model's Storm Bolt effect, its Archetype written over at last,
         // built as a plain success (eval round 27).
         foreach (var effect in mod.MagicEffects.Where(m => m.FormKey.ModKey == mod.ModKey))
         {
@@ -135,7 +135,7 @@ public static class EffectCasting
     /// <summary>
     /// The project's new effects that damage Health and name no school or no resistance, as notes beside a build that
     /// succeeds: such an effect does its damage, but a spell of it belongs to no school — casting it trains no skill, and
-    /// no skill lowers its cost — and no resistance lowers it. e4b's Storm Bolt effect, written field by field through
+    /// no skill lowers its cost — and no resistance lowers it. The model's Storm Bolt effect, written field by field through
     /// four refusals, was built so and passed for a Destruction spell of shock damage (eval round 73's spell+detailed #3).
     /// Each note names the lines the game's effect most like it has, and that effect in its place.
     /// </summary>

@@ -2,7 +2,7 @@ namespace SkyrimHelper;
 
 /// <summary>
 /// The tool calls the helper's refusals and notes write out whole, for a model to make as written: the renamed copy's
-/// warning wrote its editRecord call, and e4b made it, 3 times of 3 (eval rounds 65–66). Paths are the plugin folder's,
+/// warning wrote its editRecord call, and the model made it, 3 times of 3 (eval rounds 65–66). Paths are the plugin folder's,
 /// with forward slashes: a backslash reached the model escaped once per layer of JSON (round 65).
 /// </summary>
 internal static class ToolCalls

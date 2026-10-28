@@ -61,7 +61,7 @@ export class ProjectsHandlers extends BaseHandler {
                         plugin: optionalString(args, 'plugin'),
                         light: optionalBoolean(args, 'light')
                     })),
-                    // At the moment records are about to be written: the instructions alone left 26b without
+                    // At the moment records are about to be written: the instructions alone left a model without
                     // the family's skill in three of nine authoring runs (eval round 12).
                     readFirst: `Before writing a record, read its family's skill with readSkill: ` +
                         `${FAMILY_SKILLS.map(family => `"${family.skill}" for ${family.covers}`).join('; ')}. ` +
@@ -126,7 +126,7 @@ export class ProjectsHandlers extends BaseHandler {
                     })).then(result => {
                         // Asked for a new sword "like the Iron Sword", a model patched the Iron Sword and renamed it:
                         // every Iron Sword in the game became its Flame Blade (eval probe 16). Said after every copied
-                        // file's text, it left e4b making its "new" sword or note this way in four of six misses
+                        // file's text, it left the model making its "new" sword or note this way in four of six misses
                         // (eval round 22): first now, naming the records, as a build's warnings went first (round 21).
                         // The copy was written empty while OpenClaw gave a model no tool to delete a file (round 26): deleteRecord now.
                         const copies = [
@@ -134,7 +134,7 @@ export class ProjectsHandlers extends BaseHandler {
                             ...result.alreadyInProject.map(record => record.formId)
                         ];
                         const one = copies.length === 1;
-                        // The copy's fields changed with the edit tool, its old text from memory: 32 of e4b's 82 such edits in runs
+                        // The copy's fields changed with the edit tool, its old text from memory: 32 of the 82 such edits in runs
                         // with addPatch of eval rounds 49–57 were refused, 3 of its 42 editRecord calls — and round 57's
                         // sword+detailed #5 ran out of turns on fifteen refused edits of addPatch's Iron Sword.
                         const first = result.added[0];
@@ -173,9 +173,9 @@ export class ProjectsHandlers extends BaseHandler {
                         idempotentHint: true,
                         openWorldHint: false
                     },
-                    // 95 of e4b's text edits were refused in eval rounds 40–47: old text from memory, indented otherwise
+                    // 95 of the text edits were refused in eval rounds 40–47: old text from memory, indented otherwise
                     // than the file, or made stale by a build's own changes (docs/adr/0008). `set` is a list of paths and
-                    // values, no object keyed by path: Ollama's gemma4 parser dropped calls with a dotted key (args.ts).
+                    // values, no object keyed by path: Ollama's tool-call parser dropped calls with a dotted key (args.ts).
                     description:
                         'Change fields of one record file of a project by their paths — no old text to match. `set` lists ' +
                         'each field\'s path and its value: [{"path": "BasicStats.Damage", "value": 12}, {"path": "Name", ' +
@@ -219,7 +219,7 @@ export class ProjectsHandlers extends BaseHandler {
                     }
                 },
                 onFailure: 'Failed to edit the record',
-                // A build refused, its field then set here, e4b answered "Build Status: Success" with no build since
+                // A build refused, its field then set here, the model answered "Build Status: Success" with no build since
                 // (eval round 61's npc+detailed #5): the plugin was the one before.
                 run: args => asRequestError(this.backend.editRecord({
                     project: requireString(args, 'project'),
@@ -232,7 +232,7 @@ export class ProjectsHandlers extends BaseHandler {
                 })))
             },
             // A file written where the build does not read it stayed there: OpenClaw gives a model no tool that moves or deletes
-            // a file, so e4b wrote it again where it belonged and left the first (eval round 66: 6 runs; the eval failed one on a
+            // a file, so the model wrote it again where it belonged and left the first (eval round 66: 6 runs; the eval failed one on a
             // copied escape in the copy left behind, another ended on a warning it could not act on). The build's answers write
             // these calls out, as the rename warning writes editRecord's.
             {
@@ -340,9 +340,9 @@ export class ProjectsHandlers extends BaseHandler {
                 },
                 onFailure: 'Failed to build the project',
                 run: async args => {
-                    // A refusal answered as a build: 10 of the 13 e4b runs of eval rounds 31–47 that ended on a refused build
+                    // A refusal answered as a build: 10 of the 13 runs of eval rounds 31–47 that ended on a refused build
                     // told the user the mod was built — most fixed the file after it and never built again. Said at both ends.
-                    // After 12 of the 29 refusals of rounds 40–50 that named corrections it had written, e4b's edits found
+                    // After 12 of the 29 refusals of rounds 40–50 that named corrections it had written, the model's edits found
                     // nothing — it made the build's moves itself, from the file as it had written it, and read it first once.
                     const { warnings, ...built } = await asRequestError(this.backend.buildProject(requireString(args, 'project'))
                         .catch((error: unknown) => {
@@ -354,7 +354,7 @@ export class ProjectsHandlers extends BaseHandler {
                                 ', then build again — only a build that answers success writes the plugin.';
                             throw error;
                         }));
-                    // Told what the build had moved, e4b made the moves itself — edits of the file as it had been, which
+                    // Told what the build had moved, the model made the moves itself — edits of the file as it had been, which
                     // found nothing — then wrote it anew without the FormKey line the build gave it (eval round 45's
                     // npc #3): 4 of the 209 builds with `corrected` in rounds 30–45 were followed so, and 2 of those runs failed.
                     const done = built.corrected?.length
@@ -362,7 +362,7 @@ export class ProjectsHandlers extends BaseHandler {
                             'changed no longer reads as it was written — read it before editing it again.'
                         : undefined;
                     if (!warnings?.length) return done ? { nextStep: `Built. ${done}`, ...built } : built;
-                    // A warning at the end of an answer that said success was passed by: five of e4b's eight misses
+                    // A warning at the end of an answer that said success was passed by: five of the eight misses
                     // in eval round 21 end on one, each a build that did what was not asked. Its exception, written
                     // "unless the user asked for it so", was read as "the user did not ask for a fix" in three runs of
                     // rounds 27–36, two of which failed (eval round 36): it names what may stay instead.

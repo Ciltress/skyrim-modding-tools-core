@@ -181,14 +181,14 @@ public static class RecordFiles
         (["EffectData"], ["Damage", "DamageAmount", "Strength"], "Magnitude", "damage is Magnitude"),
         // An item of Effects names its magic effect as BaseEffect; told "has no field Effect", a model kept it (eval probe 10).
         (["Effect"], ["Effect", "MagicEffect", "EffectID", "MGEF", "Base", "Spell", "EffectType", "Type"], "BaseEffect", "it is BaseEffect, naming the MagicEffect"),
-        // An enchantment's charge belongs to what carries it; told "delete it", e4b wrote it elsewhere in the enchantment (eval round 19).
+        // An enchantment's charge belongs to what carries it; told "delete it", the model wrote it elsewhere in the enchantment (eval round 19).
         (["ObjectEffect", "Effect", "EffectData"], ["Charge", "Charges", "ChargeAmount", "EnchantmentCharge"], null,
             "an enchantment's charge is the weapon's or armor's EnchantmentAmount, beside its ObjectEffect line"),
         // Told only "delete it", a model dropped the damage of its sword's enchantment (eval round 17).
         (["Effect"], ["Damage", "DamageAmount", "Strength"], null, "damage is Magnitude, under Data — beside Area and Duration"),
         (["Spell", "ObjectEffect", "Scroll"], ["Delivery"], "TargetType", "it is TargetType: Self, Touch, Aimed, TargetActor or TargetLocation"),
         (["Spell"], ["Cost", "MagickaCost"], "BaseCost", "it is BaseCost"),
-        // Told only where a school is, e4b took MagicSkill out of its magic effect and kept it in the spell (eval round 23).
+        // Told only where a school is, the model took MagicSkill out of its magic effect and kept it in the spell (eval round 23).
         (["Spell"], ["School", "MagicSkill", "Skill"], null, SpellSchool),
         (["Weapon"], ["Type", "WeaponType"], null, "a weapon's type is AnimationType, under Data — OneHandSword, TwoHandAxe, Bow…"),
         (["Npc"], ["Gender", "Sex", "Female"], null, "a female NPC has Female among the Flags under Configuration"),
@@ -207,7 +207,7 @@ public static class RecordFiles
 
     /// <summary>
     /// A magic effect's Data, answered by what it holds. Found by name, a Data was a condition's: "move it in each
-    /// item of Conditions" sent e4b away (eval round 24) — and again for a `Data: {}` holding nothing (round 51's
+    /// item of Conditions" sent the model away (eval round 24) — and again for a `Data: {}` holding nothing (round 51's
     /// spell+detailed #3). A strength — Magnitude, Area, Duration — or nothing goes in the Effects item of the spell;
     /// the magic effect's own fields, which xEdit shows under DATA (Flags, BaseCost…), at the margin, with the edit
     /// that puts them there.
@@ -326,7 +326,7 @@ public static class RecordFiles
     /// magic effect's <c>Type</c> is its Archetype's, not a sound's. Only the parts Mutagen makes for
     /// Skyrim are followed — a link's FormKey, a text's Value are no field a record is written with. Of two parts at one
     /// depth with the field, the one whose field takes the <paramref name="values"/> written: a weapon's Flags are
-    /// Data's and Critical's, and OnDeath is only Critical's — sent to Data, e4b ran out of turns (eval round 40's sword #2).
+    /// Data's and Critical's, and OnDeath is only Critical's — sent to Data, the model ran out of turns (eval round 40's sword #2).
     /// A field written with <paramref name="fields"/> below it goes only where most of them are its: an enchantment written
     /// after the Iron Sword was told to move the sword's Data — AnimationType, Speed, Reach — into each item of Effects
     /// (eval round 58's sword+detailed #5).
@@ -471,7 +471,7 @@ public static class RecordFiles
 
     /// <summary>
     /// The edit a "move it under X" is, X a part of the record, as words after it: told to move an NPC's Health
-    /// and Stamina under PlayerSkills, e4b and 12b indented them where they stood, under the field above them
+    /// and Stamina under PlayerSkills, two models indented them where they stood, under the field above them
     /// (eval round 22, probe 23). Empty for any other hint.
     /// </summary>
     private static string Moved(string text, string hint, IReadOnlyList<string> keys)
@@ -482,7 +482,7 @@ public static class RecordFiles
         var at = Regex.Match(text, $@"^{Regex.Escape(part)}:[ \t]*\r?$", RegexOptions.Multiline);
         if (!at.Success) return $": delete {them} at the margin, and write `{part}:` with {them} below, two spaces in";
         // The part has it already, with another value (the same is taken out by the build): moved, it would be there
-        // twice — e4b was told to move BasicStats' Value there, twice, and answered unbuilt (eval round 37).
+        // twice — the model was told to move BasicStats' Value there, twice, and answered unbuilt (eval round 37).
         var block = BlockOf(text, part);
         var had = keys.Select(k => Regex.Match(block, $@"^[ \t]+{Regex.Escape(k)}[ \t]*:.*$", RegexOptions.Multiline))
             .Where(m => m.Success).Select(m => $"`{m.Value.Trim()}`").ToList();
@@ -513,7 +513,7 @@ public static class RecordFiles
     /// What a weapon or armor of the project lacks that every official one carries itself: a weapon its
     /// Data (3,823 of 3,823 in the 80 official plugins); one with a Template, or an armor with a
     /// TemplateArmor, the template's own lines (3,258 of 3,258 weapons, 2,679 of 2,679 armors) — the
-    /// Creation Kit copies them in. 26b mirrored the enchanted EnchIronSwordFire01 by its Template, name,
+    /// Creation Kit copies them in. A model mirrored the enchanted EnchIronSwordFire01 by its Template, name,
     /// enchantment and damage alone, and built a sword without an animation (eval round 12). Checked with
     /// the links (RecordLinks), on a file that parses: first, it hid the refusal a file was written for.
     /// </summary>
@@ -558,7 +558,7 @@ public static class RecordFiles
 
     /// <summary>
     /// The project's new enchantments no other record names — by editor ID, or by the FormID a build wrote in, an
-    /// override's too — each with the weapons and armors that carry none (Carriers). e4b's Flame Blade carried its
+    /// override's too — each with the weapons and armors that carry none (Carriers). The model's Flame Blade carried its
     /// enchantment on a copy of IronSword (round 23).
     /// </summary>
     internal static List<(string Relative, string EditorId, List<Carrier> Carriers)> Unworn(
@@ -608,7 +608,7 @@ public static class RecordFiles
 
     /// <summary>
     /// A new enchantment no record names while the project has a weapon or armor that carries none — the one meant
-    /// to, most likely — refused with the lines to write there: built with a note saying so, e4b told the user the
+    /// to, most likely — refused with the lines to write there: built with a note saying so, the model told the user the
     /// mod was done, twice (eval round 27). With no such weapon or armor it is a note (ProjectNotes): an enchantment
     /// for another mod.
     /// </summary>
@@ -626,7 +626,7 @@ public static class RecordFiles
         var into = shown.Count == 1 ? copies ? "it" : shown[0].Name : "the one meant to carry it";
         var write = kinds.Count == 1 ? $"write {Lines(kinds[0])} in {into}" : $"write in {into} {Lines("Weapon")} for a weapon, {Lines("Armor")} for an armor";
         var kind = kinds.Count == 1 ? kinds[0].ToLowerInvariant() : "one";
-        // Where: told only "at the margin", e4b wrote them in place of Data's last line, `Stagger: 0.75`, inside Data and
+        // Where: told only "at the margin", the model wrote them in place of Data's last line, `Stagger: 0.75`, inside Data and
         // over the line (eval round 28). The EditorID line is at the margin and one of a kind, and the lines build there.
         var where = shown.Count == 1
             ? shown[0].EditorId is { } id ? $"on the lines right below `EditorID: {id}`, at the margin" : "at the margin"
@@ -786,7 +786,7 @@ public static class RecordFiles
             // A group of several kinds — Globals: GlobalFloat, GlobalShort… — names the kind in the file.
             var kind = KindIn(type, text);
             var known = FieldsOf(kind ?? type);
-            // A field written twice breaks the reader a check later: told only of the fields the type lacks, e4b moved
+            // A field written twice breaks the reader a check later: told only of the fields the type lacks, the model moved
             // those, was then told of DefaultOutfit written twice, and wrote the file anew each time, ten builds (eval probe 23).
             if (Twice(text, known) is { } twice) problems.Add($"{relative}: {twice}");
             foreach (var key in BlockFields.Matches(text).Select(m => m.Groups[1].Value).Where(known.Contains).Distinct())
@@ -806,10 +806,10 @@ public static class RecordFiles
         foreach (var (formKey, holders) in formKeys.Where(pair => pair.Value.Count > 1))
             problems.Add($"{string.Join(" and ", holders)} have the same FormKey {Session.FormKeyText(formKey)} — one file per record; " +
                 "a new record has no FormKey line, the build assigns one");
-        // One editor ID, two records: told of a warning in a file the build had just numbered and renamed, e4b wrote
+        // One editor ID, two records: told of a warning in a file the build had just numbered and renamed, the model wrote
         // the file again under its old name, and Hilda was built twice, a man and a woman (eval probe 23).
         // A numbered file written whole again lost the FormKey line the build gave it, but keeps the name the build gave it:
-        // told to empty the other, e4b rewrote the numbered one without the line, and was then told only to pick (eval round 28).
+        // told to empty the other, the model rewrote the numbered one without the line, and was then told only to pick (eval round 28).
         // A build no longer renames a file (eval round 30); a pull, and builds before that, name it the way Spriggit does.
         bool Numbered((string Relative, FormKey? Key) file) => file.Key is { } key ? key.ModKey == own
             : own is { } plugin && Regex.IsMatch(Path.GetFileName(file.Relative), $@" - [0-9A-Fa-f]{{6}}_{Regex.Escape(plugin.FileName)}\.yaml$", RegexOptions.IgnoreCase);
@@ -874,7 +874,7 @@ public static class RecordFiles
     /// For a new record of the project that no other record names, how to drop it — the deleteRecord call — as
     /// words before what is wrong with it; else nothing. A model
     /// wrote a magic effect of its own, then named a vanilla one in its spell, and the broken file it no
-    /// longer needed failed every build (probe 16). Said after the fields, e4b went back to the file it had
+    /// longer needed failed every build (probe 16). Said after the fields, the model went back to the file it had
     /// fixed instead (eval round 24).
     /// </summary>
     internal static string Droppable(Type type, string relative, string text, IEnumerable<(string Relative, string Text)> others, string pluginDir)
@@ -973,7 +973,7 @@ public static class RecordFiles
 
     /// <summary>
     /// Takes out a top-level line written again the same, which the reader refuses as a field written twice: the line
-    /// above says it already. e4b's note+detailed #5 (eval round 36) wrote VersionControl's line over the FormKey line
+    /// above says it already. The model's note+detailed #5 (eval round 36) wrote VersionControl's line over the FormKey line
     /// above it, was refused, and ran out of turns; five runs of rounds 23–33 were refused one and built again. Two
     /// values, or a field with lines below it, are left to the refusal (Twice).
     /// </summary>
@@ -1004,7 +1004,7 @@ public static class RecordFiles
     /// <summary>
     /// Deletes from a record file the fields of another record type, which its own type has nowhere, left in where the
     /// file was written after a record of that type: Flame Blade Burn, written after the Iron Sword, kept the sword's Model,
-    /// BasicStats, Critical and thirteen more beside its own Effects; told to delete them, e4b planned the edit, its turn
+    /// BasicStats, Critical and thirteen more beside its own Effects; told to delete them, the model planned the edit, its turn
     /// came back with no call, and the run failed (eval round 58's sword+detailed #5) — 9 of the 18 such refusals of
     /// rounds 40–58 were of a file so written, and two of those runs failed. Only fields the type has no other place for, two
     /// or more, all of one other record type, in a file with fields of its own type that one lacks: a file of the other
@@ -1084,7 +1084,7 @@ public static class RecordFiles
     }
 
     /// <summary>
-    /// Takes the project's own FormKey out of the files that share it, where no build gave it to one of them: e4b wrote
+    /// Takes the project's own FormKey out of the files that share it, where no build gave it to one of them: the model wrote
     /// 000800 into a new sword and its enchantment both (eval round 39's sword+detailed #5), and 4 of the 8 runs of
     /// rounds 23–39 refused two files of one FormKey failed. Where the last built plugin has the record, the file of
     /// its editor ID keeps it; where none of them is that record, or that plugin cannot be read, the refusal stays.
@@ -1136,7 +1136,7 @@ public static class RecordFiles
     /// <summary>
     /// Gives the project's own record written with no EditorID its file's name, where that is an editor ID no other
     /// record has: the author's own name for it. With none, no link of the project and no tool like SPID can name the
-    /// record, and the build's notes call it "a Spell" — e4b wrote 13 spells so in eval rounds 25–36. A file name that
+    /// record, and the build's notes call it "a Spell" — the model wrote 13 spells so in eval rounds 25–36. A file name that
     /// is no editor ID, one the load order or the project has, or one two such files share, is left to a note (ProjectNotes).
     /// </summary>
     public static List<(string File, string Change)> NameFromFiles(string pluginDir, RecordIndex index)
@@ -1166,7 +1166,7 @@ public static class RecordFiles
     /// <summary>
     /// Gives a new record — no FormKey line — written with the editor ID of a record of the load order an editor ID of its
     /// own, from its in-game name: every link by the one it had would name it, and the game would have two records of one
-    /// editor ID. Refused, e4b half-did the build's own advice for addPatch's renamed copy — took out its FormKey line,
+    /// editor ID. Refused, the model half-did the build's own advice for addPatch's renamed copy — took out its FormKey line,
     /// kept its EditorID — then named it so and wrote a second file of that name, and answered unbuilt (eval round 54's
     /// note+detailed #3); in rounds 31 and 51 a magic effect so written took its spell's link from Skyrim.esm's. A link
     /// by the old editor ID names the load order's record again.
@@ -1255,7 +1255,7 @@ public static class RecordFiles
 
     /// <summary>
     /// The lines that write a field of bytes otherwise than as hex — `Unused2: 0` for the Iron Sword's Critical `Unused2:
-    /// 0x000000` — for the reader's "not a valid hex string", which names no line: e4b's sword was so refused three builds
+    /// 0x000000` — for the reader's "not a valid hex string", which names no line: the model's sword was so refused three builds
     /// running (eval round 43's sword #3), and round 58's sword+detailed #5 wrote Critical's Unused2 so. Empty where none is.
     /// </summary>
     private static string BytesWritten(string[] lines, Type type)

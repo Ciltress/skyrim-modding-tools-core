@@ -10,7 +10,7 @@ namespace SkyrimHelper;
 /// Moves a field written where its record's type has none to the one place it goes, before the files are checked:
 /// a part's field written at the margin, under that part — an NPC's level, under Configuration — and a field written
 /// a level too deep, up below the part it was written in; a magic effect's strength, into the item of Effects that
-/// names it. Refused, these were what failed runs had met most: 13 of the 27 runs e4b failed in eval rounds 23–32 had
+/// names it. Refused, these were what failed runs had met most: 13 of the 27 runs that failed in eval rounds 23–32 had
 /// been told to move a field, and moved it back and forth — an NPC's level into Level, then to the margin, build after
 /// build (round 32). A field with no one place — one "in each item of Effects", or one the place has already — is left
 /// to the refusal.
@@ -43,7 +43,7 @@ public static class MisplacedFields
     /// <summary>
     /// A magic effect's `Data` of Magnitude, Area and Duration, which a MagicEffect has nowhere, taken to the item of
     /// Effects that names it, where one record of the project has one such item: taken out where the item has the
-    /// same already, moved in where it has none. 6 of the 8 runs e4b was refused one in eval rounds 30–43 had written
+    /// same already, moved in where it has none. 6 of the 8 runs the model was refused one in eval rounds 30–43 had written
     /// the spell's strength in its new effect as well, 40 in both, and 4 of those failed — round 43's spell+detailed
     /// #5 took it out, wrote it back, and answered unbuilt. Named by no item or several, or by one whose Data
     /// differs, it is left to the refusal.
@@ -112,7 +112,7 @@ public static class MisplacedFields
 
     /// <summary>
     /// Fields of the record written indented below a field at the margin that has a value of its own, where the YAML
-    /// reader stops — taken to the margin. e4b's edits put Flame Blade's FirstPersonModel, EquipSound and UnequipSound two
+    /// reader stops — taken to the margin. The model's edits put Flame Blade's FirstPersonModel, EquipSound and UnequipSound two
     /// spaces in below `ImpactDataSet: WPNzBlade1HandImpactSet`, and it ran out of turns on the break (eval round 47's
     /// sword #5). Lines that are no field of the record at the margin — a part's, its own line lost — are left to the refusal.
     /// </summary>
@@ -192,7 +192,7 @@ public static class MisplacedFields
     /// <summary>
     /// A part written as one value where the part has a field of its own name — an NPC's `- Item: 04F78D:Skyrim.esm`
     /// with `Count: 1` beside it, where an item is `Item:` with `Item:` and `Count:` below — written as that field, a
-    /// level deeper, with the one-line fields beside it that the part has. Refused, both runs of e4b's that wrote an
+    /// level deeper, with the one-line fields beside it that the part has. Refused, both runs that wrote an
     /// NPC's items so answered without building again (eval rounds 36 and 38). Walked as Up walks a record.
     /// </summary>
     private static Moved? Wrap(List<string> lines, YamlMappingNode mapping, Type type, string path)
@@ -252,7 +252,7 @@ public static class MisplacedFields
 
     /// <summary>
     /// Fields at the margin moved under the part they belong to, below its last line and as deep as its fields — or,
-    /// where the record has no such part, under one written in their place. Told to move them, e4b put them inside the
+    /// where the record has no such part, under one written in their place. Told to move them, the model put them inside the
     /// field above, or wrote them back at the margin (eval rounds 22 and 32).
     /// </summary>
     private static Moved? Under(List<string> lines, YamlMappingNode root, Type type, string part, List<YamlScalarNode> keys)
@@ -267,7 +267,7 @@ public static class MisplacedFields
             if (value is YamlMappingNode { Style: not MappingStyle.Flow } mapping)
             {
                 // A field the part has already would be written twice: which one is meant is the model's to say — but
-                // the same one value says nothing more at the margin. e4b's sword+detailed #2 set BasicStats' Value to
+                // the same one value says nothing more at the margin. The model's sword+detailed #2 set BasicStats' Value to
                 // the 150 it had written at the margin, was told to move it, and answered unbuilt (eval round 37).
                 if (mapping.Children.FirstOrDefault(c => c.Key is YamlScalarNode { Value: { } n } && names.Contains(n)) is { Key: YamlScalarNode inPart } had)
                 {
@@ -334,7 +334,7 @@ public static class MisplacedFields
             var property = type.GetProperties(Public).Where(p => p.Name == key).OrderBy(p => p.DeclaringType == type ? 0 : 1).FirstOrDefault();
             if (property is null) continue;
             var propertyType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
-            // A field of the part written inside one of its texts: e4b's edit wrote `ObjectEffect: …` where Description's
+            // A field of the part written inside one of its texts: the model's edit wrote `ObjectEffect: …` where Description's
             // Value was, the reader kept the text's own lines and skipped it without a word, and Flame Blade built with no
             // enchantment (eval round 53's sword #2). A text holds its TargetLanguage and its Value, or Values.
             if (typeof(ITranslatedStringGetter).IsAssignableFrom(propertyType) && value is YamlMappingNode { Style: not MappingStyle.Flow } words)

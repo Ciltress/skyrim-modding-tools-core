@@ -38,7 +38,7 @@ public static class RecordLinks
     /// <summary>
     /// Finds the FormKey of the record each editor-ID link names, and answers what each named; <paramref name="rewrites"/>
     /// holds each file with them written in, for the reader's copy. The project's files keep the editor IDs: written
-    /// into them as FormIDs, e4b's next edits of those lines found nothing, 12 times in eval rounds 40–47 — Storm Bolt's
+    /// into them as FormIDs, the model's next edits of those lines found nothing, 12 times in eval rounds 40–47 — Storm Bolt's
     /// `MenuDisplayObject: MAGINVShockSpellArt` in seven. A link to the load order keeps to its pin (LinkPins).
     /// Throws when a link names no record of a type its field takes.
     /// </summary>
@@ -86,7 +86,7 @@ public static class RecordLinks
                 {
                     // None and Null are the reader's no record: DefaultOutfit: None was refused as missing (eval probe 8).
                     if (linked.IsNull) return;
-                    // A FormID written from memory under the comment of the record meant: e4b's Hilda had
+                    // A FormID written from memory under the comment of the record meant: the model's Hilda had
                     // `Race: 02C65A:Skyrim.esm  # NordRace`, RedguardRaceChild's, and built a plain success (eval round 22).
                     if (CommentedOther(text, value, linked, takes, own, index) is { } other)
                     {
@@ -123,7 +123,7 @@ public static class RecordLinks
                         (numbered.Groups["plugin"].Success ? numbered.Groups["plugin"].Value : "Skyrim.esm for a record of Skyrim.esm"));
                     return;
                 }
-                // A file where a record goes: told "a link is a FormID … or the editor ID of a Static", e4b wrote
+                // A file where a record goes: told "a link is a FormID … or the editor ID of a Static", the model wrote
                 // `FirstPersonModel: 1stPersonWeapons\FlameBlade.nif` three times (eval probe 20).
                 if (FilePath.IsMatch(raw))
                 {
@@ -218,7 +218,7 @@ public static class RecordLinks
     /// <summary>
     /// Where and why a record file's YAML breaks, with the line it breaks on — named before the build
     /// numbers the file and renames it. A line that fell out of a block text is said as such: told to
-    /// give every line a `Field: value`, e4b rewrote a note five times with its paragraphs still at the
+    /// give every line a `Field: value`, the model rewrote a note five times with its paragraphs still at the
     /// margin, where they end the text and are read as fields (eval round 16).
     /// </summary>
     private static string YamlBreak(string text, YamlException e, Type type)
@@ -228,7 +228,7 @@ public static class RecordLinks
         var where = at >= 1 && at <= lines.Length ? $"line {at}, `{lines[at - 1].Trim()}`" : $"line {at}";
         if (TextLeft(lines, at) is { } block)
         {
-            // Told only to indent the text, e4b indented the fields after it too, then put both back at the margin,
+            // Told only to indent the text, the model indented the fields after it too, then put both back at the margin,
             // four times (eval round 20): what stays as it is, said with what moves.
             var fields = RecordFiles.FieldsOf(type);
             var next = Array.FindIndex(lines, at, line => MarginField.Match(line) is { Success: true } m && fields.Contains(m.Groups["key"].Value));
@@ -239,7 +239,7 @@ public static class RecordLinks
                 (next >= 0 ? $"; the record's fields after the text, from `{lines[next].Trim()}` (line {next + 1}) on, stay at the margin" : "");
         }
         var reason = Regex.Replace(e.Message, @"^\(Line:[^)]*\)( - \(Line:[^)]*\))?:\s*", "").Trim();
-        // Told to remove a FormKey line, e4b wrote the line below it over it, and was then sent to fix its indentation
+        // Told to remove a FormKey line, the model wrote the line below it over it, and was then sent to fix its indentation
         // while it looked for the FormKey line again, until its turns ran out (eval round 21): both lines, named.
         if (Regex.Match(reason, @"^Duplicate key (?<key>[A-Za-z0-9_]+)") is { Success: true } duplicate && at >= 2 && at <= lines.Length)
         {
@@ -284,7 +284,7 @@ public static class RecordLinks
 
     /// <summary>
     /// A field of the record indented into a block text above it, where it is a line of the text and the
-    /// record silently has no such field. Told to indent a text's lines, e4b indented the fields below it
+    /// record silently has no such field. Told to indent a text's lines, the model indented the fields below it
     /// too, and a note built with its sound and keywords as words of its text (eval probe 18). Only a field
     /// the record has nowhere else counts: a letter's own "Name: …" line is text.
     /// </summary>
@@ -399,7 +399,7 @@ public static class RecordLinks
                         movedUp.Add(key);
                         continue;
                     }
-                    // A magic effect's Data, below one of its parts: found by name, the Data was a condition's, and e4b
+                    // A magic effect's Data, below one of its parts: found by name, the Data was a condition's, and the model
                     // moved Storm Bolt's magnitude into its Conditions (eval round 39's spell+detailed #4), as at the
                     // margin in round 24.
                     problem($"{path} has no field {key}" + (RecordFiles.LevelHint(type, key) is { } level ? $" ({level})"
@@ -459,7 +459,7 @@ public static class RecordLinks
                     problem($"{field} is {one} — {expected}");
                 else if (value is YamlSequenceNode many && propertyType.IsDefined(typeof(FlagsAttribute), false))
                 {
-                    // A magic effect's flags in a spell's, named where they go in one problem: e4b copied ShockDamageFFAimed's
+                    // A magic effect's flags in a spell's, named where they go in one problem: the model copied ShockDamageFFAimed's
                     // Hostile, Detrimental and NoArea into its spell in 3 runs of eval rounds 35–43, all failed; told only the
                     // flags a spell takes, round 43's spell+detailed #5 took them out of its magic effect too.
                     var effects = new List<string>();
@@ -486,7 +486,7 @@ public static class RecordLinks
                     && typeof(Loqui.ILoquiObject).IsAssignableFrom(propertyType))
                     problem(PartAsValue(field, propertyType, one, record));
                 // Left empty, a part the record cannot be without reads as none, and the reader failed with "Object reference not
-                // set to an instance of an object": e4b's Hilda, her `Level:` emptied once the build had moved CalcMinLevel and
+                // set to an instance of an object": the model's Hilda, her `Level:` emptied once the build had moved CalcMinLevel and
                 // CalcMaxLevel out of it up to Configuration (eval round 45's npc+detailed #3, two builds; round 35's #1).
                 else if (value is YamlScalarNode { Value: null or "" or "~" or "null" or "Null" or "NULL" }
                     && typeof(Loqui.ILoquiObject).IsAssignableFrom(propertyType)
@@ -500,11 +500,11 @@ public static class RecordLinks
             var holds = movedUp.Count > 1
                 ? $"; {path} holds only {string.Join(", ", type.GetProperties(BindingFlags.Public | BindingFlags.Instance).Select(p => p.Name))}"
                 : "";
-            // Told "to the top level", e4b wrote the lines back with their two spaces in front, under Data again,
+            // Told "to the top level", the model wrote the lines back with their two spaces in front, under Data again,
             // until it gave up (eval round 19): the lines themselves, and how deep they go.
             var lines = string.Join(", ", movedUp.Select(key => mapping.Children[new YamlScalarNode(key)] is YamlScalarNode { Value: { Length: > 0 } one }
                 ? $"`{key}: {one}`" : $"`{key}:` with its lines"));
-            // Told to move them up, e4b deleted both lines and built a sword its enchantment never reached (eval
+            // Told to move them up, the model deleted both lines and built a sword its enchantment never reached (eval
             // round 22): that they stay, said in so many words, and the move as the edit it is.
             var single = movedUp.Count == 1;
             var keys = mapping.Children.Keys.OfType<YamlScalarNode>().Select(key => key.Value).ToList();
@@ -522,7 +522,7 @@ public static class RecordLinks
 
     /// <summary>
     /// The value of an NPC's AIData the official plugins' named NPCs have most often, by its type: told only the
-    /// names, e4b took the second, Aggressive, for an NPC the task gave no aggression (eval round 26). Counted over
+    /// names, the model took the second, Aggressive, for an NPC the task gave no aggression (eval round 26). Counted over
     /// the 3,186 named NPCs the 80 official plugins define (2026-10-21).
     /// </summary>
     private static readonly Dictionary<Type, (string Value, string Of)> Usual = new()
@@ -601,7 +601,7 @@ public static class RecordLinks
     /// with that one's editor ID, null for no record — or null when the comment names that one, or one of a type
     /// the field does not take: such a comment is a word, and says nothing of the link. A comment written as an
     /// editor ID that no record has is answered with <c>Meant</c> null: `ObjectEffect: 091AE7:Skyrim.esm  #
-    /// FireDamageEnchantment` built Mehrunes' Razor's enchantment into e4b's Flame Blade (eval round 49's sword #2) —
+    /// FireDamageEnchantment` built Mehrunes' Razor's enchantment into the model's Flame Blade (eval round 49's sword #2) —
     /// 15 such lines in rounds 32–49, each a made-up name, three of them built so.
     /// </summary>
     private static (string? Linked, Target? Meant, string Named)? CommentedOther(string text, YamlScalarNode value, FormKey linked, Type takes,
@@ -628,14 +628,14 @@ public static class RecordLinks
 
     /// <summary>
     /// What a part of the record written as one value takes: `Archetype: ShockDamage`, which the reader answered
-    /// with "Expected 'Scalar', got 'MappingEnd'" and a line and column, twice to e4b (eval round 27). A value one of
+    /// with "Expected 'Scalar', got 'MappingEnd'" and a line and column, twice to the model (eval round 27). A value one of
     /// the part's fields takes is given as that field's line. One written empty (<paramref name="one"/> null) is said so.
     /// </summary>
     private static string PartAsValue(string field, Type type, string? one, Type record)
     {
         var leaf = field[(field.LastIndexOf('.') + 1)..];
         if (one is null && type.Name == "ANpcLevel") return $"{field} is empty — {RecordFiles.NpcLevel}";
-        // `Level: 1` under Configuration: told only of the kinds and readRecord, e4b moved the lines the build had moved
+        // `Level: 1` under Configuration: told only of the kinds and readRecord, the model moved the lines the build had moved
         // already, five edits refused (eval round 50's npc #5). The level's lines, its number in them.
         if (type.Name == "ANpcLevel")
             return $"{field} is written as one value, {one} — " + (int.TryParse(one, out var level)
@@ -688,7 +688,7 @@ public static class RecordLinks
 
     /// <summary>
     /// A new record — no FormKey line yet — written with the editor ID of a record of the load order: every link by it
-    /// names the new one, and the game has two records of one editor ID. e4b wrote `EditorID: ShockDamageFFAimed` with a
+    /// names the new one, and the game has two records of one editor ID. The model wrote `EditorID: ShockDamageFFAimed` with a
     /// few lines to change Skyrim.esm's, and its spell then cast that empty effect, refused until the turns ran out
     /// (eval rounds 31 and 51, spell+detailed #3) — 4 runs of rounds 30–51 wrote one. The checks give such a record an editor
     /// ID of its own first (RecordFiles.RenameTakenEditorIds); this is for one they found no name for.

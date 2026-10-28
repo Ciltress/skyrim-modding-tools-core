@@ -54,7 +54,7 @@ describe('the instructions', () => {
     });
 
     it('say when a mod is delivered, beside the line that asks for it, and nowhere else', () => {
-        // Rounds 23–33: 10 of e4b's 30 failed runs answered as done after a refusal or an edit, with no build after it.
+        // Rounds 23–33: 10 of the 30 failed runs answered as done after a refusal or an edit, with no build after it.
         // The user, 2026-10-22: a model that likes to overthink should be told not to, and to deliver the task.
         expect(text).toContain('Don\'t overthink: decide, then deliver the task. A mod is delivered when the buildProject after ' +
             'your last change answers `success`: after each edit or refusal, build again, and answer with what that build said.');
@@ -62,7 +62,7 @@ describe('the instructions', () => {
     });
 
     it('show editRecord with its arguments, and send a copy\'s changes to it', () => {
-        // Round 62: editRecord named nowhere in the agent's prompt, e4b guessed its name; "Edit the copy" read as the
+        // Round 62: editRecord named nowhere in the agent's prompt, the model guessed its name; "Edit the copy" read as the
         // file tool edit. The example lacked the required project until it moved here and the test above checked it.
         expect(text).toContain('- editRecord changes a record file\'s fields by their paths, with no old text to match: ' +
             '`{"project": "FlameBlade", "record": "Weapons/FlameBlade.yaml", "set": [{"path": "BasicStats.Damage", "value": 12}]}`.');

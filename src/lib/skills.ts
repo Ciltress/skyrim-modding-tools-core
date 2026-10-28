@@ -37,7 +37,7 @@ export interface Skill {
 /**
  * The skills of the record families, each with the records it covers: named where a model is about to
  * write records — the server's instructions and newProject's answer. Every authoring run that read its
- * family's skill passed in eval round 12; 26b skipped it in three of nine.
+ * family's skill passed in eval round 12; a model skipped it in three of nine.
  */
 export const FAMILY_SKILLS = [
     { skill: 'skyrim-modding-items-and-crafting', covers: 'weapons, armor, other items, their enchantments and recipes' },

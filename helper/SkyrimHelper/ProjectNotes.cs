@@ -56,29 +56,29 @@ public static class ProjectNotes
         var notes = new List<string>();
         foreach (var (relative, type, text) in newRecords)
         {
-            // Left with no EditorID, its file's name no editor ID to give it (RecordFiles.NameFromFiles): 13 of e4b's
+            // Left with no EditorID, its file's name no editor ID to give it (RecordFiles.NameFromFiles): 13 of the
             // spells in eval rounds 25–36 were built so, nameless to links and to tools like SPID.
             // One written with a space, its letters another record's name, is no editor ID either — told "has no
-            // EditorID" of `Maven's Warning`, e4b wrote the same line three builds long (eval round 39).
+            // EditorID" of `Maven's Warning`, the model wrote the same line three builds long (eval round 39).
             if (RecordFiles.Identity(text).EditorId is null)
                 notes.Add(RecordFiles.EditorIdWritten(text) is { } written
                     ? $"{relative}: `EditorID: {written}` is no editor ID, which is letters, digits and underscores alone, so no link of " +
                         "the project and no tool like SPID can name it — write one no other record has"
                     : $"{relative}: {RecordFiles.Article(type.Name)} has no EditorID, so no link of the project and no tool like " +
                         "SPID can name it — write a line `EditorID:` with a name no other record has, at the margin below any FormKey line");
-            // A new spell or NPC with no Name builds, and the game shows it with none: e4b's Storm Bolt and Hilda did,
-            // and each run ended there (round 22's e4b probe). An NPC with a template may take its name from it.
+            // A new spell or NPC with no Name builds, and the game shows it with none: the model's Storm Bolt and Hilda did,
+            // and each run ended there (round 22's probe). An NPC with a template may take its name from it.
             if (Named.Contains(type.Name) && !NameLine.IsMatch(text) && !(type == typeof(Npc) && TemplateLine.IsMatch(text)))
                 notes.Add($"{relative}: {RecordFiles.Identity(text).EditorId ?? RecordFiles.Article(type.Name)} has no Name, so the game " +
                     "shows it with none — in the inventory, the magic menu, under the crosshair. A name is two lines indented below `Name:`, " +
                     "`TargetLanguage: English` and `Value:` with the name; a record the player never sees can go without");
-            // A spell or enchantment with no Effects builds, and does nothing: e4b's Storm Bolt, the magic effect's fields
+            // A spell or enchantment with no Effects builds, and does nothing: the model's Storm Bolt, the magic effect's fields
             // it was told to delete deleted with its Effects, and Flame Blade's enchantment of a name alone (eval round 37).
             if (Effected.Contains(type.Name) && !EffectsLine.IsMatch(text))
                 notes.Add($"{relative}: {RecordFiles.Identity(text).EditorId ?? RecordFiles.Article(type.Name)} has no Effects, so it " +
                     "does nothing — each item of `Effects` names a magic effect as `- BaseEffect: X`, with its `Data` (Magnitude, Area, " +
                     "Duration) below, as readRecord shows a vanilla one");
-            // A Destruction effect that changes Health, Magicka or Stamina without the Detrimental flag restores it: e4b's
+            // A Destruction effect that changes Health, Magicka or Stamina without the Detrimental flag restores it: the model's
             // Storm Bolt was a name, a school and an actor value, and healed its target (eval round 40's spell+detailed #3).
             // 170 of the load order's 181 such effects are flagged so; the rest are a quest's fakes and Dragonborn's spiders.
             if (type == typeof(MagicEffect) && DestructionLine.IsMatch(text) && !DetrimentalFlag.IsMatch(text)
@@ -87,7 +87,7 @@ public static class ProjectNotes
                     "without the Detrimental flag, so it restores it — a damage effect has `- Detrimental` and `- Hostile` among its Flags, " +
                     "as readRecord {\"record\": \"ShockDamageFFAimed\"} shows; one meant to restore can go without");
             // A new weapon flagged as a conjured one: copied from the Bound Sword, the search's first sword in rounds 30–44,
-            // 10 of e4b's new swords of eval rounds 31–44 were NonPlayable bound weapons, and 9 of those runs passed the
+            // 10 of the new swords of eval rounds 31–44 were NonPlayable bound weapons, and 9 of those runs passed the
             // eval's checks. One the project's magic effect conjures keeps them; NonPlayable alone is an NPC's that the
             // player cannot loot, as 20 weapons of the Creation Club's are.
             if (type == typeof(Weapon) && BoundFlags.Matches(text).Select(m => m.Groups[1].Value).Distinct().ToList() is { } bound
@@ -110,13 +110,13 @@ public static class ProjectNotes
                     notes.Add($"{relative}: {name} is a woman (Female) who speaks with {voice.EditorID}, a man's voice — " +
                         "the npcs skill names each race's woman's voice");
             }
-            // With no weapon or armor in the project, said so: e4b wrote Flame Blade's enchantment alone, and answered that
+            // With no weapon or armor in the project, said so: the model wrote Flame Blade's enchantment alone, and answered that
             // the sword was written and carried it (eval round 46's sword #5).
             if (unworn.Contains(relative) && RecordFiles.Identity(text).EditorId is { } enchantment)
                 notes.Add($"{relative}: no record of the project names {enchantment}, so it does nothing — a weapon or armor " +
                     $"carries it as `ObjectEffect: {enchantment}`" + (records.Any(r => r.Type == typeof(Weapon) || r.Type == typeof(Armor))
                         ? "" : ", and the project has none: write the one meant to carry it, in its Weapons or Armors folder"));
-            // So too a new magic effect: e4b's Storm Bolt was a magic effect alone, built and told the user as the spell
+            // So too a new magic effect: the model's Storm Bolt was a magic effect alone, built and told the user as the spell
             // (eval round 34, spell+detailed #3).
             if (type == typeof(MagicEffect) && RecordFiles.Identity(text).EditorId is { } effect && !RecordFiles.NamedElsewhere(records, relative, text))
                 notes.Add($"{relative}: no record of the project names {effect}, so the magic effect does nothing — a spell casts it " +
@@ -127,7 +127,7 @@ public static class ProjectNotes
             .SelectMany(r => RecordFiles.Identity(r.Text) is var (key, id) ? new[] { id, key is { } k ? Session.FormKeyText(k) : null } : [])
             .OfType<string>().ToHashSet(StringComparer.OrdinalIgnoreCase);
         // A record copied whole and renamed, its FormKey and EditorID kept, builds as a change to that record, not as
-        // a new one beside it: e4b's "new note" was Maven's own, renamed (eval probe 19). A patch renames now and then.
+        // a new one beside it: the model's "new note" was Maven's own, renamed (eval probe 19). A patch renames now and then.
         var project = ToolCalls.ProjectOf(pluginDir);
         var editorIds = records.Select(r => RecordFiles.Identity(r.Text).EditorId).OfType<string>().ToHashSet(StringComparer.OrdinalIgnoreCase);
         bool Free(string name) => !editorIds.Contains(name) && !index.ByEditorId.ContainsKey(name);
@@ -135,10 +135,10 @@ public static class ProjectNotes
         {
             if (RecordFiles.Identity(text).FormKey is not { } key || key.ModKey == own) continue;
             if (!index.ByFormKey.TryGetValue(key, out var entry) || entry.Name is not { Length: > 0 } was) continue;
-            // So too one left its name and given the project's new enchantment: e4b's Flame Blade was IronSword's copy,
+            // So too one left its name and given the project's new enchantment: the model's Flame Blade was IronSword's copy,
             // its stats and enchantment changed and its name not, built with no word and told the user as a new sword
             // (eval round 43's sword+detailed #5) — 6 of the 11 sword runs of rounds 30–43 that made no new sword copied IronSword.
-            // Its name too: told only of the FormKey line and an EditorID, e4b did both, and its new sword was an Iron Sword
+            // Its name too: told only of the FormKey line and an EditorID, the model did both, and its new sword was an Iron Sword
             // (eval round 59's sword+detailed #3).
             if (NameIn(text) is not { } now || now == was)
             {
@@ -151,8 +151,8 @@ public static class ProjectNotes
                 continue;
             }
             // What it does in the game, and the one edit that makes the copy a new record: told the game shows that
-            // record renamed wherever it is, e4b told the user its sword was "successfully overridden and renamed" (round 23).
-            // Told what it does, e4b reasoned that the copy still gave the user a sword called Flame Blade (round 25):
+            // record renamed wherever it is, the model told the user its sword was "successfully overridden and renamed" (round 23).
+            // Told what it does, the model reasoned that the copy still gave the user a sword called Flame Blade (round 25):
             // a new one asked for is not this copy, said so.
             var becomes = type.Name switch
             {
@@ -162,7 +162,7 @@ public static class ProjectNotes
                 "Npc" => $"{was} becomes '{now}' wherever the game places them",
                 _ => $"the game shows that record as '{now}' wherever it is"
             };
-            // That edit as the one call it is: told to delete the FormKey line and give the copy an EditorID of its own, e4b
+            // That edit as the one call it is: told to delete the FormKey line and give the copy an EditorID of its own, the model
             // judged it hard — "This requires knowing the *original* content of the record … patching over it is difficult" —
             // kept the renamed Prisoner and answered (eval round 64's npc #3, the fifth such copy kept in rounds 50–64).
             var id = RecordFiles.EditorIdFromName(now, Free) ?? RecordFiles.Numbered($"{entry.EditorId}New", Free);
@@ -178,7 +178,7 @@ public static class ProjectNotes
 
     /// <summary>
     /// A changed copy of the load order's enchantment that no record of the project names: every weapon and armor of the
-    /// game's that carries it carries what the file changes, and the project's own carry none of it. e4b's Flame Blade
+    /// game's that carries it carries what the file changes, and the project's own carry none of it. The model's Flame Blade
     /// copied EnchWeaponFireDamage01, set its charge to 500 and never gave it to the sword, which built with no word against
     /// it, a sword with no enchantment (eval round 65's sword #2). A renamed copy has the rename's note (Of), an unchanged
     /// one the build's own (Session.OverrideNotes).
@@ -215,7 +215,7 @@ public static class ProjectNotes
 
 
     /// <summary>
-    /// A new record, unless the copied one itself was to change. "If a new one was asked for" left it to the model: e4b
+    /// A new record, unless the copied one itself was to change. "If a new one was asked for" left it to the model, which
     /// judged a new mod named FlameBlade to be the request, kept the renamed Iron Sword and answered (eval round 62's
     /// sword+detailed #4) — 4 runs of rounds 50–62 kept such a copy and failed.
     /// </summary>

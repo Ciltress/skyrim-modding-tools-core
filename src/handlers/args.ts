@@ -73,9 +73,9 @@ export function optionalString(args: any, name: string): string | undefined {
 
 /**
  * Fields and their values, as a list of `{path, value}` items — a field's path is never a key of the call: Ollama's
- * gemma4 parser dropped e4b's calls with a dotted key and words for its value, `{"Name.Value": "Mavens Warning"}`, 22
+ * tool-call parser dropped the model's calls with a dotted key and words for its value, `{"Name.Value": "Mavens Warning"}`, 22
  * times in 56 asked for, and 1 of 20 it wrote itself (probes after eval round 55); in six of the seven turns that ended
- * a run of rounds 49–55 with no call, e4b had planned `Name.Value`. As a list of paths and values: 0 of 40.
+ * a run of rounds 49–55 with no call, the model had planned `Name.Value`. As a list of paths and values: 0 of 40.
  * An object of paths and values, as editRecord took first, is read too, and either as JSON text, as small models send
  * an argument now and then.
  */

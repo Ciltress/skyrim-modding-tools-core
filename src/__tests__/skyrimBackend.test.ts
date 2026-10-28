@@ -560,7 +560,7 @@ describe('the Skyrim backend', () => {
         await backend.newProject({ project: 'FlameBlade' });
         await expect(backend.buildProject('FlameBlade')).rejects.toThrow(/has no records.*Weapons/);
 
-        // Each named with the moveRecord call that puts it where it belongs: told only where, e4b wrote the file there again
+        // Each named with the moveRecord call that puts it where it belongs: told only where, the model wrote the file there again
         // and the first copy stayed (eval round 66).
         const misplaced = path.join(fixture.projects, 'FlameBlade', 'Weapons', 'FlameBlade.yaml');
         write(misplaced, 'EditorID: FlameBlade\n');
@@ -603,7 +603,7 @@ describe('the Skyrim backend', () => {
     });
 
     it('warns of a copy outside every project of a file its plugin folder has, with the call that deletes it', async () => {
-        // Refused for it, e4b wrote the file again in its project, and the first copy stayed: the eval found an escape
+        // Refused for it, the model wrote the file again in its project, and the first copy stayed: the eval found an escape
         // copied into it (eval round 66's sword+detailed #3).
         const { backend, fixture } = makeBackend();
         await newProjectWithRecord(backend, fixture.projects, 'FlameBlade');
@@ -670,7 +670,7 @@ describe('the Skyrim backend', () => {
     });
 
     it('takes a path the plugin folder has no file at from the projects folder, and names the files outside it when none is there', async () => {
-        // e4b gave moveRecord the path it had written from the projects folder — the same as `to`, or with plugin/ before
+        // The model gave moveRecord the path it had written from the projects folder — the same as `to`, or with plugin/ before
         // it — and was refused 11 times in 3 runs, told only "No file" (eval round 67).
         const { backend, fixture } = makeBackend();
         await backend.newProject({ project: 'StormBolt' });
@@ -701,7 +701,7 @@ describe('the Skyrim backend', () => {
     });
 
     it('refuses editRecord for a file outside the plugin folder with the call that moves it there', async () => {
-        // Told "none yet; write one first", e4b wrote the NPC outside the project again (eval round 67's npc+detailed #3).
+        // Told "none yet; write one first", the model wrote the NPC outside the project again (eval round 67's npc+detailed #3).
         const { backend, fixture, helperAnswers } = makeBackend();
         await backend.newProject({ project: 'HildaTheNord' });
         const notFound = 'No record file \'Npcs/Hilda.yaml\' in the project — its record files: none yet; write one first.';
@@ -847,7 +847,7 @@ describe('the Skyrim backend', () => {
     });
 
     it('answers a build with warnings with a status of its own, the warnings and what to do first', async () => {
-        // Behind "status":"success", a warning at the answer's end was passed by: five of e4b's eight misses in
+        // Behind "status":"success", a warning at the answer's end was passed by: five of the eight misses in
         // eval round 21 end on a build that warned, each an override renamed as if it were a new record.
         const { backend, fixture, helperAnswers } = makeBackend();
         await newProjectWithRecord(backend, fixture.projects, 'MavenNote');
@@ -874,7 +874,7 @@ describe('the Skyrim backend', () => {
     });
 
     it('says first that each change in `corrected` is done, so the file is read before it is edited again', async () => {
-        // Told what the build had moved, e4b made the moves itself and wrote its NPC anew without its FormKey (eval round 45).
+        // Told what the build had moved, the model made the moves itself and wrote its NPC anew without its FormKey (eval round 45).
         const { backend, fixture, helperAnswers } = makeBackend();
         await newProjectWithRecord(backend, fixture.projects, 'HildaTheNord');
         const change = 'moved `Level` under `Configuration` — a Npc has it there, not at the margin';
@@ -893,7 +893,7 @@ describe('the Skyrim backend', () => {
     });
 
     it('says at both ends of a refusal that nothing was built, and that a build again is what writes the plugin', async () => {
-        // 10 of the 13 e4b runs of eval rounds 31–47 that ended on a refused build told the user the mod was built.
+        // 10 of the 13 runs of eval rounds 31–47 that ended on a refused build told the user the mod was built.
         const { backend, fixture, helperAnswers } = makeBackend();
         await newProjectWithRecord(backend, fixture.projects, 'FlameBlade');
         helperAnswers.checkRecords = () => {
@@ -906,7 +906,7 @@ describe('the Skyrim backend', () => {
     });
 
     it('says in a refusal that names corrections that they are made, and that a corrected file is read before it is edited', async () => {
-        // After 12 of the 29 refusals of eval rounds 40–50 that named corrections, e4b's edits redid them and found nothing.
+        // After 12 of the 29 refusals of eval rounds 40–50 that named corrections, the model's edits redid them and found nothing.
         const { backend, fixture, helperAnswers } = makeBackend();
         await newProjectWithRecord(backend, fixture.projects, 'FlameBlade');
         helperAnswers.checkRecords = () => {
@@ -1005,7 +1005,7 @@ describe('the Skyrim backend', () => {
     });
 
     it('refuses a record file holding a markdown fence, naming the file and the line, before any is checked or numbered', async () => {
-        // Answers that show a file in a fence had e4b write the fence into the record, and the YAML reader's
+        // Answers that show a file in a fence had the model write the fence into the record, and the YAML reader's
         // message sent it to fix the indentation (eval round 15's probes).
         const { backend, fixture, calls } = makeBackend();
         await backend.newProject({ project: 'HildaTheNord' });
@@ -1023,7 +1023,7 @@ describe('the Skyrim backend', () => {
 
     it('writes lines copied with a JSON answer\'s escapes as they are to be, says which, and builds', async () => {
         // Copied out of a JSON string as it reads, a model path kept its doubled backslashes; the build took it,
-        // and the mod would ship a path the game cannot find (e4b, eval rounds 12–15). Refused with the lines as they
+        // and the mod would ship a path the game cannot find (eval rounds 12–15). Refused with the lines as they
         // were to be, three of the seven runs that met the refusal failed after it (rounds 24–31): the build writes them.
         const { backend, fixture, calls } = makeBackend();
         await backend.newProject({ project: 'FlameBlade' });
@@ -1077,7 +1077,7 @@ describe('the Skyrim backend', () => {
     });
 
     it('undoes only the copied escapes, and leaves YAML\'s own inside double quotes', async () => {
-        // Told only "line 12 (two backslashes)", e4b edited another line, built again and gave up (eval probe 17).
+        // Told only "line 12 (two backslashes)", the model edited another line, built again and gave up (eval probe 17).
         const { backend, fixture } = makeBackend();
         await backend.newProject({ project: 'FlameBlade' });
         const sword = path.join(fixture.projects, 'FlameBlade', 'plugin', 'Weapons', 'FlameBlade.yaml');
@@ -1099,7 +1099,7 @@ describe('the Skyrim backend', () => {
     });
 
     it('writes a text\'s line breaks copied as \\n as the lines they were', async () => {
-        // e4b copied a note's text out of readRecord's answer as one line, its breaks as `\\n` (eval round 18).
+        // The model copied a note's text out of readRecord's answer as one line, its breaks as `\\n` (eval round 18).
         const { backend, fixture } = makeBackend();
         await backend.newProject({ project: 'MavenNote' });
         const note = path.join(fixture.projects, 'MavenNote', 'plugin', 'Books', 'MavenWarning.yaml');
@@ -1121,7 +1121,7 @@ describe('the Skyrim backend', () => {
     });
 
     it('takes a backslash at a line\'s end for what a \\n left, and writes the line without it at its indentation', async () => {
-        // 12b wrote `Value: >-\`, which broke the YAML, and a text whose every line ended in a backslash; refused
+        // A model wrote `Value: >-\`, which broke the YAML, and a text whose every line ended in a backslash; refused
         // for its quotes, the line it was given back kept the backslash (eval round 21).
         const { backend, fixture } = makeBackend();
         await backend.newProject({ project: 'MavenNote' });

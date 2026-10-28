@@ -10,7 +10,7 @@ namespace SkyrimHelper;
 
 /// <summary>
 /// Changes fields of one record file by their paths — `Data.Damage`, `Effects[0].Data.Magnitude` — with no text to match:
-/// each field's lines changed in place, the rest of the file as it was, its comments included. 95 of e4b's edits were
+/// each field's lines changed in place, the rest of the file as it was, its comments included. 95 of the edits were
 /// refused in eval rounds 40–47: the old text written from memory, indented otherwise than the file, or made stale by a
 /// build. Set by its path, a field needs none of that (docs/adr/0008).
 /// </summary>
@@ -35,7 +35,7 @@ public static class RecordEdits
         foreach (var path in (remove ?? []).Select(r => r?.GetValue<string>() ?? ""))
         {
             // A field the file has, as sent, goes whatever its type has: told by the build to delete `Unique`, which an
-            // NPC has nowhere, e4b sent it to `remove`, and the call was refused for the field the type lacks (eval round
+            // NPC has nowhere, the model sent it to `remove`, and the call was refused for the field the type lacks (eval round
             // 69's npc+detailed #3).
             var sent = Parse(path);
             if (FirstUnknown(type, sent).At >= 0 && At(text, sent) is not null)
@@ -106,7 +106,7 @@ public static class RecordEdits
     /// field of the part above, sent below one of that part's fields — Configuration.Level.CalcMinLevel is
     /// Configuration.CalcMinLevel — and a field the top level lacks, of the one part RecordFiles names — an NPC's Level
     /// is Configuration's, a weapon's Damage BasicStats'. Sent Level.CalcMinLevel and told an NPC's level is "three lines
-    /// under Configuration", e4b sent Configuration.Level.CalcMinLevel, then the level whole with a brace too many,
+    /// under Configuration", the model sent Configuration.Level.CalcMinLevel, then the level whole with a brace too many,
     /// which Ollama dropped, and the run ended (eval round 60's npc+detailed #3).
     /// </summary>
     private static List<Step> Place(Type record, List<Step> sent)
@@ -152,7 +152,7 @@ public static class RecordEdits
             var where = i == 0 ? RecordFiles.Article(record.Name) : string.Join('.', steps.Take(i).Select(s => s.Index is { } n ? $"{s.Key}[{n}]" : s.Key));
             if (step.Key == "MutagenObjectType") { types.Add(typeof(string)); break; }
             // A text as the file writes it — `Name:`, then `TargetLanguage: English` and `Value: Iron Sword` — not as
-            // Mutagen holds it: `Name.Value` was refused e4b for no field Value, "its fields: String, StringsKey" (eval round 49).
+            // Mutagen holds it: `Name.Value` was refused for no field Value, "its fields: String, StringsKey" (eval round 49).
             if (Translated(current))
             {
                 if (step.Key is "Value" or "TargetLanguage" && i == steps.Count - 1) { types.Add(typeof(string)); break; }
@@ -190,13 +190,13 @@ public static class RecordEdits
 
     /// <summary>
     /// The item type of a list field, a flags field's its names, as the file writes them — `Flags:`, `- Female` below it.
-    /// Told "TemplateFlags is no list" for TemplateFlags[5], e4b edited the file by hand and broke its YAML twice (eval
+    /// Told "TemplateFlags is no list" for TemplateFlags[5], the model edited the file by hand and broke its YAML twice (eval
     /// round 61's npc #1).
     /// </summary>
     private static Type? Items(Type type) =>
         type.IsEnum && type.IsDefined(typeof(FlagsAttribute), false) ? type : RecordLinks.ElementType(type);
 
-    /// <summary>An NPC's level in paths: told it is "three lines under Configuration", as a file is, e4b sent Configuration.Level.CalcMinLevel (eval round 60).</summary>
+    /// <summary>An NPC's level in paths: told it is "three lines under Configuration", as a file is, the model sent Configuration.Level.CalcMinLevel (eval round 60).</summary>
     private const string NpcLevel = "an NPC's level is Configuration.Level, {\"MutagenObjectType\": \"PcLevelMult\", \"LevelMult\": 1}, " +
         "with Configuration.CalcMinLevel and Configuration.CalcMaxLevel — the level follows the player's between those two; " +
         "or, for a fixed level, Configuration.Level alone, {\"MutagenObjectType\": \"NpcLevel\", \"Level\": 10}";
@@ -206,7 +206,7 @@ public static class RecordEdits
     /// <summary>
     /// One entry of `set`. An object for a part the file has sets the fields it names and keeps the others, as a JSON
     /// merge patch does: {"BasicStats": {"Damage": 12}}, written whole, took the Iron Sword's Value and Weight with it
-    /// (e4b, eval round 49's patch #1). One naming another kind of the part is written whole. A text's Value is the text.
+    /// (eval round 49's patch #1). One naming another kind of the part is written whole. A text's Value is the text.
     /// </summary>
     private static string SetPath(string text, Type type, string path, JsonNode? value, List<string> changes)
     {
@@ -238,7 +238,7 @@ public static class RecordEdits
         if (steps.Count > 1 && steps[^1] is { Key: "Value", Index: null } && Translated(types[^2]) && value is JsonValue)
             return Set(text, steps.SkipLast(1).ToList(), types.SkipLast(1).ToList(), value, label, changes);
         // A list of names sent as a text: "- AutoCalcStats\n- Unique\n- Female", its line ends written `\n`, was set as one
-        // text, which the build refused, then "AutoCalcStats\nUnique\nFemale", and e4b answered as built (eval round 61's
+        // text, which the build refused, then "AutoCalcStats\nUnique\nFemale", and the model answered as built (eval round 61's
         // npc+detailed #5).
         if (steps[^1].Index is null && value is JsonValue words && words.TryGetValue<string>(out var said)
             && Items(types[^1]) is { } item && (item.IsEnum || RecordLinks.LinkTarget(item) is not null))
@@ -271,10 +271,10 @@ public static class RecordEdits
 
     /// <summary>
     /// A part's fields sent as the text a file writes them in — `{MutagenObjectType: NpcLevel, Level: 5}`, as the build's
-    /// refusal shows an NPC's level — as those fields, for a field that takes fields: set as that text, e4b's level was
+    /// refusal shows an NPC's level — as those fields, for a field that takes fields: set as that text, the model's level was
     /// refused five builds long (eval round 65's npc #1). Null for a text that reads as no mapping.
     ///
-    /// A text — Name, Description — takes its words, braces and all, except its own two fields: e4b sent a Name as
+    /// A text — Name, Description — takes its words, braces and all, except its own two fields: the model sent a Name as
     /// `{"TargetLanguage": "English", "Value": "Hilda"}`, and the NPC was called that in game (eval round 68's
     /// npc+detailed #3). `{Hilda}` stays the words.
     /// </summary>

@@ -228,7 +228,7 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
             ...(request.set ? { set: request.set } : {}),
             ...(request.remove ? { remove: request.remove } : {})
         }).catch((error: unknown) => {
-            // Refused for a file written outside the project — "none yet; write one first" — e4b wrote it outside again
+            // Refused for a file written outside the project — "none yet; write one first" — the model wrote it outside again
             // (eval round 67's npc+detailed #3): the files outside the plugin folder first, each with its call.
             if (!(error instanceof HelperError) || error.code !== 'notFound') throw error;
             const outside = outsideRecordCalls(this.engine.projectsDir, paths);
@@ -303,7 +303,7 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
         // A build of nothing succeeded, and small models took it for done (eval round 9): name what is
         // missing, and the record files no build would read.
         const strays = strayRecordFiles(paths);
-        // Told where each belonged, e4b wrote it there again and left the first copy behind (eval round 66): one call moves it,
+        // Told where each belonged, the model wrote it there again and left the first copy behind (eval round 66): one call moves it,
         // or deletes it where the plugin folder has its file already.
         const where = (file: string) => placeCall(this.engine.projectsDir, paths, file);
         const files = recordFiles(paths.plugin).length;
@@ -383,7 +383,7 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
         if (copies.length > 0) {
             warnings.push(`${copies.length} record file(s) the build does not read were not built: ` +
                 `${copies.map(({ file, copy }) => `${file}, whose record ${copy} holds`).join('; ')}. The build reads a record ` +
-                // e4b took this for a note on its FormKey line and answered with the copy in Notes/ (eval round 66's note #5).
+                // The model took this for a note on its FormKey line and answered with the copy in Notes/ (eval round 66's note #5).
                 `only from a .yaml file directly in its group's folder — delete each copy: ` +
                 `${copies.map(({ file }) => deleteCall(paths, file)).join('; ')}.`);
         }
