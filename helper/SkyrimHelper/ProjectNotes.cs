@@ -112,15 +112,14 @@ public static class ProjectNotes
                 if (womansVoice && !woman)
                     notes.Add($"{relative}: {name} speaks with {voice.EditorID}, a woman's voice, but has no Female among Configuration.Flags, " +
                         "so the game makes this NPC a man — a woman has `- Female` there" + (ConfigurationFlags(text) is { } flags
-                            ? $"; one call lists it beside the flags it has: editRecord {{\"project\": {Quoted(ProjectOf(pluginDir))}, " +
-                                $"\"record\": {Quoted(relative.Replace('\\', '/'))}, \"set\": [{{\"path\": \"Configuration.Flags\", " +
-                                $"\"value\": [{string.Join(", ", flags.Append("Female").Select(Quoted))}]}}]}}"
+                            ? "; one call lists it beside the flags it has, and builds again: " + ToolCalls.Edit(ProjectOf(pluginDir), relative,
+                                $"{{\"path\": \"Configuration.Flags\", \"value\": [{string.Join(", ", flags.Append("Female").Select(Quoted))}]}}", build: true)
                             : ""));
                 else if (woman && !womansVoice && voice.EditorID?.StartsWith("Male", StringComparison.Ordinal) == true)
                     notes.Add($"{relative}: {name} is a woman (Female) who speaks with {voice.EditorID}, a man's voice — " +
                         (WomansVoice(text, index, cache) is { } hers
-                            ? $"one call gives her {hers.Race}'s own woman's voice: editRecord {{\"project\": {Quoted(ProjectOf(pluginDir))}, " +
-                                $"\"record\": {Quoted(relative.Replace('\\', '/'))}, \"set\": [{{\"path\": \"Voice\", \"value\": {Quoted(hers.Voice)}}}]}}" +
+                            ? $"one call gives her {hers.Race}'s own woman's voice, and builds again: " + ToolCalls.Edit(ProjectOf(pluginDir), relative,
+                                $"{{\"path\": \"Voice\", \"value\": {Quoted(hers.Voice)}}}", build: true) +
                                 "; the npcs skill names the other women's voices of each race"
                             : "the npcs skill names each race's woman's voice"));
             }
@@ -181,11 +180,10 @@ public static class ProjectNotes
             // kept the renamed Prisoner and answered (eval round 64's npc #3, the fifth such copy kept in rounds 50–64).
             var id = RecordFiles.EditorIdFromName(now, Free) ?? RecordFiles.Numbered($"{entry.EditorId}New", Free);
             editorIds.Add(id);
-            var call = $"editRecord {{\"project\": {Quoted(project)}, \"record\": {Quoted(relative)}, " +
-                $"\"set\": [{{\"path\": \"EditorID\", \"value\": {Quoted(id)}}}], \"remove\": [\"FormKey\"]}}";
+            var call = ToolCalls.Edit(project, relative, $"{{\"path\": \"EditorID\", \"value\": {Quoted(id)}}}", "\"FormKey\"", build: true);
             notes.Add($"{relative}: overrides {entry.EditorId} of {key.ModKey.FileName} and renames it from '{was}' to '{now}': {becomes}, " +
-                $"with all this file changes. {Unless(was)} — one call does it: {call}, which deletes this file's FormKey line and " +
-                $"gives it an EditorID of its own; build again, and it builds as a new record while {was} stays as it is");
+                $"with all this file changes. {Unless(was)} — one call does it: {call}, which deletes this file's FormKey line, " +
+                $"gives it an EditorID of its own and builds again — a new record, while {was} stays as it is");
         }
         return notes;
     }
@@ -210,21 +208,21 @@ public static class ProjectNotes
         var editorIds = records.Select(r => RecordFiles.Identity(r.Text).EditorId).OfType<string>().ToHashSet(StringComparer.OrdinalIgnoreCase);
         var id = RecordFiles.Numbered(original + Regex.Replace(own.Name, "[^A-Za-z0-9]", ""),
             candidate => !editorIds.Contains(candidate) && !index.ByEditorId.ContainsKey(candidate));
-        var made = $"editRecord {{\"project\": {Quoted(project)}, \"record\": {Quoted(relative)}, " +
-            $"\"set\": [{{\"path\": \"EditorID\", \"value\": {Quoted(id)}}}], \"remove\": [\"FormKey\"]}}";
-        // Where it goes, as the build's refusal of a new enchantment no record names writes it (RecordFiles.UnwornProblem).
+        var made = ToolCalls.Edit(project, relative, $"{{\"path\": \"EditorID\", \"value\": {Quoted(id)}}}", "\"FormKey\"");
+        // Where it goes, as the build's refusal of a new enchantment no record names writes it (RecordFiles.UnwornProblem). The
+        // last call builds: built after the first alone, the new enchantment no record names is refused.
         var give = RecordFiles.Carriers(records, own, text) switch
         {
-            [var one] => $"then give it to {one.Name}: editRecord {{\"project\": {Quoted(project)}, \"record\": {Quoted(one.Relative)}, " +
-                $"\"set\": [{{\"path\": \"ObjectEffect\", \"value\": {Quoted(id)}}}" +
-                (one.Type == "Weapon" ? ", {\"path\": \"EnchantmentAmount\", \"value\": 500}]}" : "]}"),
+            [var one] => $"then give it to {one.Name}, and build again: " + ToolCalls.Edit(project, one.Relative,
+                $"{{\"path\": \"ObjectEffect\", \"value\": {Quoted(id)}}}" +
+                (one.Type == "Weapon" ? ", {\"path\": \"EnchantmentAmount\", \"value\": 500}" : ""), build: true),
             [_, ..] and var carriers => $"then give it to the one meant to carry it of {string.Join(", ", carriers.Take(4).Select(c => c.Name))}, " +
-                $"which carry none: `ObjectEffect: {id}`, with `EnchantmentAmount: 500` on a weapon",
-            _ => $"then give it to the weapon or armor meant to carry it: `ObjectEffect: {id}`, with `EnchantmentAmount: 500` on a weapon"
+                $"which carry none: `ObjectEffect: {id}`, with `EnchantmentAmount: 500` on a weapon; build again",
+            _ => $"then give it to the weapon or armor meant to carry it: `ObjectEffect: {id}`, with `EnchantmentAmount: 500` on a weapon; build again"
         };
         return $"{relative}: overrides {original} of {key.ModKey.FileName} ('{was}'), and no record of the project names it: every weapon " +
             $"and armor in the game that carries {was} carries all this file changes, and the project's own carry none of it. " +
-            $"{Unless(was)} — one call does it: {made} — {give}; build again";
+            $"{Unless(was)} — one call does it: {made} — {give}";
     }
 
 

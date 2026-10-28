@@ -174,9 +174,9 @@ public static class EffectCasting
             string write;
             if (set.Count > 0 && relative is not null)
                 write = $"one call writes {(set.Count == 1 ? "it" : "both")}, as {Shown(game!.Value.Effect)}, the effect of {Shown(game.Value.Example)}, " +
-                    $"{RecordFiles.Article(caster.Kind)} like {spell}, has {(set.Count == 1 ? "it" : "them")}: editRecord {{\"project\": " +
-                    $"{ToolCalls.Quoted(ToolCalls.ProjectOf(pluginDir))}, \"record\": {ToolCalls.Quoted(relative.Replace('\\', '/'))}, \"set\": [" +
-                    string.Join(", ", set.Select(s => $"{{\"path\": \"{s.Item1}\", \"value\": \"{s.Item2}\"}}")) + "]}";
+                    $"{RecordFiles.Article(caster.Kind)} like {spell}, has {(set.Count == 1 ? "it" : "them")}, and builds again: " +
+                    ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative,
+                        string.Join(", ", set.Select(s => $"{{\"path\": \"{s.Item1}\", \"value\": \"{s.Item2}\"}}")), build: true);
             else
                 write = "write " + string.Join(" and ", set.Select(s => $"`{s.Item1}: {s.Item2}`")) + " at the margin";
             if (school && gameSchool is null)

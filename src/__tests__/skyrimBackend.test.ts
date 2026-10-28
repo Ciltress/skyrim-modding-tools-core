@@ -892,6 +892,48 @@ describe('the Skyrim backend', () => {
         expect((await answer()).nextStep).toMatch(/^Built, with a warning: fix what it says .* just what it names\. Each change in `corrected` is done:/);
     });
 
+    it('builds after an editRecord sent with `build`, and answers that build with the change — or its refusal, the change made', async () => {
+        // Told by the rename warning to make its call and build again, the model made the call and answered with no build
+        // since, twice in eval round 75: the warnings write their calls with `build`.
+        const { backend, fixture, helperAnswers } = makeBackend();
+        await newProjectWithRecord(backend, fixture.projects, 'FlameBlade');
+        const file = 'Weapons/FlameBladeSword - 000800_FlameBlade.esp.yaml';
+        const full = path.join(fixture.projects, 'FlameBlade', 'plugin', ...file.split('/'));
+        const changed = ['set EditorID: IronSword → FlameBlade', 'removed FormKey'];
+        helperAnswers.editRecord = () => ({ file, changed, text: 'EditorID: FlameBlade\n' });
+        const handler = createHandlers(backend as unknown as AppBackend, CORE_PRODUCT).find(h => h.getTools().some(t => t.name === 'editRecord'))!;
+        const edit = async (more: object) => JSON.parse((await handler.handle('editRecord', {
+            project: 'FlameBlade', record: file, set: [{ path: 'EditorID', value: 'FlameBlade' }], remove: ['FormKey'], ...more
+        })).content[0].text);
+
+        const built = await edit({ build: true });
+
+        expect(Object.keys(built).slice(0, 2)).toEqual(['status', 'nextStep']);
+        expect(built).toMatchObject({
+            status: 'success', nextStep: 'Changed and built: the plugin has this change.', records: 1, edited: { file: full, changed }
+        });
+        expect(built.edited).not.toHaveProperty('text');
+        expect(fs.existsSync(built.output)).toBe(true);
+        // Sent as text, as small models send an argument now and then.
+        expect((await edit({ build: 'true' })).edited).toEqual({ file: full, changed });
+
+        helperAnswers.checkRecords = () => ({ records: 1, leftOut: [], notes: ['a note'] });
+        const warned = await edit({ build: true });
+        expect(Object.keys(warned).slice(0, 3)).toEqual(['status', 'warnings', 'nextStep']);
+        expect(warned).toMatchObject({ status: 'built_with_warnings', nextStep: expect.stringMatching(/^Built, with a warning: /), edited: { changed } });
+
+        helperAnswers.checkRecords = () => {
+            throw new HelperError('badRecord', '1 field(s) cannot be built as written: Weapons/FlameBlade.yaml: Damage is high.');
+        };
+        await expect(edit({ build: true })).rejects.toThrow(new RegExp(`^Changed ${escape(full)}: set EditorID: IronSword → FlameBlade; ` +
+            'removed FormKey\\. Not built: 1 field\\(s\\) cannot be built as written: .* then build again — only a build that answers success writes the plugin\\.$'));
+
+        // Without it, the change alone: the file's text, and the build named as the next step.
+        expect(await edit({})).toMatchObject({
+            status: 'success', nextStep: expect.stringMatching(/^Run buildProject next/), file: full, text: 'EditorID: FlameBlade\n'
+        });
+    });
+
     it('says at both ends of a refusal that nothing was built, and that a build again is what writes the plugin', async () => {
         // 10 of the 13 runs of eval rounds 31–47 that ended on a refused build told the user the mod was built.
         const { backend, fixture, helperAnswers } = makeBackend();

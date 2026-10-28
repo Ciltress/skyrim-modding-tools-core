@@ -21,4 +21,14 @@ internal static class ToolCalls
     /// <summary>deleteRecord: a record file of the plugin folder.</summary>
     public static string Delete(string pluginDir, string record) =>
         $"deleteRecord {{\"project\": {Quoted(ProjectOf(pluginDir))}, \"record\": {Quoted(record.Replace('\\', '/'))}}}";
+
+    /// <summary>
+    /// editRecord: fields of a record file, `set` as its items' JSON — `{"path": "Voice", "value": "FemaleNord"}` — and
+    /// `remove` as its paths' JSON. With `build`, the call builds the project after the change and answers that build: told
+    /// to make the rename warning's call and build again, the model made the call and answered with no build since, twice
+    /// in eval round 75 — so a warning whose fix is one call writes it with the build.
+    /// </summary>
+    public static string Edit(string project, string record, string set, string? remove = null, bool build = false) =>
+        $"editRecord {{\"project\": {Quoted(project)}, \"record\": {Quoted(record.Replace('\\', '/'))}, \"set\": [{set}]" +
+        (remove is null ? "" : $", \"remove\": [{remove}]") + (build ? ", \"build\": true" : "") + "}";
 }

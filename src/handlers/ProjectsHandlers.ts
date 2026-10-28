@@ -1,5 +1,6 @@
 import { BaseHandler } from './BaseHandler.js';
 import type { ToolSpec } from './BaseHandler.js';
+import type { BuildResult } from '../backend/index.js';
 import { asRequestError, optionalBoolean, optionalFieldValues, optionalString, optionalStringList, recordRef, requireString } from './args.js';
 import { ToolError, ToolErrorCode } from './errors.js';
 import { FAMILY_SKILLS } from '../lib/skills.js';
@@ -184,7 +185,8 @@ export class ProjectsHandlers extends BaseHandler {
                         'object sets the fields it names inside that part and keeps its others, as {"path": "BasicStats", ' +
                         '"value": {"Damage": 12}} does. `remove` takes paths to delete, any the file has: ["Critical", "Effects[1]"]. Changes ' +
                         'only those lines, refuses a field the record\'s type does not have, and answers the file\'s new text. ' +
-                        'Then run buildProject.',
+                        'Then run buildProject — or send `"build": true`, and this call builds the project after the change and ' +
+                        'answers that build, as buildProject does.',
                     inputSchema: {
                         type: 'object',
                         properties: {
@@ -213,6 +215,10 @@ export class ProjectsHandlers extends BaseHandler {
                                 type: 'array',
                                 items: { type: 'string', description: 'A field\'s path, like "Critical" or "Effects[1]".' },
                                 description: 'Paths of fields, or of a list\'s items, to delete.'
+                            },
+                            build: {
+                                type: 'boolean',
+                                description: 'true: build the project right after the change, and answer that build as buildProject does.'
                             }
                         },
                         required: ['project', 'record']
@@ -220,16 +226,29 @@ export class ProjectsHandlers extends BaseHandler {
                 },
                 onFailure: 'Failed to edit the record',
                 // A build refused, its field then set here, the model answered "Build Status: Success" with no build since
-                // (eval round 61's npc+detailed #5): the plugin was the one before.
-                run: args => asRequestError(this.backend.editRecord({
-                    project: requireString(args, 'project'),
-                    record: requireString(args, 'record', 'The record file, like "Weapons/FlameBlade.yaml", or its EditorID.'),
-                    set: optionalFieldValues(args, 'set', '[{"path": "BasicStats.Damage", "value": 12}]'),
-                    remove: optionalStringList(args, 'remove', '["Critical"]')
-                }).then(result => ({
-                    nextStep: 'Run buildProject next — the plugin has this change only once a build answers success.',
-                    ...result
-                })))
+                // (eval round 61's npc+detailed #5): the plugin was the one before. Told by the rename warning to make its
+                // call and build again, the model made the call and answered with no build since, twice in eval round 75:
+                // with `build`, the change and the build are one call, and the warnings write theirs so.
+                run: async args => {
+                    const project = requireString(args, 'project');
+                    const build = optionalBoolean(args, 'build');
+                    const edited = await asRequestError(this.backend.editRecord({
+                        project,
+                        record: requireString(args, 'record', 'The record file, like "Weapons/FlameBlade.yaml", or its EditorID.'),
+                        set: optionalFieldValues(args, 'set', '[{"path": "BasicStats.Damage", "value": 12}]'),
+                        remove: optionalStringList(args, 'remove', '["Critical"]')
+                    }));
+                    if (!build) return { nextStep: 'Run buildProject next — the plugin has this change only once a build answers success.', ...edited };
+                    // Without the file's text: the build may change the file again, and its answer says how.
+                    const { text: _text, ...change } = edited;
+                    const built = await this.build(project).catch((error: unknown) => {
+                        if (error instanceof Error) error.message = `Changed ${change.file}: ${change.changed.join('; ')}. ${error.message}`;
+                        throw error;
+                    });
+                    return built.nextStep
+                        ? { ...built, edited: change }
+                        : { nextStep: 'Changed and built: the plugin has this change.', ...built, edited: change };
+                }
             },
             // A file written where the build does not read it stayed there: OpenClaw gives a model no tool that moves or deletes
             // a file, so the model wrote it again where it belonged and left the first (eval round 66: 6 runs; the eval failed one on a
@@ -339,43 +358,7 @@ export class ProjectsHandlers extends BaseHandler {
                     inputSchema: { type: 'object', properties: { project: PROJECT }, required: ['project'] }
                 },
                 onFailure: 'Failed to build the project',
-                run: async args => {
-                    // A refusal answered as a build: 10 of the 13 runs of eval rounds 31–47 that ended on a refused build
-                    // told the user the mod was built — most fixed the file after it and never built again. Said at both ends.
-                    // After 12 of the 29 refusals of rounds 40–50 that named corrections it had written, the model's edits found
-                    // nothing — it made the build's moves itself, from the file as it had written it, and read it first once.
-                    const { warnings, ...built } = await asRequestError(this.backend.buildProject(requireString(args, 'project'))
-                        .catch((error: unknown) => {
-                            if (error instanceof Error) error.message = `Not built: ${error.message.replace(/\.?\s*$/, '.')} ` +
-                                (error.message.includes('Corrected in the files already')
-                                    ? 'The corrections are made: redo none of them, and read a corrected file before editing it — it ' +
-                                        'no longer reads as you wrote it. Fix what else this names'
-                                    : 'Fix what this names') +
-                                ', then build again — only a build that answers success writes the plugin.';
-                            throw error;
-                        }));
-                    // Told what the build had moved, the model made the moves itself — edits of the file as it had been, which
-                    // found nothing — then wrote it anew without the FormKey line the build gave it (eval round 45's
-                    // npc #3): 4 of the 209 builds with `corrected` in rounds 30–45 were followed so, and 2 of those runs failed.
-                    const done = built.corrected?.length
-                        ? 'Each change in `corrected` is done: the build wrote it into the file, and the plugin has it. A file it ' +
-                            'changed no longer reads as it was written — read it before editing it again.'
-                        : undefined;
-                    if (!warnings?.length) return done ? { nextStep: `Built. ${done}`, ...built } : built;
-                    // A warning at the end of an answer that said success was passed by: five of the eight misses
-                    // in eval round 21 end on one, each a build that did what was not asked. Its exception, written
-                    // "unless the user asked for it so", was read as "the user did not ask for a fix" in three runs of
-                    // rounds 27–36, two of which failed (eval round 36): it names what may stay instead.
-                    const one = warnings.length === 1;
-                    return {
-                        status: 'built_with_warnings',
-                        warnings,
-                        nextStep: `Built, with ${one ? 'a warning' : `${warnings.length} warnings`}: fix what ${one ? 'it' : 'each'} ` +
-                            `says and build again — that is part of the task. ${one ? 'It' : 'One'} stays only where the user ` +
-                            'asked for just what it names.' + (done ? ` ${done}` : ''),
-                        ...built
-                    };
-                }
+                run: args => this.build(requireString(args, 'project'))
             },
             {
                 definition: {
@@ -425,4 +408,45 @@ export class ProjectsHandlers extends BaseHandler {
             }
         ];
     }
+
+    /** A build's answer, as buildProject and editRecord's `build` give it: a refusal thrown, the warnings first. */
+    private async build(project: string): Promise<BuildAnswer> {
+        // A refusal answered as a build: 10 of the 13 runs of eval rounds 31–47 that ended on a refused build
+        // told the user the mod was built — most fixed the file after it and never built again. Said at both ends.
+        // After 12 of the 29 refusals of rounds 40–50 that named corrections it had written, the model's edits found
+        // nothing — it made the build's moves itself, from the file as it had written it, and read it first once.
+        const { warnings, ...built } = await asRequestError(this.backend.buildProject(project)
+            .catch((error: unknown) => {
+                if (error instanceof Error) error.message = `Not built: ${error.message.replace(/\.?\s*$/, '.')} ` +
+                    (error.message.includes('Corrected in the files already')
+                        ? 'The corrections are made: redo none of them, and read a corrected file before editing it — it ' +
+                            'no longer reads as you wrote it. Fix what else this names'
+                        : 'Fix what this names') +
+                    ', then build again — only a build that answers success writes the plugin.';
+                throw error;
+            }));
+        // Told what the build had moved, the model made the moves itself — edits of the file as it had been, which
+        // found nothing — then wrote it anew without the FormKey line the build gave it (eval round 45's
+        // npc #3): 4 of the 209 builds with `corrected` in rounds 30–45 were followed so, and 2 of those runs failed.
+        const done = built.corrected?.length
+            ? 'Each change in `corrected` is done: the build wrote it into the file, and the plugin has it. A file it ' +
+                'changed no longer reads as it was written — read it before editing it again.'
+            : undefined;
+        if (!warnings?.length) return done ? { nextStep: `Built. ${done}`, ...built } : built;
+        // A warning at the end of an answer that said success was passed by: five of the eight misses
+        // in eval round 21 end on one, each a build that did what was not asked. Its exception, written
+        // "unless the user asked for it so", was read as "the user did not ask for a fix" in three runs of
+        // rounds 27–36, two of which failed (eval round 36): it names what may stay instead.
+        const one = warnings.length === 1;
+        return {
+            status: 'built_with_warnings',
+            warnings,
+            nextStep: `Built, with ${one ? 'a warning' : `${warnings.length} warnings`}: fix what ${one ? 'it' : 'each'} ` +
+                `says and build again — that is part of the task. ${one ? 'It' : 'One'} stays only where the user ` +
+                'asked for just what it names.' + (done ? ` ${done}` : ''),
+            ...built
+        };
+    }
 }
+
+type BuildAnswer = Omit<BuildResult, 'warnings'> & { status?: 'built_with_warnings'; warnings?: string[]; nextStep?: string };
