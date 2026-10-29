@@ -249,12 +249,17 @@ public static class EffectCasting
         var perk = PerkOf(caster.Record);
         var art = ArtOf(caster.Record);
         var words = RecordLinks.WordsOf(caster.Record.EditorID ?? "");
+        // Its element by its words, where it names no resistance: the model's "Fire Damage", an effect of a name alone in Flame
+        // Blade Burn, was offered the game's frost on a tie (eval round 82's sword+detailed #5).
+        var element = own.ResistValue != ActorValue.None ? ActorValue.None
+            : ElementOf(words.Concat(RecordLinks.WordsOf(own.EditorID ?? "")).Concat(NameWords(own.Name?.String)));
         // Ice Spike's damage is its first of four effects, all with its perk and art: its slow was offered by a shorter name.
         int Score(Caster record, IMagicEffectGetter effect, int at) =>
             3 * Keywords(effect).Intersect(keywords).Count()
             + (perk is not null && PerkOf(record.Record) == perk ? 2 : 0)
             + (art is not null && ArtOf(record.Record) == art ? 2 : 0)
             + (own.ResistValue != ActorValue.None && effect.ResistValue == own.ResistValue ? 2 : 0)
+            + (element != ActorValue.None && effect.ResistValue == element ? 2 : 0)
             + (own.MagicSkill != ActorValue.None && effect.MagicSkill == own.MagicSkill ? 2 : 0)
             + (own.Archetype.ActorValue != ActorValue.None && effect.Archetype.ActorValue == own.Archetype.ActorValue ? 1 : 0)
             + (at == item ? 1 : 0)
@@ -293,6 +298,25 @@ public static class EffectCasting
 
     private static FormKey? ArtOf(IMajorRecordGetter record) =>
         record is ISpellGetter spell && !spell.MenuDisplayObject.IsNull ? spell.MenuDisplayObject.FormKey : null;
+
+    /// <summary>The words of each element's damage, upper-cased, by the resistance that lowers it.</summary>
+    private static readonly (ActorValue Resist, string[] Words)[] Elements =
+    [
+        (ActorValue.ResistFire, ["FIRE", "FLAME", "FLAMES", "BURN", "BURNING", "BLAZE", "INFERNO"]),
+        (ActorValue.ResistFrost, ["FROST", "ICE", "COLD", "FREEZE", "FROZEN", "CHILL"]),
+        (ActorValue.ResistShock, ["SHOCK", "LIGHTNING", "STORM", "SPARK", "SPARKS", "THUNDER"])
+    ];
+
+    /// <summary>The resistance of the one element the words name — fire for FLAME and BURN — or None for none, or more than one.</summary>
+    private static ActorValue ElementOf(IEnumerable<string> words)
+    {
+        var named = words.ToHashSet();
+        return Elements.Where(e => e.Words.Any(named.Contains)).Select(e => e.Resist).ToList() is [var one] ? one : ActorValue.None;
+    }
+
+    /// <summary>A name's words, upper-cased: "Fire Damage" → FIRE, DAMAGE.</summary>
+    private static IEnumerable<string> NameWords(string? name) =>
+        Regex.Split(name ?? "", "[^A-Za-z]+").Where(w => w.Length > 0).Select(w => w.ToUpperInvariant());
 
     /// <summary>
     /// The archetypes that change an actor value, and how many of the official plugins' effects of each name Health,

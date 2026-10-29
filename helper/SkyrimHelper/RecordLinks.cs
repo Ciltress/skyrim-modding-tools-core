@@ -369,8 +369,12 @@ public static class RecordLinks
         if (named is not null && RecordFiles.KindOf(type, named) is { } kind) type = kind;
         else if (path.Length > 0 && type.IsAbstract && KindsOf(type) is { Count: > 0 } kinds)
         {
-            // Left unnamed, the reader fails with "Object reference not set to an instance of an object" (eval round 11).
-            problem($"{path} is a field of several kinds: give it a first line `MutagenObjectType:` naming one — {string.Join(", ", kinds)}" +
+            // Left unnamed, the reader fails with "Object reference not set to an instance of an object" (eval round 11). Where
+            // its line goes, said: told "give it a first line `MutagenObjectType:`", the model wrote it at the margin above
+            // `Archetype:`, twice (eval round 82's sword+detailed #5).
+            var under = Regex.Replace(path.Split('.')[^1], @"\[\d+\]$", "");
+            problem($"{path} is a field of several kinds: its first line, below `{under}:` and two spaces deeper, is `MutagenObjectType:` " +
+                $"naming one — {string.Join(", ", kinds)}" +
                 (named is null ? "" : $"; {named} is none of them") + (type.Name == "ANpcLevel" ? $"; {RecordFiles.NpcLevel}" : ""));
             return;
         }

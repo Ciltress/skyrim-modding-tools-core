@@ -795,6 +795,11 @@ public static class RecordFiles
                 if (OneValue(kind ?? type, key)) problems.Add($"{relative}: {Blocked(kind ?? type, key, text)}");
             var unknown = TopLevelKey.Matches(text).Select(m => m.Groups[1].Value).Where(key => !known.Contains(key)).Distinct().ToList();
             if (unknown.Count == 0) continue;
+            if (index is not null && EffectItem(type, unknown, text, relative, texts.Value, pluginDir, index) is { } item)
+            {
+                problems.Add($"{relative}: {item}");
+                continue;
+            }
             // The family's skill first: its tables have the lines of each kind — told only to read Firebolt, a
             // model built its shock spell on Firebolt's fire effect (eval probe 15).
             var skill = SkillOf((kind ?? type).Name) is { } family ? $"the {family} skill's tables, readSkill {{\"skill\": \"{family}\"}}, or " : "";
@@ -870,6 +875,41 @@ public static class RecordFiles
             return $"{relative}: FormKey {Session.FormKeyText(key)} is {theirs} of {key.ModKey.FileName}, so this file would change " +
                 $"that record instead of making {editorId} — {fresh}";
         return null;
+    }
+
+    /// <summary>
+    /// A magic effect file that holds an effect item — `BaseEffect:` at its margin, naming a magic effect of the load order, as
+    /// an item of an enchantment's or a spell's Effects does — said as what it is, with the calls that put it right: the file
+    /// deleted, then each Effects item of the project naming it set to the effect it names, the last call building. Told "a
+    /// MagicEffect has no field BaseEffect (delete it …)", the model deleted the line, and the game's effect with it, and made
+    /// a magic effect of the name alone through four more refusals, until its turns ran out (eval round 82's sword+detailed
+    /// #5). Null for any other file.
+    /// </summary>
+    private static string? EffectItem(Type type, List<string> unknown, string text, string relative,
+        IReadOnlyList<(string Relative, string Text)> texts, string pluginDir, RecordIndex index)
+    {
+        if (type.Name != "MagicEffect" || !unknown.Contains("BaseEffect") || ValueOf(text, "BaseEffect") is not { Length: > 0 } named) return null;
+        var key = FormKey.TryFactory(named, out var formKey) ? formKey : index.ByEditorId.TryGetValue(named, out var byId) ? byId : (FormKey?)null;
+        if (key is not { } effect || !index.ByFormKey.TryGetValue(effect, out var entry) || entry.Signature != "MGEF") return null;
+        var game = entry.EditorId ?? named;
+        var id = Identity(text).EditorId;
+        var project = ToolCalls.ProjectOf(pluginDir);
+        var namers = id is null ? [] : texts.Where(t => t.Relative != relative && Groups.GetValueOrDefault(t.Relative.Split('/')[0]) is not null)
+            .Select(t => (t.Relative, Name: Identity(t.Text).EditorId ?? t.Relative,
+                Paths: RecordLinks.LinksIn(t.Text, Groups[t.Relative.Split('/')[0]]!)
+                    .Where(l => l.Path.EndsWith("BaseEffect", StringComparison.Ordinal) && l.Value.Equals(id, StringComparison.OrdinalIgnoreCase))
+                    .Select(l => l.Path).ToList()))
+            .Where(n => n.Paths.Count > 0).ToList();
+        var delete = ToolCalls.Delete(pluginDir, relative);
+        var what = $"it holds an effect item, as an enchantment's or a spell's Effects do — `BaseEffect: {named}` with its Data — not a " +
+            $"magic effect: {game} is the game's magic effect";
+        if (namers.Count == 0)
+            return $"{what}; delete this file — {delete} — and name {game} as `BaseEffect:` in the Effects item meant to cast it";
+        var sets = namers.Select((n, at) => ToolCalls.Edit(project, n.Relative,
+            string.Join(", ", n.Paths.Select(p => $"{{\"path\": \"{p}\", \"value\": {ToolCalls.Quoted(game)}}}")), build: at == namers.Count - 1));
+        return $"{what}, and {string.Join(" and ", namers.Select(n => n.Name))} name{(namers.Count == 1 ? "s" : "")} this file's {id} in " +
+            $"its place. {(namers.Count == 1 ? "Two" : $"{namers.Count + 1}")} calls do it: {delete}; then {string.Join("; then ", sets)}, " +
+            $"which names {game} there and builds again";
     }
 
     /// <summary>
