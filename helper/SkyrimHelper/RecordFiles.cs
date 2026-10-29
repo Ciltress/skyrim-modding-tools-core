@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using System.Globalization;
+using System.Numerics;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using Mutagen.Bethesda.Plugins;
@@ -1266,38 +1268,113 @@ public static class RecordFiles
                 "digits a byte, as `Unused2: 0x000000`.";
     }
 
+    /// <summary>Each field of bytes a record file writes, with a value (see <see cref="ValueFields"/>).</summary>
+    private static List<(int Line, Type? Part, string? PartKey, string Key, string Value)> ByteFields(string[] lines, Type type) =>
+        ValueFields(lines, type).Where(f => Bytes(f.Held)).Select(f => (f.Line, f.Part, f.PartKey, f.Key, f.Value)).ToList();
+
     /// <summary>
-    /// Each field of bytes a record file writes, with a value, found line by line in the part its indent puts it in — Critical's
-    /// Unused is a number, Data's three bytes: its line (from 0), the part it is a field of and that part's key, the field, the value.
+    /// Each field a record file writes with a value on its line, found line by line in the part its indent puts it in — Critical's
+    /// Unused is a number, Data's three bytes: its line (from 0), the part it is a field of and that part's key, the field, the value,
+    /// the type the field holds, and the kind of its part that has the field.
     /// </summary>
-    private static List<(int Line, Type? Part, string? PartKey, string Key, string Value)> ByteFields(string[] lines, Type type)
+    private static List<(int Line, Type? Part, string? PartKey, string Key, string Value, Type Held, Type Owner)> ValueFields(string[] lines, Type type)
     {
         var parts = new List<(int Column, Type Part, string Key)>();
-        var found = new List<(int, Type?, string?, string, string)>();
+        var found = new List<(int, Type?, string?, string, string, Type, Type)>();
         for (var i = 0; i < lines.Length; i++)
         {
             if (Regex.Match(lines[i], @"^(?<lead>[ \t]*(?:-[ \t]+)?)(?<key>[A-Za-z_]\w*)[ \t]*:[ \t]*(?<value>[^\s#]*)") is not { Success: true } field) continue;
             var column = field.Groups["lead"].Length;
             while (parts.Count > 0 && parts[^1].Column >= column) parts.RemoveAt(parts.Count - 1);
             var key = field.Groups["key"].Value;
-            if (KindsOf(parts.Count > 0 ? parts[^1].Part : type).Select(kind => kind.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                    .FirstOrDefault(p => p.Name == key)).FirstOrDefault(p => p is not null) is not { } property)
+            if (KindsOf(parts.Count > 0 ? parts[^1].Part : type).Select(kind => (Kind: kind, Property: kind.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                    .FirstOrDefault(p => p.Name == key))).FirstOrDefault(p => p.Property is not null) is not { Property: { } property } owned)
                 continue;
             var held = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
             var value = field.Groups["value"].Value;
-            if (held == typeof(byte[]) || held.IsGenericType && held.GetGenericArguments() is [var of] && of == typeof(byte) && held.Name.Contains("MemorySlice"))
-            {
-                if (value.Length > 0) found.Add((i, parts.Count > 0 ? parts[^1].Part : null, parts.Count > 0 ? parts[^1].Key : null, key, value));
-            }
-            else if (value.Length == 0)
+            if (value.Length > 0)
+                found.Add((i, parts.Count > 0 ? parts[^1].Part : null, parts.Count > 0 ? parts[^1].Key : null, key, value, held, owned.Kind));
+            else if (!Bytes(held))
                 parts.Add((column, held != typeof(string) && held.IsGenericType && typeof(System.Collections.IEnumerable).IsAssignableFrom(held)
                     ? held.GetGenericArguments()[0] : held, key));
         }
         return found;
     }
 
+    /// <summary>Whether a field holds bytes, which a file writes as hex.</summary>
+    private static bool Bytes(Type held) =>
+        held == typeof(byte[]) || held.IsGenericType && held.GetGenericArguments() is [var of] && of == typeof(byte) && held.Name.Contains("MemorySlice");
+
     /// <summary>Bytes as readRecord writes them: 0x and two hex digits a byte.</summary>
     private static bool WholeBytes(string value) => Regex.IsMatch(value, "^0x(?:[0-9A-Fa-f]{2})+$");
+
+    /// <summary>
+    /// Writes a number written in hex in its digits, and a field of bytes written as the number 0, or as zero bytes of another
+    /// length, as zero bytes of its type's length — each the value written, as readRecord writes it. The model's sword wrote the three fields under Data it did not
+    /// know alike, a number between two fields of bytes: all `0x` and twelve bytes, refused as "Data.Unknown2 … takes a whole
+    /// number", then all `0`, refused as bytes written otherwise, and back, six builds, until its turns ran out (eval round 80's
+    /// sword+detailed #4). Bytes written as another number, and hex too large for its field, are still refused.
+    /// </summary>
+    public static List<(string File, string Change)> MendNumbersAndBytes(string pluginDir)
+    {
+        var changes = new List<(string File, string Change)>();
+        foreach (var (file, relative, type) in FlatRecords(pluginDir))
+        {
+            var lines = File.ReadAllText(file).Split('\n');
+            var mended = new List<string>();
+            foreach (var f in ValueFields(lines, type))
+            {
+                var bytes = Bytes(f.Held);
+                if ((bytes ? ZeroBytes(f.Owner, f.Key, f.Value) : NumberOfHex(f.Held, f.Value)) is not { } now) continue;
+                lines[f.Line] = new Regex($@"(\b{Regex.Escape(f.Key)}[ \t]*:[ \t]*){Regex.Escape(f.Value)}").Replace(lines[f.Line], m => m.Groups[1].Value + now, 1);
+                var was = f.Value.Length > 16 ? $"{f.Value[..16]}…" : f.Value;
+                var shown = now.Length > 16 ? $"{now[..16]}…" : now;
+                mended.Add($"wrote line {f.Line + 1}, {(f.PartKey is { } part ? $"{part}'s " : "")}`{f.Key}: {was}` as `{f.Key}: {shown}` — " +
+                    (!bytes ? "a number, written in hex; readRecord writes it in digits"
+                        : WholeBytes(f.Value) ? $"a field of {(now.Length - 2) / 2} zero bytes, written as {(f.Value.Length - 2) / 2}"
+                            : $"a field of {(now.Length - 2) / 2} bytes, written as the number 0; readRecord writes bytes as 0x and two hex digits a byte"));
+            }
+            if (mended.Count == 0) continue;
+            File.WriteAllText(file, string.Join('\n', lines));
+            changes.AddRange(mended.Select(m => (relative, m)));
+        }
+        return changes;
+    }
+
+    /// <summary>
+    /// A field of bytes written as the number 0, or as zero bytes of another length, as zero bytes of the length its type gives
+    /// it — the sword's Data.Unused, three bytes, was written as twelve; null for any other value, or a length unknown.
+    /// </summary>
+    private static string? ZeroBytes(Type owner, string key, string value)
+    {
+        if (!Regex.IsMatch(value, "^(?:0[xX])?0+$")) return null;
+        int? length;
+        try
+        {
+            length = owner.GetProperty(key)?.GetValue(System.Activator.CreateInstance(owner)) switch
+            {
+                byte[] held => held.Length,
+                { } slice => slice.GetType().GetProperty("Length")?.GetValue(slice) as int?,
+                null => null
+            };
+        }
+        catch (Exception e) when (e is MissingMethodException or TargetInvocationException or MemberAccessException)
+        {
+            return null;
+        }
+        return length is > 0 && "0x" + new string('0', length.Value * 2) is var zeros && zeros != value ? zeros : null;
+    }
+
+    /// <summary>A number field written in hex, in its digits — a whole number where it fits the field, a fraction's only as 0; null for any other.</summary>
+    private static string? NumberOfHex(Type held, string value)
+    {
+        if (!held.IsPrimitive || held == typeof(bool) || held == typeof(char) || Regex.Match(value, "^0[xX]([0-9A-Fa-f]+)$") is not { Success: true } hex) return null;
+        var number = BigInteger.Parse("0" + hex.Groups[1].Value, NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+        if (held == typeof(float) || held == typeof(double)) return number.IsZero ? "0" : null;
+        var (min, max) = (new BigInteger(Convert.ToDecimal(held.GetField("MinValue")!.GetValue(null), CultureInfo.InvariantCulture)),
+            new BigInteger(Convert.ToDecimal(held.GetField("MaxValue")!.GetValue(null), CultureInfo.InvariantCulture)));
+        return number >= min && number <= max ? number.ToString(CultureInfo.InvariantCulture) : null;
+    }
 
     /// <summary>
     /// Takes out a model's texture hashes — the `Data` of a `Model` — copied otherwise than as whole bytes, which the reader

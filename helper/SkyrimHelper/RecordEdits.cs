@@ -188,6 +188,34 @@ public static class RecordEdits
 
     private static bool Translated(Type type) => typeof(ITranslatedStringGetter).IsAssignableFrom(type);
 
+    /// <summary>The text a path sets — Name for `Name` and for `Name.Value` — or null for a path to no text.</summary>
+    private static string? TextOf(List<Step> steps, List<Type> types) =>
+        Translated(types[^1]) ? Upto(steps, steps.Count)
+            : steps.Count > 1 && types.Count > 1 && steps[^1] is { Key: "Value", Index: null } && Translated(types[^2]) ? Upto(steps, steps.Count - 1)
+                : null;
+
+    /// <summary>
+    /// For a number sent, where the record keeps what it is worth in gold, with that number — a weapon's is BasicStats.Value,
+    /// an armor's Value; empty for a record without one, or a truth sent.
+    /// </summary>
+    private static string WorthIn(Type record, JsonValue sent)
+    {
+        if (!sent.TryGetValue<double>(out _)) return "";
+        try
+        {
+            var (steps, _) = Placed(record, "Value");
+            var held = Types(record, steps, "Value")[^1];
+            var path = Upto(steps, steps.Count);
+            return held.IsPrimitive && held != typeof(bool)
+                ? $"; what {RecordFiles.Article(record.Name)} is worth in gold is {path}, {{\"path\": \"{path}\", \"value\": {sent.ToJsonString()}}}"
+                : "";
+        }
+        catch (HelperException)
+        {
+            return "";
+        }
+    }
+
     /// <summary>
     /// The item type of a list field, a flags field's its names, as the file writes them — `Flags:`, `- Female` below it.
     /// Told "TemplateFlags is no list" for TemplateFlags[5], the model edited the file by hand and broke its YAML twice (eval
@@ -217,6 +245,12 @@ public static class RecordEdits
             value = parsed;
             label += " (fields, sent as a text)";
         }
+        // A text takes words: sent the number 150 for Name.Value, meaning the sword's price, the tool wrote `Name: 150` over the
+        // whole Name, the build refused it, and the model answered that a weapon has no field for its price (eval round 80's
+        // sword+detailed #2).
+        if (value is JsonValue notWords && !notWords.TryGetValue<string>(out _) && TextOf(steps, types) is { } textPath)
+            throw new HelperException("badRequest", $"{label}: {textPath} is a text, and {notWords.ToJsonString()} is no words — send " +
+                $"them as one, {{\"path\": \"{textPath}.Value\", \"value\": \"…\"}}{WorthIn(type, notWords)}. Nothing was written.");
         // Fields of the part above, sent inside a part: an NPC's {"Level": {…, "CalcMinLevel": 5}} — set as Configuration's.
         if (value is JsonObject sent && sent.Where(f => f.Key != "MutagenObjectType" && Segment.IsMatch(f.Key)
                 && Place(type, Parse($"{path}.{f.Key}")) is var placed && !(placed.Count > steps.Count && placed.Take(steps.Count).SequenceEqual(steps)))

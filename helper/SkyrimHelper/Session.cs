@@ -409,6 +409,8 @@ public sealed class Session : IDisposable
         corrected.AddRange(MisplacedFields.MoveEffectData(dir));
         // Once each field is in its part: a model's texture hashes are found by the part they are under.
         corrected.AddRange(RecordFiles.DropBrokenModelData(dir));
+        // And a number written in hex, or bytes written as 0, by the type of the part each is in.
+        corrected.AddRange(RecordFiles.MendNumbersAndBytes(dir));
         int records;
         List<(string File, string Copy)> leftOut;
         try
