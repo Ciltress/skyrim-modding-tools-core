@@ -136,11 +136,24 @@ public static class ProjectNotes
                             : "the npcs skill names each race's woman's voice"));
             }
             // With no weapon or armor in the project, said so: the model wrote Flame Blade's enchantment alone, and answered that
-            // the sword was written and carried it (eval round 46's sword #5).
+            // the sword was written and carried it (eval round 46's sword #5). With one that carries another, each with its call:
+            // told only how a weapon carries it, the model's sword kept the game's fire enchantment, built twice more unchanged,
+            // and answered on the warning (eval round 83's sword #3; so too one run each of rounds 76 and 80).
             if (unworn.Contains(relative) && RecordFiles.Identity(text).EditorId is { } enchantment)
+            {
+                var enchanted = RecordFiles.Enchanted(records, own);
                 notes.Add($"{relative}: no record of the project names {enchantment}, so it does nothing — a weapon or armor " +
-                    $"carries it as `ObjectEffect: {enchantment}`" + (records.Any(r => r.Type == typeof(Weapon) || r.Type == typeof(Armor))
-                        ? "" : ", and the project has none: write the one meant to carry it, in its Weapons or Armors folder"));
+                    $"carries it as `ObjectEffect: {enchantment}`" + (enchanted switch
+                    {
+                        [var (carrier, name, carried)] => $"; {name} carries {carried}: if {enchantment} is meant in its place, one call " +
+                            "sets it and builds again: " + ToolCalls.Edit(ProjectOf(pluginDir), carrier,
+                                $"{{\"path\": \"ObjectEffect\", \"value\": {Quoted(enchantment)}}}", build: true) +
+                            $"; if not, delete it: {ToolCalls.Delete(pluginDir, relative)}",
+                        [_, ..] => $"; if none of the project's weapons and armors, which carry others, is meant to carry it, delete it: " +
+                            ToolCalls.Delete(pluginDir, relative),
+                        _ => ", and the project has none: write the one meant to carry it, in its Weapons or Armors folder"
+                    }));
+            }
             // So too a new magic effect: the model's Storm Bolt was a magic effect alone, built and told the user as the spell
             // (eval round 34, spell+detailed #3).
             if (type == typeof(MagicEffect) && RecordFiles.Identity(text).EditorId is { } effect && !RecordFiles.NamedElsewhere(records, relative, text))

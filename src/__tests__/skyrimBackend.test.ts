@@ -722,6 +722,28 @@ describe('the Skyrim backend', () => {
         await expect(backend.editRecord(edit)).rejects.toThrow(/^Nothing to change$/);
     });
 
+    it('takes editRecord\'s record as a path from the projects folder too, as moveRecord and deleteRecord do', async () => {
+        // Refused for `HildaTheNord/plugin/Npcs/Hilda.yaml`, the model sent `Npcs/Hilda.yaml` next (eval round 83's npc+detailed #1).
+        const { backend, fixture, helperAnswers } = makeBackend();
+        await backend.newProject({ project: 'HildaTheNord' });
+        const plugin = path.join(fixture.projects, 'HildaTheNord', 'plugin');
+        write(path.join(plugin, 'Npcs', 'Hilda.yaml'), 'EditorID: Hilda\n');
+        const sent: string[] = [];
+        helperAnswers.editRecord = params => {
+            sent.push(params.record);
+            return { file: 'Npcs/Hilda.yaml', changed: [], text: 'EditorID: Hilda\n' };
+        };
+        const edit = (record: string) => backend.editRecord({ project: 'HildaTheNord', record, set: { 'AIData.Aggression': 'Unaggressive' } });
+        await edit('HildaTheNord/plugin/Npcs/Hilda.yaml');
+        await edit('HildaTheNord\\plugin\\Npcs\\Hilda.yaml');
+        // The plugin folder's own paths, an EditorID, and a path to no file pass as given: the helper names what is there.
+        await edit('Npcs/Hilda.yaml');
+        await edit('Hilda');
+        await edit('HildaTheNord/plugin/Npcs/Helga.yaml');
+        expect(sent).toEqual([path.join(plugin, 'Npcs', 'Hilda.yaml'), path.join(plugin, 'Npcs', 'Hilda.yaml'), 'Npcs/Hilda.yaml', 'Hilda',
+            'HildaTheNord/plugin/Npcs/Helga.yaml']);
+    });
+
     it('takes a file of a projects folder reached through a link: one not there is missing, not outside', () => {
         // Windows CI's temp folder has a short 8.3 name: the projects folder resolved to its long name, a missing file's
         // path kept the short one, and the file was refused as outside the projects folder.

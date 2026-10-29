@@ -539,6 +539,10 @@ public static class RecordLinks
     };
     private const string NamedNpcs = "3,186";
 
+    /// <summary>"the official plugins' named NPCs have Unaggressive most often: 1,838 of 3,186", for a type of AIData's; else null.</summary>
+    internal static string? MostOften(Type type) =>
+        Usual.TryGetValue(type, out var usual) ? $"the official plugins' named NPCs have {usual.Value} most often: {usual.Of} of {NamedNpcs}" : null;
+
     /// <summary>
     /// What a value of a field of names, a number or a truth is not, as words after it — "it takes a whole
     /// number, such as 15", "it takes one of Unaggressive, Aggressive…" — or null for one the reader takes.
@@ -559,8 +563,7 @@ public static class RecordLinks
                 return names.FirstOrDefault(n => n.Equals(name, StringComparison.OrdinalIgnoreCase)) is { } spelled
                     ? $"it is spelled {spelled}"
                     : $"it takes one of {string.Join(", ", names.Take(16))}{(names.Length > 16 ? ", …" : "")}" +
-                        (Usual.TryGetValue(type, out var usual)
-                            ? $" (the official plugins' named NPCs have {usual.Value} most often: {usual.Of} of {NamedNpcs})" : "");
+                        (MostOften(type) is { } usual ? $" ({usual})" : "");
             }
             return null;
         }

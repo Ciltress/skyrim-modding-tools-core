@@ -347,6 +347,23 @@ export function projectsFile(projectsDir: string, paths: ProjectPaths, given: st
 }
 
 /** The project's record files, as a refusal names them: their paths in its plugin folder. */
+/**
+ * A record as editRecord takes it: a relative path from the projects folder to a file of the project's plugin folder — as
+ * OpenClaw's file tools take a Skyrim agent's paths, `HildaTheNord/plugin/Npcs/Hilda.yaml` — as that file's full path, which
+ * the helper takes; any other as given. Refused for it, the model sent the path in the plugin folder next (eval round 83's
+ * npc+detailed #1, round 80's sword+detailed #1); moveRecord and deleteRecord take it so too (projectsFile).
+ */
+export function editedRecord(projectsDir: string, paths: ProjectPaths, given: string): string {
+    const name = given.trim();
+    const isFile = (file: string) => fs.existsSync(file) && fs.statSync(file).isFile();
+    // Either slash, on either system: the helper reads a backslash as a separator too.
+    const parts = name.split(/[\\/]+/).filter(part => part.length > 0);
+    if (parts.length < 2 || path.isAbsolute(name) || isFile(path.resolve(paths.plugin, ...parts))) return given;
+    const fromProjects = path.resolve(projectsDir, ...parts);
+    const relative = path.relative(paths.plugin, fromProjects);
+    return relative && !relative.startsWith('..') && !path.isAbsolute(relative) && isFile(fromProjects) ? fromProjects : given;
+}
+
 export function recordFileList(paths: ProjectPaths): string {
     const files = recordFiles(paths.plugin).map(file => path.relative(paths.plugin, file).split(path.sep).join('/'));
     return files.length === 0 ? 'none yet' : files.slice(0, 20).join(', ') + (files.length > 20 ? ` and ${files.length - 20} more` : '');

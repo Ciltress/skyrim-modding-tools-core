@@ -15,7 +15,7 @@ import { ModError, findMod, listedMods, ownerOf, pluginFiles } from './modList.j
 import { checkGameVersion } from './gameVersion.js';
 import { findCaseInsensitive } from './paths.js';
 import {
-    ProjectError, assignFormIds, belongsAt, correctCopiedEscapes, createProject, type CopiedEscape, deleteCall, deleteRecordFile, fencedRecordFiles, fileHash,
+    ProjectError, assignFormIds, belongsAt, correctCopiedEscapes, createProject, type CopiedEscape, deleteCall, deleteRecordFile, editedRecord, fencedRecordFiles, fileHash,
     keepRecordTexts, misnamedRecordFiles, looseRecordFiles, moveCall, moveRecordFile, newestSourceTime, outsideRecordCalls, placeCall,
     projectExists, projectInfo, projectPaths, readDeployState, readProjectHeader, recordFileList, recordFiles, strayRecordFiles, syncFolder, syncYaml,
     whereRecordsGo, writeDeployState
@@ -224,7 +224,7 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
         readProjectHeader(paths); // names a project that is not there
         const edited = await this.engine.helper.call<EditRecordResult>('editRecord', {
             projectPluginDir: paths.plugin,
-            record: request.record,
+            record: editedRecord(this.engine.projectsDir, paths, request.record),
             ...(request.set ? { set: request.set } : {}),
             ...(request.remove ? { remove: request.remove } : {})
         }).catch((error: unknown) => {

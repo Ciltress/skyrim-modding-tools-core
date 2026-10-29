@@ -438,7 +438,35 @@ public static class RecordFiles
 
     /// <summary>What a top-level field its type lacks is likely meant to be, as the file writes it — the value on its line, the fields below it — or null.</summary>
     private static string? HintIn(Type type, HashSet<string> known, string key, string text) =>
-        DataHint(type, key, text) ?? Hint(type, known, key, ValueOf(text, key), ValuesOf(text, key), FieldsBelow(text, key));
+        DataHint(type, key, text) ?? TextHint(type, key, text) ?? Hint(type, known, key, ValueOf(text, key), ValuesOf(text, key), FieldsBelow(text, key));
+
+    /// <summary>
+    /// A field at the margin written with a text, where the one of its name, a part down, takes a number: `Value: Flame Blade`
+    /// at a weapon's margin, BasicStats' Value its price. Told "move it under BasicStats", the model wrote a price there and kept
+    /// the text at the margin, build after build, and once BasicStats had no Value, the build moved the text there itself and
+    /// refused it as no number — 22 turns (eval round 83's sword+detailed #3). Neither moved nor sent there: deleted, with
+    /// the text of the record that has the line already, a Name's. Null for any other.
+    /// </summary>
+    private static string? TextHint(Type type, string key, string text)
+    {
+        const BindingFlags Public = BindingFlags.Public | BindingFlags.Instance;
+        if (ValueOf(text, key)?.Trim('\'', '"') is not { Length: > 0 } value || IsNumber(value)
+            || Under(type, key) is not { } path || Regex.Match(path, @"^under (?<part>\w+)$") is not { Success: true } under
+            || type.GetProperties(Public).FirstOrDefault(p => p.Name == under.Groups["part"].Value) is not { } part
+            || (Nullable.GetUnderlyingType(part.PropertyType) ?? part.PropertyType).GetProperties(Public).FirstOrDefault(p => p.Name == key) is not { } field
+            || (Nullable.GetUnderlyingType(field.PropertyType) ?? field.PropertyType) is not { IsPrimitive: true } held || held == typeof(bool) || held == typeof(char))
+            return null;
+        var number = held == typeof(float) || held == typeof(double) ? "a number" : "a whole number";
+        var had = type.GetProperties(Public)
+            .Where(p => typeof(Mutagen.Bethesda.Strings.ITranslatedStringGetter).IsAssignableFrom(Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType))
+            .FirstOrDefault(p => Regex.IsMatch(BlockOf(text, p.Name), $@"^[ \t]+{Regex.Escape(key)}:[ \t]*['""]?{Regex.Escape(value)}['""]?[ \t]*$", RegexOptions.Multiline));
+        return $"delete it: {Article(type.Name)}'s {key} is {path}, {number}, and `{value}` is a text" +
+            (had is null ? "" : $" — {had.Name} has `{key}: {value}` already");
+    }
+
+    /// <summary>A number as a file writes one: in digits, a fraction, or hex.</summary>
+    private static bool IsNumber(string value) =>
+        double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out _) || Regex.IsMatch(value, "^0[xX][0-9A-Fa-f]+$");
 
     /// <summary>
     /// The unknown fields of a record file, named for a message: those with one hint together — "Damage,
@@ -450,8 +478,11 @@ public static class RecordFiles
     private static string Unknown(Type type, HashSet<string> known, IEnumerable<string> keys, string text, string pluginDir, string relative)
     {
         var hinted = keys.Select(key => (Key: key, Hint: HintIn(type, known, key, text))).ToList();
+        // A text where a number goes is deleted with the call that does it (TextHint).
+        string Removal(string key) => TextHint(type, key, text) is null ? ""
+            : "; one call deletes it and builds again: " + ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, "", ToolCalls.Quoted(key), build: true);
         var named = hinted.Where(f => f.Hint is not null).GroupBy(f => f.Hint!).Select(group => group.Count() == 1
-            ? $"{group.First().Key} ({group.Key}{Moved(text, group.Key, [group.First().Key])})"
+            ? $"{group.First().Key} ({group.Key}{Moved(text, group.Key, [group.First().Key])}{Removal(group.First().Key)})"
             : $"{string.Join(", ", group.Select(f => f.Key))} ({Regex.Replace(group.Key, @"^(move it|it is)\b", m => m.Groups[1].Value == "move it" ? "move them" : "they are")}" +
                 $"{Moved(text, group.Key, group.Select(f => f.Key).ToList())})");
         var bare = hinted.Where(f => f.Hint is null).Select(f => f.Key).ToList();
@@ -577,6 +608,23 @@ public static class RecordFiles
     }
 
     private static bool IsNew(string text, ModKey? own) => Identity(text).FormKey is not { } key || key.ModKey == own;
+
+    /// <summary>A weapon's or armor's enchantment as its line names it: the editor ID beside a FormID, or what is written.</summary>
+    private static readonly Regex CarriedLine = new(@"^ObjectEffect:[ \t]*(?<value>[^\s#]+)(?:[ \t]*#[ \t]*(?<named>\S+))?", RegexOptions.Multiline);
+
+    /// <summary>
+    /// The project's weapons and armors that carry an enchantment already, each with the one it names: the new ones, else
+    /// the copies of the load order's.
+    /// </summary>
+    internal static List<(string Relative, string Name, string Carried)> Enchanted(IReadOnlyList<(string Relative, Type Type, string Text)> records, ModKey? own)
+    {
+        var carrying = records.Where(r => (r.Type == typeof(Weapon) || r.Type == typeof(Armor)) && ObjectEffectLine.IsMatch(r.Text)).ToList();
+        var fresh = carrying.Where(r => IsNew(r.Text, own)).ToList();
+        return (fresh.Count > 0 ? fresh : carrying)
+            .Select(r => (r.Relative, Identity(r.Text).EditorId ?? r.Relative,
+                CarriedLine.Match(r.Text) is var line && line.Groups["named"].Success ? line.Groups["named"].Value : line.Groups["value"].Value))
+            .ToList();
+    }
 
     /// <summary>
     /// The project's weapons and armors that carry no enchantment, for one to carry this enchantment: the new ones, else
@@ -1377,6 +1425,43 @@ public static class RecordFiles
             if (mended.Count == 0) continue;
             File.WriteAllText(file, string.Join('\n', lines));
             changes.AddRange(mended.Select(m => (relative, m)));
+        }
+        return changes;
+    }
+
+    /// <summary>An NPC's AIData written in braces on one line, with Aggression Average in it.</summary>
+    private static readonly Regex AverageInBraces = new(@"^(AIData:[ \t]*\{[^}#]*\bAggression:[ \t]*)Average\b", RegexOptions.IgnoreCase);
+
+    /// <summary>
+    /// Writes an NPC's `Aggression: Average` as Unaggressive: Aggression names no average — Unaggressive, Aggressive,
+    /// VeryAggressive, Frenzied; Average is a Confidence. 30 of the 80 NPC runs of eval rounds 76–83 wrote it, each was refused,
+    /// and each set Unaggressive in one more call — the value the official plugins' named NPCs have most often, which the
+    /// refusal names. Written in braces too, as the npcs skill's reference writes AIData.
+    /// </summary>
+    public static List<(string File, string Change)> MendAggression(string pluginDir)
+    {
+        var changes = new List<(string File, string Change)>();
+        var usual = RecordLinks.MostOften(typeof(Aggression));
+        foreach (var (file, relative, type) in FlatRecords(pluginDir))
+        {
+            if (type != typeof(Npc)) continue;
+            var lines = File.ReadAllText(file).Split('\n');
+            var mended = new List<int>();
+            foreach (var f in ValueFields(lines, type).Where(f => f.Held == typeof(Aggression) && f.Value.Equals("Average", StringComparison.OrdinalIgnoreCase)))
+            {
+                lines[f.Line] = Regex.Replace(lines[f.Line], @"(\bAggression[ \t]*:[ \t]*)Average\b", "${1}Unaggressive", RegexOptions.IgnoreCase);
+                mended.Add(f.Line);
+            }
+            for (var i = 0; i < lines.Length; i++)
+                if (AverageInBraces.IsMatch(lines[i]))
+                {
+                    lines[i] = AverageInBraces.Replace(lines[i], "${1}Unaggressive", 1);
+                    mended.Add(i);
+                }
+            if (mended.Count == 0) continue;
+            File.WriteAllText(file, string.Join('\n', lines));
+            changes.AddRange(mended.Select(line => (relative, $"wrote line {line + 1}, AIData's `Aggression: Average` as `Aggression: Unaggressive` — " +
+                $"Aggression takes Unaggressive, Aggressive, VeryAggressive or Frenzied, and Average is a Confidence; {usual}")));
         }
         return changes;
     }

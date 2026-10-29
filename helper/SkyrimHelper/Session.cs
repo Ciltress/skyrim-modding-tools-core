@@ -411,6 +411,8 @@ public sealed class Session : IDisposable
         corrected.AddRange(RecordFiles.DropBrokenModelData(dir));
         // And a number written in hex, or bytes written as 0, by the type of the part each is in.
         corrected.AddRange(RecordFiles.MendNumbersAndBytes(dir));
+        // And an NPC's aggression written as no aggression is, by the part it is in too.
+        corrected.AddRange(RecordFiles.MendAggression(dir));
         int records;
         List<(string File, string Copy)> leftOut;
         try
