@@ -18,7 +18,7 @@ public static class ProjectNotes
     private static readonly Regex VoiceLine = new(@"^Voice:[ \t]*([^\s#]+)", RegexOptions.Multiline);
     private static readonly Regex RaceLine = new(@"^Race:[ \t]*([^\s#]+)", RegexOptions.Multiline);
     private static readonly Regex FemaleFlag = new(@"^[ \t]+-[ \t]*Female[ \t]*\r?$|^[ \t]+Flags:[ \t]*\[[^\]\r\n]*\bFemale\b", RegexOptions.Multiline);
-    private static readonly Regex TemplateLine = new(@"^Template:[ \t]*\S", RegexOptions.Multiline);
+    private static readonly Regex TemplateLine = new(@"^Template:[ \t]*([^\s#]+)", RegexOptions.Multiline);
     private static readonly Regex ObjectEffectLink = new(@"^ObjectEffect:[ \t]*([^\s#]+)", RegexOptions.Multiline);
     private static readonly Regex BoundFlags = new(@"^[ \t]+-[ \t]*(NonPlayable|BoundWeapon)[ \t]*\r?$", RegexOptions.Multiline);
     private static readonly Regex NameLine = new(@"^Name[ \t]*:", RegexOptions.Multiline);
@@ -100,6 +100,18 @@ public static class ProjectNotes
                     "Bound Sword a spell conjures is: a conjured weapon" + (bound.Contains("NonPlayable") ? ", kept out of the player's inventory" : "") +
                     " — a weapon to carry has neither among the Flags under Data, as readRecord {\"record\": \"IronSword\"} shows; one a magic " +
                     "effect of the project conjures keeps them");
+            // One with Traits among its TemplateFlags is its template's race and sex in game, whatever its own lines say: the
+            // model's Hilda, Pelagius' Flame Thrall copied with NordRace and a woman's voice written, kept the thrall's template
+            // EncAtronachFlame and Traits, and built with no word — a flame atronach (eval round 79's npc #3).
+            if (type == typeof(Npc) && TraitsTemplate(text, index, cache) is var (template, traits)
+                && Linked(RaceLine, text, index) is { } race && FemaleFlag.IsMatch(text) is var female
+                && traits.Any(t => t.Race != race || t.Female != female))
+                notes.Add($"{relative}: {RecordFiles.Identity(text).EditorId ?? relative} lists Traits among its TemplateFlags, so in game " +
+                    $"it has the race, sex, voice and looks of its template {template} — {Listed(traits.Select(t => RaceName(t.Race, cache)).Distinct().ToList())}, " +
+                    $"{string.Join(" and ", traits.Select(t => t.Female).Distinct().Order().Select(Sex))} — not the {Sex(female)} {RaceName(race, cache)} " +
+                    "its file writes; one call removes the template and its flags, and builds again: " +
+                    ToolCalls.Edit(ProjectOf(pluginDir), relative, "", "\"Template\", \"Configuration.TemplateFlags\"", build: true) +
+                    " — an NPC meant to be its template's kind keeps them");
             if (type == typeof(Npc) && Voice(text, index, cache) is { } voice
                 && !(TemplateLine.IsMatch(text) && text.Contains("Traits", StringComparison.Ordinal)))
             {
@@ -303,6 +315,45 @@ public static class ProjectNotes
             : null;
     }
 
+    /// <summary>
+    /// The template an NPC's file takes its traits from — Traits among its TemplateFlags — by its editor ID, and the race and
+    /// sex of each NPC it may be: a leveled list's NPCs each, an NPC's own unless it too takes them from a template. Null
+    /// where the file lists no Traits, or names no template of the load order.
+    /// </summary>
+    private static (string Name, List<(FormKey Race, bool Female)> Traits)? TraitsTemplate(string text, RecordIndex index, ILinkCache cache)
+    {
+        if (ConfigurationFlags(text, "TemplateFlags")?.Contains("Traits") != true || Linked(TemplateLine, text, index) is not { } key) return null;
+        var traits = Traits(key, cache, 0).Distinct().ToList();
+        if (traits.Count == 0) return null;
+        return (index.ByFormKey.TryGetValue(key, out var entry) && entry.EditorId is { } id ? id : Session.FormKeyText(key), traits);
+    }
+
+    private static IEnumerable<(FormKey Race, bool Female)> Traits(FormKey key, ILinkCache cache, int depth)
+    {
+        if (depth > 8) return [];
+        if (cache.TryResolve<INpcGetter>(key, out var npc))
+            return npc.Configuration.TemplateFlags.HasFlag(NpcConfiguration.TemplateFlag.Traits) && !npc.Template.IsNull
+                ? Traits(npc.Template.FormKey, cache, depth + 1)
+                : [(npc.Race.FormKey, npc.Configuration.Flags.HasFlag(NpcConfiguration.Flag.Female))];
+        if (cache.TryResolve<ILeveledNpcGetter>(key, out var list))
+            return (list.Entries ?? []).Select(e => e.Data?.Reference.FormKey).OfType<FormKey>().Distinct()
+                .SelectMany(npcKey => Traits(npcKey, cache, depth + 1));
+        return [];
+    }
+
+    private static string RaceName(FormKey key, ILinkCache cache) =>
+        cache.TryResolve<IRaceGetter>(key, out var race) && race.EditorID is { } id ? id : Session.FormKeyText(key);
+
+    private static string Sex(bool female) => female ? "female" : "male";
+
+    /// <summary>Names as words list them — "A", "A and B", "A, B and C" — the first three of more, then how many more.</summary>
+    private static string Listed(List<string> names) => names.Count switch
+    {
+        1 => names[0],
+        <= 3 => $"{string.Join(", ", names[..^1])} and {names[^1]}",
+        _ => $"{string.Join(", ", names.Take(3))} and {names.Count - 3} more"
+    };
+
     /// <summary>The record a line of the file links, by editor ID or FormID; null for none or one the load order lacks.</summary>
     private static FormKey? Linked(Regex line, string text, RecordIndex index)
     {
@@ -313,10 +364,11 @@ public static class ProjectNotes
     }
 
     /// <summary>
-    /// The flags an NPC's file lists under Configuration — none where it has no Flags there; null where the file does not
-    /// read as YAML, or its Flags as a list. editRecord sets a list whole, so a call adding one names them all.
+    /// The flags an NPC's file lists under Configuration, in its Flags or another such list — none where it has no such list
+    /// there; null where the file does not read as YAML, or the list as one. editRecord sets a list whole, so a call adding
+    /// one names them all.
     /// </summary>
-    private static List<string>? ConfigurationFlags(string text)
+    private static List<string>? ConfigurationFlags(string text, string field = "Flags")
     {
         var yaml = new YamlStream();
         try
@@ -330,7 +382,7 @@ public static class ProjectNotes
         if (yaml.Documents.Count == 0 || yaml.Documents[0].RootNode is not YamlMappingNode root) return null;
         if (!root.Children.TryGetValue(new YamlScalarNode("Configuration"), out var configuration)) return [];
         if (configuration is not YamlMappingNode fields) return null;
-        if (!fields.Children.TryGetValue(new YamlScalarNode("Flags"), out var flags)) return [];
+        if (!fields.Children.TryGetValue(new YamlScalarNode(field), out var flags)) return [];
         return flags is YamlSequenceNode list ? list.Children.OfType<YamlScalarNode>().Select(s => s.Value ?? "").ToList() : null;
     }
 }
