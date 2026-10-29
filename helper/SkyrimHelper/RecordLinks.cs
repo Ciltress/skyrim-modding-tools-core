@@ -676,7 +676,14 @@ public static class RecordLinks
     /// A record file's links as written — an editor ID or a FormID — each with its field's path as editRecord takes it:
     /// `ObjectEffect`, `Effects[0].BaseEffect`, `Keywords[2]`. None for a file that does not read as YAML.
     /// </summary>
-    internal static List<(string Path, string Value)> LinksIn(string text, Type type)
+    internal static List<(string Path, string Value)> LinksIn(string text, Type type) =>
+        LinksTo(text, type).Select(l => (l.Path, l.Value)).ToList();
+
+    /// <summary>
+    /// A record file's links as <see cref="LinksIn"/> answers them, each with the record type its field takes —
+    /// IMagicEffectGetter for an Effects item's BaseEffect.
+    /// </summary>
+    internal static List<(string Path, string Value, Type Takes)> LinksTo(string text, Type type)
     {
         var yaml = new YamlStream();
         try
@@ -688,8 +695,8 @@ public static class RecordLinks
             return [];
         }
         if (yaml.Documents.Count == 0 || yaml.Documents[0].RootNode is not YamlMappingNode root) return [];
-        var links = new List<(string, string)>();
-        Walk(root, type, "", (value, _, field) => { if (value.Value?.Trim() is { Length: > 0 } raw) links.Add((field, raw)); }, _ => { });
+        var links = new List<(string, string, Type)>();
+        Walk(root, type, "", (value, takes, field) => { if (value.Value?.Trim() is { Length: > 0 } raw) links.Add((field, raw, takes)); }, _ => { });
         return links;
     }
 

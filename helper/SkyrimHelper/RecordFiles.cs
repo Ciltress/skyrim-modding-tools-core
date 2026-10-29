@@ -730,7 +730,7 @@ public static class RecordFiles
         if (!Directory.Exists(pluginDir)) return (0, problems, leftOut);
         var own = OwnPlugin(pluginDir);
         var formKeys = new Dictionary<FormKey, List<string>>();
-        var editorIds = new Dictionary<string, List<(string Relative, FormKey? Key)>>(StringComparer.OrdinalIgnoreCase);
+        var editorIds = new Dictionary<string, List<(string Relative, FormKey? Key, Type Type)>>(StringComparer.OrdinalIgnoreCase);
         var grouped = new Lazy<List<(string Relative, string Name, string? EditorId)>>(() => FlatRecords(pluginDir)
             .Select(f => (f.Relative, Path.GetFileName(f.File), Identity(File.ReadAllText(f.File)).EditorId)).ToList());
         foreach (var file in Directory.EnumerateFiles(pluginDir, "*.*", SearchOption.AllDirectories).Order(StringComparer.Ordinal))
@@ -825,7 +825,7 @@ public static class RecordFiles
             }
             if (type is null || parts.Length != 2) continue;
             if (Identity(text) is { EditorId: { } recordId } identity)
-                (editorIds.TryGetValue(recordId, out var sharing) ? sharing : editorIds[recordId] = []).Add((relative, identity.FormKey));
+                (editorIds.TryGetValue(recordId, out var sharing) ? sharing : editorIds[recordId] = []).Add((relative, identity.FormKey, type));
             // The reader takes a record's first line for its FormKey — after the kind, where a group has
             // several (eval round 11: EditorID written above it).
             if (line.Success && TopLevelKey.Matches(text).Select(m => m.Groups[1].Value).FirstOrDefault(k => k != "MutagenObjectType") is { } first
@@ -866,10 +866,22 @@ public static class RecordFiles
         // A numbered file written whole again lost the FormKey line the build gave it, but keeps the name the build gave it:
         // told to empty the other, the model rewrote the numbered one without the line, and was then told only to pick (eval round 28).
         // A build no longer renames a file (eval round 30); a pull, and builds before that, name it the way Spriggit does.
-        bool Numbered((string Relative, FormKey? Key) file) => file.Key is { } key ? key.ModKey == own
+        bool Numbered((string Relative, FormKey? Key, Type Type) file) => file.Key is { } key ? key.ModKey == own
             : own is { } plugin && Regex.IsMatch(Path.GetFileName(file.Relative), $@" - [0-9A-Fa-f]{{6}}_{Regex.Escape(plugin.FileName)}\.yaml$", RegexOptions.IgnoreCase);
         foreach (var (editorId, files) in editorIds.Where(pair => pair.Value.Count > 1 && pair.Value.Any(f => f.Key is not { } key || key.ModKey == own)))
         {
+            // Records of different types are records of their own, not one written twice: told to delete one, the model deleted
+            // its spell beside the magic effect it casts (eval round 84). The build renames the one a link of the other names
+            // (RenameSharedEditorIds); with no such link, which gets a new name is the model's to say.
+            if (files.Select(f => f.Type).Distinct().Count() == files.Count)
+            {
+                problems.Add($"{string.Join(" and ", files.Select(f => f.Relative))} have the same EditorID {editorId} — " +
+                    $"{string.Join(" and ", files.Select(f => Article(f.Type.Name)))}, records of their own, and an editor ID names one " +
+                    "record: give one an EditorID of its own, and the links meant for it the same — " +
+                    string.Join(" or ", files.Select(f => ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), f.Relative,
+                        $"{{\"path\": \"EditorID\", \"value\": {ToolCalls.Quoted(editorId + TypeWord(f.Type))}}}"))));
+                continue;
+            }
             var numbered = files.Where(Numbered).ToList();
             var fresh = files.Where(f => f.Key is null && !Numbered(f)).ToList();
             problems.Add($"{string.Join(" and ", files.Select(f => f.Relative))} have the same EditorID {editorId} — " +
@@ -1285,6 +1297,75 @@ public static class RecordFiles
         }
         return changes;
     }
+
+    /// <summary>
+    /// Gives one of two new records of different types written under one editor ID an editor ID of its own: the one a link
+    /// of the other names — the type the link takes says which record it means — as the editor ID and its type's word,
+    /// StormBoltEffect, with every link of the project's records that named it so pointed at it. Refused as one record written
+    /// twice, with "delete Spells/StormBolt.yaml", the model deleted its spell and wrote it again, refused five times, and ran
+    /// out of turns (eval round 84's spell+detailed #3: the magic effect and the spell casting it, both StormBolt). Two of
+    /// one type, or with no link that says which is meant, or a link each way, are left to the refusal.
+    /// </summary>
+    public static List<(string File, string Change)> RenameSharedEditorIds(string pluginDir, RecordIndex index)
+    {
+        var changes = new List<(string File, string Change)>();
+        var own = OwnPlugin(pluginDir);
+        var files = FlatRecords(pluginDir).Select(f => (f.File, f.Relative, f.Type, Text: File.ReadAllText(f.File))).Where(f => !Empty(f.Text)).ToList();
+        var taken = files.Select(f => Identity(f.Text).EditorId).OfType<string>().ToHashSet(StringComparer.OrdinalIgnoreCase);
+        bool Free(string name) => !taken.Contains(name) && !index.ByEditorId.ContainsKey(name);
+        var shared = files.Where(f => Identity(f.Text) is { EditorId: not null } id && (id.FormKey is not { } key || key.ModKey == own))
+            .GroupBy(f => Identity(f.Text).EditorId!, StringComparer.OrdinalIgnoreCase)
+            .Where(g => g.Count() == 2 && g.Select(f => f.Type).Distinct().Count() == 2).ToList();
+        foreach (var pair in shared)
+        {
+            var id = pair.Key;
+            // The links of a record's file that name the editor ID in a field taking the other's type.
+            List<string> Naming((string File, string Relative, Type Type, string Text) namer, Type target) =>
+                RecordLinks.LinksTo(namer.Text, namer.Type)
+                    .Where(l => l.Value.Equals(id, StringComparison.OrdinalIgnoreCase) && l.Takes.IsAssignableFrom(target))
+                    .Select(l => l.Path).ToList();
+            var (first, second) = (pair.First(), pair.Last());
+            var (firstNames, secondNames) = (Naming(first, second.Type), Naming(second, first.Type));
+            if ((firstNames.Count > 0) == (secondNames.Count > 0)) continue;
+            var (named, namer) = firstNames.Count > 0 ? (second, first) : (first, second);
+            if (EditorIdLine.Match(named.Text) is not { Success: true } line) continue;
+            var name = Numbered(id + TypeWord(named.Type), Free);
+            // Every record of the project but the renamed one, with its links that meant it.
+            var pointing = files.Where(f => f.Relative != named.Relative)
+                .Select(f => (f.Relative, f.Type, Paths: Naming(f, named.Type))).Where(f => f.Paths.Count > 0).ToList();
+            var value = line.Groups[1];
+            File.WriteAllText(named.File, named.Text[..value.Index] + name + named.Text[(value.Index + value.Length)..]);
+            var before = pointing.ToDictionary(p => p.Relative, p => files.First(f => f.Relative == p.Relative).Text);
+            try
+            {
+                foreach (var (relative, _, paths) in pointing)
+                    RecordEdits.Edit(pluginDir, relative, new System.Text.Json.Nodes.JsonObject(
+                        paths.Select(p => KeyValuePair.Create(p, (System.Text.Json.Nodes.JsonNode?)System.Text.Json.Nodes.JsonValue.Create(name)))), null);
+            }
+            catch (HelperException)
+            {
+                // A link editRecord cannot set: everything as it was, and the refusal says what to do.
+                File.WriteAllText(named.File, named.Text);
+                foreach (var (relative, text) in before) File.WriteAllText(files.First(f => f.Relative == relative).File, text);
+                continue;
+            }
+            taken.Add(name);
+            changes.Add((named.Relative, $"wrote `EditorID: {name}` for `EditorID: {id}` — {namer.Relative}, {Article(namer.Type.Name)}, has that " +
+                $"editor ID too, and an editor ID names one record: this {named.Type.Name}, which it names, has one of its own"));
+            changes.AddRange(pointing.Select(p => (p.Relative, $"pointed {string.Join(", ", p.Paths.Select(x => $"`{x}`"))} at {name}, the " +
+                $"{named.Type.Name} {named.Relative}, which {(p.Paths.Count == 1 ? "it" : "they")} named as {id}" +
+                (p.Relative == namer.Relative ? $" — {id} stays this {namer.Type.Name}'s" : ""))));
+        }
+        return changes;
+    }
+
+    /// <summary>The word a renamed record's editor ID gets after the one it shared: a magic effect's Effect.</summary>
+    internal static string TypeWord(Type type) => type.Name switch
+    {
+        "MagicEffect" => "Effect",
+        "ObjectEffect" => "Enchantment",
+        _ => type.Name
+    };
 
     /// <summary>
     /// An editor ID made from an in-game name — its words, each capitalized: Maven's Warning is MavensWarning — the first
