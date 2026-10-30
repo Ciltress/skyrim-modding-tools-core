@@ -406,8 +406,11 @@ export const graphicsRules: CrashRule[] = [
             const hex = MESH_ADDRESSES.map(address => ({ ...address, evidence: view.findAddress('firstLine', address.code) }))
                 .find(address => address.evidence.length > 0);
             const loading = modelInProgress(view);
+            // Crash Logger 1.27 names the meshes whose resource IDs are on the crashing thread's stack: the thread was
+            // working on them. As strong as a model loading when it crashed (a test mesh crash wrote only this, 2026-10-30).
+            const onStack = loading ? undefined : view.find('modelPaths', /\.nif\b/i)[0];
             const found = indicators(view, ['topHalf', 'modelPaths'], MESH_CODES);
-            if (!hex && !loading && found.length === 0) return undefined;
+            if (!hex && !loading && !onStack && found.length === 0) return undefined;
 
             const files = distinctFiles([
                 ...(loading ? [loading.path] : []),
@@ -415,11 +418,14 @@ export const graphicsRules: CrashRule[] = [
                 ...mentionedFiles(view, 'topHalf', 'nif(?:\\.dm)?|tri|bto|bsa')
             ]);
             const skeleton = found.some(item => item.code === 'ninode');
+            const stackModel = onStack?.text.replace(/^\[RSP\+0x[0-9A-F]+\]\s+/i, '');
             const title = loading ? `Crashed while loading the model ${fileName(loading.path)}`
+                : stackModel ? `Crashed while handling the model ${fileName(stackModel)}`
                 : hex ? `Mesh crash: ${hex.short}` : 'Possible mesh problem near the crash';
             const explain = [
                 ...(hex ? [`Where the game crashed points to ${hex.long}.`] : []),
                 ...(loading ? [`The game crashed in the middle of loading ${loading.path}.`] : []),
+                ...(stackModel ? [`The crashing thread was working on ${stackModel}.`] : []),
                 ...(found.length > 0 ? [`Mesh names are near the crash: ${list(found.map(item => item.code))}.`] : [])
             ].join(' ');
             const skeletonFile = files.slice(0, 3).some(file => /skeleton/i.test(fileName(file)));
@@ -433,13 +439,14 @@ export const graphicsRules: CrashRule[] = [
                     'or regenerate their FaceGen in the Creation Kit.'] : []),
                 ...(skeleton ? ['NiNode points to the skeleton: make sure one skeleton mod is installed and not overwritten.'] : [])
             ].join(' ');
-            const confidence: Finding['confidence'] = hex || (loading && /\.nif$/i.test(loading.path)) ? 'likely' : 'possible';
+            const confidence: Finding['confidence'] = hex || onStack || (loading && /\.nif$/i.test(loading.path)) ? 'likely' : 'possible';
             return {
                 title: cut(title),
                 confidence,
                 explain,
                 fix,
-                evidence: strongest([...(hex?.evidence ?? []), ...(loading?.evidence ?? [])], found.flatMap(item => item.evidence))
+                evidence: strongest([...(hex?.evidence ?? []), ...(loading?.evidence ?? []), ...(onStack ? [onStack] : [])],
+                    found.flatMap(item => item.evidence))
             };
         }
     },

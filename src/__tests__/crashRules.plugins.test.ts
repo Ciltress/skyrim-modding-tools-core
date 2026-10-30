@@ -14,6 +14,8 @@ const many = (count: number, extension: string) => Array.from({ length: count },
 
 /** A load order with mods in it. */
 const MODS = [...BASE_PLUGINS, 'Mod A.esp', 'Mod B.esp'];
+/** A Crash Logger from before 1.26, which wrote no MISSING MASTERS of its own. */
+const OLD = '1.23.1';
 /** Crash Logger 1.26's own section, as it writes it. */
 const missingMasters = (missing: string) => [
     `MyPatch.esp -> ${missing}`,
@@ -79,25 +81,28 @@ describe('plugin rules', () => {
             evidence: expect.arrayContaining([{ place: 'missingMasters', index: 0, text: 'MyPatch.esp -> NotInstalled.esm' }])
         });
 
-        const [strong] = run('missing-masters', { game: '1.7.104', firstLine: firstLineAt('SkyrimSE.exe+019D620'), plugins: MODS });
+        const [strong] = run('missing-masters', { logger: OLD, game: '1.7.104', firstLine: firstLineAt('SkyrimSE.exe+019D620'), plugins: MODS });
         expect(strong).toMatchObject({ confidence: 'likely', evidence: [{ place: 'firstLine' }] });
-        const [se] = run('missing-masters', { game: '1.5.97', firstLine: firstLineAt('SkyrimSE.exe+05E1F22'), plugins: MODS });
+        const [se] = run('missing-masters', { logger: OLD, game: '1.5.97', firstLine: firstLineAt('SkyrimSE.exe+05E1F22'), plugins: MODS });
         expect(se).toMatchObject({ confidence: 'likely', evidence: [{ place: 'firstLine' }] });
         expect(se.fix).toContain('Nexus 106441');
 
-        const [gameAlone] = run('missing-masters', { plugins: [...BASE_PLUGINS, 'ccbgssse001-fish.esm'] });
+        const [gameAlone] = run('missing-masters', { logger: OLD, plugins: [...BASE_PLUGINS, 'ccbgssse001-fish.esm'] });
         expect(gameAlone).toMatchObject({ confidence: 'possible', evidence: [{ place: 'plugins', text: expect.stringMatching(/^Light:/) }] });
 
-        expect(run('missing-masters', { plugins: MODS })).toEqual([]);
+        expect(run('missing-masters', { logger: OLD, plugins: MODS })).toEqual([]);
+        // Crash Logger 1.26 and later check the masters themselves: a whole log of theirs without MISSING MASTERS has none.
+        expect(run('missing-masters', { game: '1.7.104', firstLine: firstLineAt('SkyrimSE.exe+019D620'), plugins: MODS })).toEqual([]);
+        expect(run('missing-masters', { relevantObjects: ['RSP+F8: (SettingT<INISettingCollection>*)'], plugins: MODS })).toEqual([]);
         // 1.6.1170's offset is another place in 1.7.104; 5E1F22 is 1.5.97's.
-        expect(run('missing-masters', { game: '1.7.104', firstLine: firstLineAt('SkyrimSE.exe+0198090'), plugins: MODS })).toEqual([]);
-        expect(run('missing-masters', { game: '1.6.1170', firstLine: firstLineAt('SkyrimSE.exe+05E1F22'), plugins: MODS })).toEqual([]);
+        expect(run('missing-masters', { logger: OLD, game: '1.7.104', firstLine: firstLineAt('SkyrimSE.exe+0198090'), plugins: MODS })).toEqual([]);
+        expect(run('missing-masters', { logger: OLD, game: '1.6.1170', firstLine: firstLineAt('SkyrimSE.exe+05E1F22'), plugins: MODS })).toEqual([]);
         // A log cut short before its plugin list says nothing about them.
         expect(run('missing-masters', {})).toEqual([]);
     });
 
     it('missing-creation-club: a master seems missing on the Anniversary Edition and Creation Club files are not loaded', () => {
-        const [found] = run('missing-creation-club', { game: '1.7.104', firstLine: firstLineAt('SkyrimSE.exe+019D620'), plugins: MODS });
+        const [found] = run('missing-creation-club', { logger: OLD, game: '1.7.104', firstLine: firstLineAt('SkyrimSE.exe+019D620'), plugins: MODS });
         expect(found).toMatchObject({ confidence: 'possible', title: 'Creation Club content is missing', evidence: [{ place: 'plugins' }] });
         expect(found.explain).toContain('0 of 75');
 
@@ -105,7 +110,7 @@ describe('plugin rules', () => {
         expect(named).toMatchObject({ confidence: 'likely', evidence: [{ place: 'missingMasters', text: 'MyPatch.esp -> ccBGSSSE001-Fish.esm' }, { place: 'missingMasters' }] });
 
         const everything = [...BASE_PLUGINS, ...Object.keys(CREATION_CLUB_FILES), 'Mod A.esp'];
-        expect(run('missing-creation-club', { game: '1.7.104', firstLine: firstLineAt('SkyrimSE.exe+019D620'), plugins: everything })).toEqual([]);
+        expect(run('missing-creation-club', { logger: OLD, game: '1.7.104', firstLine: firstLineAt('SkyrimSE.exe+019D620'), plugins: everything })).toEqual([]);
         expect(run('missing-creation-club', { game: '1.7.104', plugins: ['Skyrim.esm'], missingMasters: missingMasters('NotInstalled.esm') })).toEqual([]);
         expect(run('missing-creation-club', { game: '1.5.97', firstLine: firstLineAt('SkyrimSE.exe+05E1F22'), plugins: MODS })).toEqual([]);
         expect(run('missing-creation-club', { game: '1.7.104', plugins: MODS })).toEqual([]);

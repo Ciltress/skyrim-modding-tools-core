@@ -701,6 +701,9 @@ function namedMissingMasters(view: CrashView): { missing: string[]; disable: str
  * cut short before its plugin list says nothing about them, so that is not counted.
  */
 function missingMasterSignals(view: CrashView): { strong: boolean; evidence: Evidence[] } | undefined {
+    // From 1.26 on, Crash Logger checks the masters itself and writes MISSING MASTERS when one is: a whole log
+    // of 1.26 or later without that section has none missing, whatever the guesses below would say.
+    if (view.log.complete && view.log.loggerVersion !== undefined && compareVersions(view.log.loggerVersion, '1.26.0') >= 0) return undefined;
     const strong = [
         ...(view.isAE ? view.findAddress('firstLine', '0198090') : view.find('firstLine', '5E1F22')),
         ...view.find('topHalf', 'SettingT<INISettingCollection>*')

@@ -74,7 +74,7 @@ describe('parseCrashLog on a 1.23 log', () => {
 describe('parseCrashLog on other logs', () => {
     it('reads every real log, each with an exception and a call stack', () => {
         const names = fs.readdirSync(FIXTURES).filter(name => name.startsWith('crash-'));
-        expect(names.length).toBe(10);
+        expect(names.length).toBe(12);
         for (const name of names) {
             const log = read(name);
             expect(log.firstLine, name).toMatch(/^Unhandled exception/);

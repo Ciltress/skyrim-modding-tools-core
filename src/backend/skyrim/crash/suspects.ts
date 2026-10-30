@@ -34,8 +34,11 @@ const MODEL = /((?:meshes|textures)[\\/][^"\t|<>:*?]+?\.(?:nif|dds|tri|hkx|btr|b
 
 export function candidates(log: CrashLog): Candidate[] {
     const found = new Map<string, Candidate>();
+    // A model is named as each part of the game spells it — `meshes\interface/logo/logo.nif`, `MESHES\interface\…`: one file.
+    const keyOf = (kind: Candidate['kind'], file: string) => `${kind}:${kind === 'model' ? modelKey(file) : file.toLowerCase()}`;
     const add = (file: string, kind: Candidate['kind'], place: Place, index: number, text: string) => {
-        const key = `${kind}:${file.toLowerCase()}`;
+        const key = keyOf(kind, file);
+        if (kind === 'model') file = file.replace(/\//g, '\\');
         const known = found.get(key);
         const item = { place, index, text };
         if (known) {
@@ -64,7 +67,7 @@ export function candidates(log: CrashLog): Candidate[] {
     const models = log.models.map((model, index) => ({ ...model, index }));
     for (const model of models) {
         add(model.path, 'model', model.section, model.index, model.path);
-        if (model.inProgress) found.get(`model:${model.path.toLowerCase()}`)!.loading = true;
+        if (model.inProgress) found.get(keyOf('model', model.path))!.loading = true;
     }
     for (const [place, lines] of [['relevantObjects', objects], ['stack', (log.sections.stack ?? []).slice(0, 100)]] as const) {
         lines.forEach((line, index) => {
@@ -74,6 +77,11 @@ export function candidates(log: CrashLog): Candidate[] {
     }
 
     return [...found.values()].sort(compareCandidates);
+}
+
+/** A model's path as one key, whatever its case, separators, or a leading `data\`. */
+function modelKey(file: string): string {
+    return file.replace(/\//g, '\\').replace(/^\\+/, '').replace(/^data\\/i, '').toLowerCase();
 }
 
 function compareCandidates(a: Candidate, b: Candidate): number {
