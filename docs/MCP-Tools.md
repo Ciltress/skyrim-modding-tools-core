@@ -41,8 +41,8 @@ arguments, see [`Tool-Reference.md`](./Tool-Reference.md), which is generated fr
    `healthcheck` names the active profile.
 
 3. **Some tools may be withheld for this backend.** A tool that needs an optional backend feature
-   is withheld where the backend lacks it. None does yet; the Nexus tools will (an API key, a premium
-   account). Calling a withheld tool answers that the backend does not offer it — a property of the
+   is withheld where the backend lacks it: `downloadNexusFile`, without a premium account's Nexus API
+   key. Calling a withheld tool answers that the backend does not offer it — a property of the
    backend, so retrying will not help.
 
 4. **An answer can be withheld for being too large.** Over the profile's response ceiling you get
@@ -334,9 +334,10 @@ answers, so no client needs `tools/list_changed`.
 worked is worse than offering one that errors, because the first is invisible. `MCP_GATE=off` skips
 the question entirely.
 
-**The exception is Nexus, by the user's decision.** The Nexus tools need `nexus-api-key` — a key in
-`NEXUS_API_KEY` — and `downloadNexusFile` needs `nexus-premium` as well, which the backend reports only
-when Nexus *confirms* the key is a premium account's. A key Nexus could not check, or not within 5 s,
+**The exception is Nexus's download.** `downloadNexusFile` needs `nexus-premium`, which the backend
+reports only when Nexus *confirms* the key in `NEXUS_API_KEY` is a premium account's. Searching and
+reading Nexus need no key — its GraphQL API answers them for anyone — so `searchNexus` and
+`readNexusMod` are always offered (the user's call, 2026-10-30; before, they waited for a key too). A key Nexus could not check, or not within 5 s,
 is not confirmed: the download is withheld, and a restart asks again. The backend always reports
 `instance` too, so its list is never empty — an empty one would gate nothing — and it answers within
 the server's 8 s, so a slow Nexus cannot leave the gate empty either.
@@ -407,7 +408,7 @@ the game's prefix with Amethyst):
 {"tool":"installMod","args":{"file":"Realistic Water Two SE v5.7.3-2182-5-7-3-1767473625.7z","choices":["2.1.1","3.1.6"]}}
 ```
 
-The Nexus tools are listed only with a key in `NEXUS_API_KEY`. Recommend a mod only with its
+`searchNexus` and `readNexusMod` need no key. Recommend a mod only with its
 `requirements` checked against what the instance has — an SKSE plugin without SKSE does nothing, and
 one built for another game version crashes it. `downloadNexusFile` is listed only when Nexus confirms
 the key is a premium account's (`health.nexus` says whether it is); it writes the file and Mod
@@ -598,8 +599,7 @@ Start with `healthcheck`.
 | `searchNexus` / `readNexusMod` → "Nexus Mods could not be reached" | No internet connection from this machine, or Nexus is down | Check the connection; the instance's tools work without it |
 | `searchNexus` / `readNexusMod` → "Nexus Mods answered HTTP 429" | Nexus's rate limit | Wait, then ask again — fewer calls, a narrower `text` |
 | `healthcheck` → `health.nexus.problem`: "Nexus Mods refused the key in NEXUS_API_KEY" | A mistyped, revoked or regenerated personal API key | Copy the key from nexusmods.com/settings/api-keys into `NEXUS_API_KEY`, restart the server |
-| `searchNexus`, `readNexusMod`, `downloadNexusFile` not listed; `tools.withheldForBackend` names them | `NEXUS_API_KEY` is unset — the Nexus tools are offered only with a key | Set a personal API key and restart; `installMod` works without one, on files the user downloads |
-| `downloadNexusFile` not listed; `tools.withheldForBackend` names it | `NEXUS_API_KEY` is refused or not a premium account's — Nexus gives download links through its API to premium accounts only — or Nexus did not answer the key check when the server started (`health.nexus.unchecked`) | Set a premium account's key and restart, or restart once Nexus answers; otherwise the user downloads the file on the mod page |
+| `downloadNexusFile` not listed; `tools.withheldForBackend` names it | `NEXUS_API_KEY` is unset, refused or not a premium account's — Nexus gives download links through its API to premium accounts only — or Nexus did not answer the key check when the server started (`health.nexus.unchecked`) | Set a premium account's key and restart, or restart once Nexus answers; otherwise the user downloads the file on the mod page |
 | `downloadNexusFile` → "came out N of M bytes" | The download broke off; nothing was kept | Call it again |
 | `newProject` / `addPatch` → "X is already a plugin in the load order" | The project's own plugin was given the name of one the instance has — often the plugin meant to copy from | Leave `plugin` out (the project gets `<project>.esp`); to copy from a plugin, pass it to `addPatch` as `from` |
 | `installMod` → "A mod named 'X' is already in the instance" | The mod is installed, or another one has its name | `replace: true` to install over it (it keeps its place in the mod order), or `name` for a separate mod |

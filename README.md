@@ -78,7 +78,8 @@ Each tool comes with a name, a description and a JSON Schema for its arguments (
 any model's function calling, and it can mod. The tools `readSkill` and `readServerGuide` teach it how.
 
 The settings are environment variables. On Linux, Amethyst is found by itself; with Mod Organizer,
-`SKYRIM_MO2_INSTANCE` names the instance folder. `NEXUS_API_KEY` adds the Nexus Mods tools, and
+`SKYRIM_MO2_INSTANCE` names the instance folder. Searching Nexus Mods needs no key; `NEXUS_API_KEY`, a
+premium account's personal key, adds downloading from it, and
 `SKYRIM_PROJECTS_DIR` says where the projects go. Every other setting: the
 [MCP server's table](https://github.com/Ciltress/skyrim-modding-tools-mcp#configuration).
 

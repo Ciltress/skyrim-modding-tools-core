@@ -64,6 +64,12 @@ describe('the gated features', () => {
         expect(unknown).toEqual([]);
     });
 
+    it('offers searching and reading Nexus without a key, and withholds only the download', () => {
+        // A backend with no Nexus key reports `instance` alone: Nexus answers searches and pages anyway.
+        const gate = evaluateGate(['instance'], CATALOGUE, GATED_FEATURES);
+        expect([...gate.unavailable.keys()]).toEqual(['downloadNexusFile']);
+    });
+
     it('has at least one real tool declaring each feature', () => {
         // A feature nothing needs is dead configuration.
         for (const feature of GATED_FEATURES) {

@@ -97,17 +97,15 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
     }
 
     /**
-     * `instance` always, `nexus-api-key` when NEXUS_API_KEY is set — the Nexus tools are offered only
-     * with one, at the user's decision — and `nexus-premium` when Nexus confirms the key belongs to a
+     * `instance` always, and `nexus-premium` when Nexus confirms the key in NEXUS_API_KEY belongs to a
      * premium account. A key Nexus could not check, or did not in time, is not confirmed premium: the
      * download is not offered then, and a restart asks again. `instance` keeps the list from ever being
-     * empty, which would gate nothing (capabilityGate.ts) and list the Nexus tools after all.
+     * empty, which would gate nothing (capabilityGate.ts) and list the download after all.
      */
     async capabilities(): Promise<readonly string[] | undefined> {
         const account = await this.nexusAccount(CAPABILITIES_WAIT_MS);
         return [
             'instance',
-            ...(account.apiKey ? ['nexus-api-key'] : []),
             ...('premium' in account && account.premium ? ['nexus-premium'] : [])
         ];
     }

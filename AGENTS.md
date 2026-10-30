@@ -173,9 +173,9 @@ scripts/check-helper.mjs   starts the built helper and checks it answers; CI run
 - **The backend decides what it can serve; ask it, do not hard-code it.** Tools declare
   `needsFeature`; `capabilities()` says what this backend has. **Every failure path leaves the gate
   empty and the list complete**: hiding a tool that would have worked is worse than offering one that
-  errors, because the first is invisible. The one exception is the user's decision: the Nexus tools
-  are offered only with `NEXUS_API_KEY`, and `downloadNexusFile` only when Nexus confirms a premium
-  account — a check Nexus did not answer withholds it ([§3.3 of `docs/MCP-Tools.md`](docs/MCP-Tools.md)).
+  errors, because the first is invisible. The one exception: `downloadNexusFile` is offered only when
+  Nexus confirms the key in `NEXUS_API_KEY` is a premium account's — a check Nexus did not answer
+  withholds it; searching and reading Nexus need no key ([§3.3 of `docs/MCP-Tools.md`](docs/MCP-Tools.md)).
 - **A profile decides what is listed _and_ what is routed.** A tool outside the profile is not
   callable, so `readonly` genuinely cannot write. Renaming a tool a profile names fails at **startup**
   (`applyProfile` throws), and `profiles.test.ts` catches it first.

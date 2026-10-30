@@ -77,8 +77,8 @@ When a change has no effect in game, `readRecord` with `allVersions: true` shows
 there before installing a mod or a requirement twice.
 
 1. **Check it.** `searchNexus`, then `readNexusMod`: its `requirements` and `dlcRequirements` must be
-   in the instance first — install those first, the same way. Without these tools (no Nexus API key),
-   ask the user what the mod page says it needs.
+   in the instance first — install those first, the same way. When Nexus cannot be reached, ask the
+   user what the mod page says it needs.
 2. **Get the file.** `downloadNexusFile` with the main file's `fileId`, plus optional files the user
    wants. Without that tool (no premium account), the user downloads it into the downloads folder.
 3. **Install.** `installMod` with the file. A FOMOD installer answers its steps first: choose with the

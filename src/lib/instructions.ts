@@ -24,7 +24,7 @@ export function serverInstructions(target: string): string {
     return [
         'This server authors and analyses Skyrim Special Edition mods: it looks records up across the ' +
         'load order, builds mods kept as text projects into plugins deployed to the mod manager (Mod Organizer or Amethyst), ' +
-        'and installs downloaded mods — with a Nexus Mods API key, it also finds them on Nexus Mods. ' +
+        'and installs downloaded mods, which it finds on Nexus Mods — and downloads with a premium account\'s Nexus API key. ' +
         `It is bound to ${target} and cannot be switched to another at runtime.`,
         '',
         'Don\'t overthink: decide, then deliver the task. A mod is delivered when the buildProject after your last change ' +

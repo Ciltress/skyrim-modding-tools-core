@@ -1384,7 +1384,7 @@ describe('the Skyrim backend', () => {
         expect(patch.textLeftOut).toMatch(/1 file.*read it at its path/i);
     });
 
-    it('offers the Nexus tools only with a key, and the download only for an account Nexus confirms premium', async () => {
+    it('offers the download only for an account Nexus confirms premium; searching and reading need no key', async () => {
         const validate = (answer: () => Promise<Response>) => new NexusCatalogue({
             appVersion: '0.1.0', apiKey: 'key', fetch: answer as unknown as typeof fetch
         });
@@ -1392,19 +1392,19 @@ describe('the Skyrim backend', () => {
 
         const premium = makeBackend({ nexus: validate(user(true)) }).backend;
         expect((await premium.health()).nexus).toEqual({ apiKey: true, name: 'SomeModder', premium: true, supporter: false });
-        expect(await premium.capabilities()).toEqual(['instance', 'nexus-api-key', 'nexus-premium']);
+        expect(await premium.capabilities()).toEqual(['instance', 'nexus-premium']);
 
         const free = makeBackend({ nexus: validate(user(false)) }).backend;
-        expect(await free.capabilities()).toEqual(['instance', 'nexus-api-key']);
+        expect(await free.capabilities()).toEqual(['instance']);
 
-        // Never an empty list without a key: an empty one would gate nothing, and list every Nexus tool.
+        // Never an empty list without a key: an empty one would gate nothing, and list the download.
         const noKey = makeBackend({ nexus: new NexusCatalogue({ appVersion: '0.1.0' }) }).backend;
         expect((await noKey.health()).nexus).toEqual({ apiKey: false });
         expect(await noKey.capabilities()).toEqual(['instance']);
 
         // Nexus could not be asked: premium is not confirmed, so the download is not offered.
         const offline = makeBackend({ nexus: validate(async () => { throw new TypeError('fetch failed'); }) }).backend;
-        expect(await offline.capabilities()).toEqual(['instance', 'nexus-api-key']);
+        expect(await offline.capabilities()).toEqual(['instance']);
         expect((await offline.health()).nexus).toMatchObject({ apiKey: true, unchecked: expect.stringMatching(/could not be reached/) });
     });
 
@@ -1415,7 +1415,7 @@ describe('the Skyrim backend', () => {
             const answered = makeBackend({ nexus: silent }).backend.capabilities();
             // Within the server's 8 s: a later answer would leave the gate empty, and the download listed.
             await vi.advanceTimersByTimeAsync(6_000);
-            await expect(answered).resolves.toEqual(['instance', 'nexus-api-key']);
+            await expect(answered).resolves.toEqual(['instance']);
         } finally {
             vi.useRealTimers();
         }
