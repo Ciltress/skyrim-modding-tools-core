@@ -454,6 +454,13 @@ public static class RecordEdits
                 if (child is not YamlSequenceNode list || n >= list.Children.Count) { changes.Add($"no {path} to remove"); return text; }
                 if (i == steps.Count - 1)
                 {
+                    // The last item goes with its field: an `Items:` left with none reads as no list, and the build refused the
+                    // file — so the call that deletes Hilda's placeholder inventory line failed (eval round 89's npc+detailed #3).
+                    if (list.Children.Count == 1)
+                    {
+                        changes.Add($"removed {path} and the {step.Key} it was the last of");
+                        return RemoveLines(text, Line(key.Start), FieldEnd(text, key, child));
+                    }
                     changes.Add($"removed {path}");
                     return RemoveLines(text, Line(list.Children[n].Start), LastLine(text, list.Children[n]));
                 }

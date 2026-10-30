@@ -20,6 +20,7 @@ public static class ProjectNotes
     private static readonly Regex FemaleFlag = new(@"^[ \t]+-[ \t]*Female[ \t]*\r?$|^[ \t]+Flags:[ \t]*\[[^\]\r\n]*\bFemale\b", RegexOptions.Multiline);
     private static readonly Regex TemplateLine = new(@"^Template:[ \t]*([^\s#]+)", RegexOptions.Multiline);
     private static readonly Regex ObjectEffectLink = new(@"^ObjectEffect:[ \t]*([^\s#]+)", RegexOptions.Multiline);
+    private static readonly Regex ChargeLine = new(@"^EnchantmentAmount:[ \t]*['""]?(\d+)", RegexOptions.Multiline);
     private static readonly Regex BoundFlags = new(@"^[ \t]+-[ \t]*(NonPlayable|BoundWeapon)[ \t]*\r?$", RegexOptions.Multiline);
     private static readonly Regex NameLine = new(@"^Name[ \t]*:", RegexOptions.Multiline);
     private static readonly Regex EffectsLine = new(@"^Effects[ \t]*:", RegexOptions.Multiline);
@@ -100,6 +101,28 @@ public static class ProjectNotes
                     "Bound Sword a spell conjures is: a conjured weapon" + (bound.Contains("NonPlayable") ? ", kept out of the player's inventory" : "") +
                     " — a weapon to carry has neither among the Flags under Data, as readRecord {\"record\": \"IronSword\"} shows; one a magic " +
                     "effect of the project conjures keeps them");
+            // A weapon's enchantment spends its cost from the weapon's charge on each hit (the Creation Kit's Enchantment
+            // Amount), so one with no charge has none to spend: 2,936 of the 2,945 enchanted weapons of the game's five masters
+            // the player can carry have one, 500 to 3000, and the 9 without are uniques whose enchantments cost nothing, as the
+            // Ebony Blade's. The model's Flame Blade carried its enchantment with no charge, written into the enchantment instead
+            // (eval round 89's sword+detailed #5, round 87's #4 and #5); shown "no charge" in the build's `built` line, it set
+            // the value beside it and not the charge. An armor's enchantment is constant: none of the game's has a charge.
+            if (type == typeof(Weapon) && ObjectEffectLink.Match(text) is { Success: true } carries && !BoundFlags.IsMatch(text)
+                && !(ChargeLine.Match(text) is { Success: true } charge && charge.Groups[1].Value.TrimStart('0').Length > 0))
+            {
+                var carried = carries.Groups[1].Value;
+                var ownEnchantment = records.FirstOrDefault(r => r.Type == typeof(ObjectEffect)
+                    && string.Equals(RecordFiles.Identity(r.Text).EditorId, carried, StringComparison.OrdinalIgnoreCase));
+                notes.Add($"{relative}: {RecordFiles.Identity(text).EditorId ?? "the weapon"} carries {carried} but has no charge " +
+                    "(EnchantmentAmount), so the enchantment has none to spend when it hits — 2,936 of the game's 2,945 enchanted " +
+                    "weapons the player can carry have one, 500 to 3000" +
+                    (ownEnchantment.Text is { } ownText && ChargeLine.IsMatch(ownText)
+                        ? $"; the EnchantmentAmount {ownEnchantment.Relative} writes is the enchantment's own, not the weapon's charge" : "") +
+                    "; one call gives it 500, as Iron Sword of Embers has — the charge the user asked for in its place, if they " +
+                    "named one — and builds again: " +
+                    ToolCalls.Edit(ProjectOf(pluginDir), relative, "{\"path\": \"EnchantmentAmount\", \"value\": 500}", build: true) +
+                    " — a unique meant to need none, as the Ebony Blade, keeps none");
+            }
             // One with Traits among its TemplateFlags is its template's race and sex in game, whatever its own lines say: the
             // model's Hilda, Pelagius' Flame Thrall copied with NordRace and a woman's voice written, kept the thrall's template
             // EncAtronachFlame and Traits, and built with no word — a flame atronach (eval round 79's npc #3).

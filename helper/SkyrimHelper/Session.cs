@@ -474,7 +474,7 @@ public sealed class Session : IDisposable
         var others = LoadedMods(except: mod.ModKey);
         var lookup = others.ToImmutableLinkCache<ISkyrimMod, ISkyrimModGetter>();
         var own = mod.EnumerateMajorRecords().Select(r => r.FormKey).ToHashSet();
-        var dangling = new List<string>();
+        var dangling = new List<(string Record, FormKey Target)>();
         foreach (var record in mod.EnumerateMajorRecords())
         {
             foreach (var link in record.EnumerateFormLinks())
@@ -485,13 +485,16 @@ public sealed class Session : IDisposable
                 var found = link.FormKey.ModKey == mod.ModKey
                     ? own.Contains(link.FormKey)
                     : lookup.TryResolve(link.FormKey, link.Type, out _);
-                if (!found) dangling.Add($"{record.EditorID ?? FormKeyText(record.FormKey)} -> {FormKeyText(link.FormKey)}");
+                if (!found) dangling.Add((record.EditorID ?? FormKeyText(record.FormKey), link.FormKey));
             }
         }
         if (dangling.Count > 0)
+        {
+            var named = DanglingLinks(dir, mod.ModKey, dangling.Distinct().ToList());
             throw new HelperException("danglingLinks",
                 $"{dangling.Count} link(s) point at records that exist neither in the project nor in the load order: " +
-                string.Join("; ", dangling.Distinct().Take(20)) + (dangling.Count > 20 ? "; …" : ""));
+                string.Join("; ", named.Take(20)) + (named.Count > 20 ? "; …" : ""));
+        }
 
         // A new spell's effects cast as it is, or the spell does nothing in game (EffectCasting).
         var miscast = EffectCasting.Mismatches(mod, lookup, Index, dir);
@@ -707,6 +710,43 @@ public sealed class Session : IDisposable
             : throw new HelperException("badRequest", $"'{raw}' is not a FormID: write it as 012EB7:Skyrim.esm.");
 
     public static string FormKeyText(FormKey key) => $"{key.ID:X6}:{key.ModKey.FileName}";
+
+    /// <summary>
+    /// Each link to a record that exists nowhere, as the build refuses it: the file and the field it is written in, what it
+    /// points at, and the call that deletes it. Told only "Hilda -> 000000:HildaTheNord.esp", the model set Hilda's class and
+    /// outfit six times and wrote her file anew three times before it found the inventory line `- Item: 000000:HildaTheNord.esp
+    /// # Placeholder`, and the run ended at the turn limit with no answer (eval round 89's npc+detailed #3).
+    /// </summary>
+    private static List<string> DanglingLinks(string dir, ModKey plugin, List<(string Record, FormKey Target)> dangling)
+    {
+        var written = RecordFiles.FlatRecords(dir)
+            .Select(f => (f.Relative, Links: RecordLinks.LinksIn(File.ReadAllText(f.File), f.Type))).ToList();
+        var project = ToolCalls.ProjectOf(dir);
+        var named = new List<string>();
+        foreach (var (record, target) in dangling)
+        {
+            var why = target.ID == 0 ? "a placeholder no record has"
+                : target.ModKey == plugin ? "a FormID no record of the project has"
+                : $"a FormID no record of {target.ModKey.FileName} in the load order has";
+            var places = written.SelectMany(w => w.Links
+                    .Where(l => FormKey.TryFactory(l.Value, out var key) && key == target)
+                    .Select(l => (w.Relative, l.Path)))
+                .ToList();
+            if (places.Count == 0)
+            {
+                named.Add($"{record} -> {FormKeyText(target)}, {why}");
+                continue;
+            }
+            foreach (var (relative, path) in places)
+            {
+                // An item of a list goes whole — the inventory's `Items[0]`, not its `Items[0].Item.Item` alone.
+                var item = Regex.Match(path, @"^(.*\[\d+\])\..+$") is { Success: true } inList ? inList.Groups[1].Value : path;
+                named.Add($"{relative.Replace('\\', '/')}: {path} -> {FormKeyText(target)}, {why} — point it at a record that " +
+                    "exists, by its editor ID or FormID, or delete it: " + ToolCalls.Edit(project, relative, "", ToolCalls.Quoted(item), build: true));
+            }
+        }
+        return named;
+    }
 
     public static string Required(JsonObject p, string name) =>
         p[name]?.GetValue<string>() is { Length: > 0 } value
