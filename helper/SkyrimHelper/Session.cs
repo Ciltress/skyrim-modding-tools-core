@@ -226,7 +226,7 @@ public sealed class Session : IDisposable
     private async Task<JsonNode> ReadRecord(JsonObject p)
     {
         var formKey = Resolve(Required(p, "record"), byName: true);
-        var plugin = p["plugin"]?.GetValue<string>();
+        var plugin = PluginNamed(p["plugin"]?.GetValue<string>());
         var all = p["allVersions"]?.GetValue<bool>() ?? false;
 
         var contexts = Contexts(formKey);
@@ -319,13 +319,21 @@ public sealed class Session : IDisposable
     /// <summary>Project text uses LF: fewer bytes in every answer, and no line-ending churn in git.</summary>
     public static string Lf(string text) => text.Replace("\r\n", "\n");
 
+    /// <summary>
+    /// A plugin named where its file name goes, as given — or, given as a FormKey, that FormKey's plugin: addPatch's `from`
+    /// sent as the record's own FormID was answered "013989:Skyrim.esm does not contain 013989:Skyrim.esm" (eval round 97's
+    /// build #1).
+    /// </summary>
+    private static string? PluginNamed(string? given) =>
+        given is not null && FormKey.TryFactory(given.Trim(), out var formKey) ? formKey.ModKey.FileName.String : given;
+
     // ---------------------------------------------------------------- patching
 
     private async Task<JsonNode> AddOverrides(JsonObject p)
     {
         var pluginName = ModKey.FromFileName(Required(p, "plugin"));
         var projectDir = Required(p, "projectPluginDir");
-        var from = p["from"]?.GetValue<string>();
+        var from = PluginNamed(p["from"]?.GetValue<string>());
         var requested = p["records"]?.AsArray().Select(r => r!.GetValue<string>()).ToList()
             ?? throw new HelperException("badRequest", "'records' is required: FormIDs like 012EB7:Skyrim.esm, or editor IDs.");
 
