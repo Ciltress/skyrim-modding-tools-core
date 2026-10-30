@@ -1,5 +1,6 @@
 using System.Globalization;
 using Mutagen.Bethesda.Plugins;
+using Mutagen.Bethesda.Plugins.Aspects;
 using Mutagen.Bethesda.Plugins.Cache;
 using Mutagen.Bethesda.Plugins.Records;
 using Mutagen.Bethesda.Skyrim;
@@ -7,14 +8,18 @@ using Mutagen.Bethesda.Skyrim;
 namespace SkyrimHelper;
 
 /// <summary>
-/// A new weapon or armor written after a record of the load order — one with its model — whose numbers the file changed
-/// in part, the rest still that record's, as notes beside a build that succeeds. The model's Flame Blade, written from the
-/// Iron Sword with 12 damage and a weight of 10, kept the Iron Sword's value of 25, and its answer told the user the value
-/// of 150 they had asked for, the build's `built` line saying 25 beside it (eval rounds 87, 92 and 94, a sword+detailed
-/// run each). A record copied whole, or changed in every number, has no note: it is the one kept in part where a number
-/// is forgotten. Each note writes the call that sets the numbers kept.
+/// A new weapon or armor written after a record of the load order — one with its model — that kept what the user likely
+/// asked to change, as notes beside a build that succeeds:
+/// - its numbers changed in part, the rest still that record's. The model's Flame Blade, written from the Iron Sword with
+///   12 damage and a weight of 10, kept the Iron Sword's value of 25, and its answer told the user the value of 150 they
+///   had asked for, the build's `built` line saying 25 beside it (eval rounds 87, 92, 94 and 95, a sword+detailed run
+///   each). A record copied whole, or changed in every number, has no such note: it is the one kept in part where a
+///   number is forgotten.
+/// - its name, that record's: addPatch's Iron Sword, given the EditorID FlameBlade and the numbers asked for, was made a
+///   new record by the build and built as a second "Iron Sword", with no word (eval round 95's sword+detailed #1).
+/// Each note writes the one call that sets what was kept.
 /// </summary>
-internal static class KeptNumbers
+internal static class KeptFromSource
 {
     private sealed record Number(string Path, string Word, string Mine, string Theirs);
 
@@ -70,17 +75,24 @@ internal static class KeptNumbers
             var numbers = numbersOf(source);
             var kept = numbers.Where(n => n.Mine == n.Theirs).ToList();
             var changed = numbers.Where(n => n.Mine != n.Theirs).ToList();
-            if (kept.Count == 0 || changed.Count == 0 || files.GetValueOrDefault(record.FormKey) is not { } relative) return;
+            if (changed.Count == 0) kept = [];
+            var named = NameOf(record) is { Length: > 0 } mine && mine == NameOf(source) ? mine : null;
+            if ((kept.Count == 0 && named is null) || files.GetValueOrDefault(record.FormKey) is not { } relative) return;
             var name = record.EditorID ?? Session.FormKeyText(record.FormKey);
             var theirs = source.EditorID ?? Session.FormKeyText(source.FormKey);
-            var one = kept.Count == 1;
-            notes.Add($"{relative}: {name} has its own {Listed(changed.Select(n => n.Word))}, but its {Listed(kept.Select(n => n.Word))} " +
-                $"{(one ? "is" : "are")} still {theirs}'s, {Listed(kept.Select(n => n.Mine))} — copied with its model; if the user asked " +
-                $"for {(one ? "another" : "others")}, one call sets {(one ? "it" : "them")} and builds again: " +
-                ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative,
-                    string.Join(", ", kept.Select(n => $"{{\"path\": \"{n.Path}\", \"value\": {n.Mine}}}")), build: true) +
-                $", with the {(one ? "number" : "numbers")} the user asked for in place of {Listed(kept.Select(n => n.Mine))} — " +
-                $"{(one ? "one" : "a number")} the user left as {theirs}'s stays");
+            var said = new List<string>();
+            if (named is not null) said.Add($"is still named '{named}', as {theirs} is, so the game has two of that name");
+            if (kept.Count > 0)
+                said.Add($"has its own {Listed(changed.Select(n => n.Word))}, but its {Listed(kept.Select(n => n.Word))} " +
+                    $"{(kept.Count == 1 ? "is" : "are")} still {theirs}'s, {Listed(kept.Select(n => n.Mine))}");
+            var set = (named is null ? [] : new[] { $"{{\"path\": \"Name.Value\", \"value\": {ToolCalls.Quoted(named)}}}" })
+                .Concat(kept.Select(n => $"{{\"path\": \"{n.Path}\", \"value\": {n.Mine}}}"));
+            var shown = (named is null ? [] : new[] { $"'{named}'" }).Concat(kept.Select(n => n.Mine)).ToList();
+            var one = shown.Count == 1;
+            notes.Add($"{relative}: {name} {string.Join(", and ", said)} — copied with its model; if the user asked for " +
+                $"{(one ? "another" : "others")}, one call sets {(one ? "it" : "them")} and builds again: " +
+                ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, string.Join(", ", set), build: true) +
+                $", with what the user asked for in place of {Listed(shown)} — what the user left as {theirs}'s stays");
         }
     }
 
@@ -99,6 +111,8 @@ internal static class KeptNumbers
             .OrderByDescending(c => c.Links).ThenByDescending(c => c.Numbers).ThenBy(c => c.At)
             .First().Candidate;
     }
+
+    private static string? NameOf(IMajorRecordGetter record) => record is ITranslatedNamedGetter named ? named.Name?.String : null;
 
     /// <summary>A model's path as the game finds it: backslashes, below the Meshes folder, in any case.</summary>
     private static string? ModelPath(string? given)
