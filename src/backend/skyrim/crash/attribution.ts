@@ -77,14 +77,17 @@ export class Attributor {
         return owners;
     }
 
+    /** `under` has backslashes, which only Windows' path functions split on: split here, the same on every system. */
     private loose(under: string): string | undefined {
-        const folder = path.dirname(under);
+        const parts = under.split('\\');
+        const name = parts.pop()!;
+        const folder = parts.join('/');
         let files = this.folders.get(folder.toLowerCase());
         if (!files) {
-            files = this.manager.resolveDataFiles(this.instance, this.mods, folder.replace(/\\/g, '/'), new Set([path.extname(under).toLowerCase()]));
+            files = this.manager.resolveDataFiles(this.instance, this.mods, folder, new Set([path.extname(name).toLowerCase()]));
             this.folders.set(folder.toLowerCase(), files);
         }
-        return files.get(path.basename(under).toLowerCase());
+        return files.get(name.toLowerCase());
     }
 
     /**

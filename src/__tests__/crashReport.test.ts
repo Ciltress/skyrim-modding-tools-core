@@ -80,8 +80,11 @@ function bsaStandIn(calls: { archives: string[]; files: string[] }[]) {
 /** The synthetic 1.27 mesh crash, as this instance's game wrote it. */
 function meshCrash(game: string): string {
     return fs.readFileSync(path.join(FIXTURES, 'synthetic-1.27-mesh.log'), 'utf8')
-        .replace(/G:\\Steam\\steamapps\\common\\Skyrim Special Edition/g, game.replace(/\//g, '\\'));
+        .replace(/G:\\Steam\\steamapps\\common\\Skyrim Special Edition/g, () => asGameSees(game));
 }
+
+/** A folder as the game names it in a log: on Windows as it is; under Wine on Z:, the root. */
+const asGameSees = (native: string) => /^[a-z]:/i.test(native) ? native : `Z:${native.replace(/\//g, '\\')}`;
 
 describe('choosing a crash log', () => {
     it('reads the newest of this setup\'s, and counts the other setups\' logs beside it', () => {
@@ -95,7 +98,7 @@ describe('choosing a crash log', () => {
             'crash-2026-10-06-22-01-43.log', 'crash-2026-10-01-09-00-00.log', 'crash-2026-09-29-18-07-21.log', 'crash-2026-09-18-11-24-30.log'
         ]);
 
-        const isGame = (seen: string) => path.resolve(seen).toLowerCase() === path.resolve(fixture.game).toLowerCase();
+        const isGame = (seen: string) => seen.toLowerCase() === asGameSees(fixture.game).toLowerCase();
         const chosen = chooseCrashLog(fixture.logs, undefined, isGame);
         expect(path.basename(chosen.file)).toBe('crash-2026-10-01-09-00-00.log');
         expect(chosen.thisSetup).toBe(true);
