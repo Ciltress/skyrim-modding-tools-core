@@ -38,7 +38,7 @@ public static class RecordEdits
             // NPC has nowhere, the model sent it to `remove`, and the call was refused for the field the type lacks (eval round
             // 69's npc+detailed #3).
             var sent = Parse(path);
-            if (FirstUnknown(type, sent).At >= 0 && At(text, sent) is not null)
+            if ((FirstUnknown(type, sent).At >= 0 || PastText(type, sent)) && At(text, sent) is not null)
             {
                 text = Remove(text, sent, path, changes);
                 continue;
@@ -139,6 +139,27 @@ public static class RecordEdits
             current = item;
         }
         return (-1, null);
+    }
+
+    /// <summary>
+    /// A path into a text past what a text holds — `Name.ValueNumeric` — a field the file can have where it was written and
+    /// no type has. The build refused it with "delete `ValueNumeric`", removing it was refused twice as a text to set, and
+    /// the run ended on the third try (eval round 93's sword+detailed #3).
+    /// </summary>
+    private static bool PastText(Type record, List<Step> steps)
+    {
+        var current = record;
+        for (var i = 0; i < steps.Count; i++)
+        {
+            if (steps[i].Key == "MutagenObjectType") return false;
+            if (Translated(current)) return !(i == steps.Count - 1 && steps[i].Key is "Value" or "TargetLanguage");
+            if (Property(current, steps[i].Key) is not { } property) return false;
+            current = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+            if (steps[i].Index is null) continue;
+            if (Items(current) is not { } item) return false;
+            current = item;
+        }
+        return false;
     }
 
     /// <summary>The type each step of the path holds, checked against the record's type: a field it has not is refused.</summary>
