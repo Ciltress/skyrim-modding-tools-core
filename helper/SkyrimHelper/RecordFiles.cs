@@ -475,7 +475,8 @@ public static class RecordFiles
     /// nowhere are to be deleted, and said so first: "has no field Description" alone was read as one
     /// missing, and a model wrote it back build after build (eval probe 9 after round 11).
     /// </summary>
-    private static string Unknown(Type type, HashSet<string> known, IEnumerable<string> keys, string text, string pluginDir, string relative)
+    private static string Unknown(Type type, HashSet<string> known, IEnumerable<string> keys, string text, string pluginDir, string relative,
+        IEnumerable<(string Relative, string Text)> others)
     {
         var hinted = keys.Select(key => (Key: key, Hint: HintIn(type, known, key, text))).ToList();
         // A text where a number goes is deleted with the call that does it (TextHint).
@@ -495,11 +496,35 @@ public static class RecordFiles
         var owner = bare.Count == 0 ? [] : Groups.Where(g => g.Value is { IsAbstract: false } other && other != type && fields.All(FieldsOf(other).Contains))
             .DistinctBy(g => g.Value).ToList();
         var deleted = owner is [var (folder, of)]
-            ? $"{(bare.Count == 1 ? "it is" : "they are")} {Article(of!.Name)}'s, which {Article(type.Name)} has nowhere: if this is " +
-                $"{Article(of.Name)}, move the file into {folder}/ — {ToolCalls.Move(pluginDir, relative, $"{folder}/{Path.GetFileName(relative)}")}"
+            ? NamedAs(type, of!, relative, text, others) is { } namer
+                ? $"{(bare.Count == 1 ? "it is" : "they are")} {Article(of!.Name)}'s, which {Article(type.Name)} has nowhere, and {namer}: " +
+                    $"write this file anew as {Article(type.Name)}, with {Article(type.Name)}'s fields alone"
+                : $"{(bare.Count == 1 ? "it is" : "they are")} {Article(of!.Name)}'s, which {Article(type.Name)} has nowhere: if this is " +
+                    $"{Article(of.Name)}, move the file into {folder}/ — {ToolCalls.Move(pluginDir, relative, $"{folder}/{Path.GetFileName(relative)}")}"
             : $"delete {them}: {Article(type.Name)} has {them} nowhere";
         return string.Join(", ", named.Append(bare.Count == 0 ? "" : $"{string.Join(", ", bare)} ({deleted})")
             .Where(s => s.Length > 0));
+    }
+
+    /// <summary>
+    /// Another record of the project that names a file's record in a field taking the type of the file's folder, as words —
+    /// "Weapons/FlameBlade.yaml names EnchFlameBlade as its ObjectEffect, which takes an ObjectEffect" — or null. Such a file
+    /// is meant as its folder's type, whatever fields it was written with: an enchantment written as a copy of the Iron
+    /// Sword, its sword naming it, was moved into Weapons/ as the refusal said, and the run ended unbuilt, a second sword
+    /// in the project (eval round 96's sword #5). A field that takes the fields' type as well tells nothing: an NPC's Items
+    /// take a weapon and an armor alike.
+    /// </summary>
+    private static string? NamedAs(Type type, Type fields, string relative, string text, IEnumerable<(string Relative, string Text)> others)
+    {
+        if (Identity(text).EditorId is not { } id) return null;
+        foreach (var (other, otherText) in others)
+        {
+            if (other == relative || other.Split('/') is not [var group, _] || Groups.GetValueOrDefault(group) is not { } otherType) continue;
+            if (RecordLinks.LinksTo(otherText, otherType).FirstOrDefault(l => l.Value.Equals(id, StringComparison.OrdinalIgnoreCase)
+                    && l.Takes.IsAssignableFrom(type) && !l.Takes.IsAssignableFrom(fields)) is { Path: { } path })
+                return $"{other} names {id} as its {path}, which takes {Article(type.Name)}";
+        }
+        return null;
     }
 
     /// <summary>
@@ -855,7 +880,7 @@ public static class RecordFiles
                 ? $" — read {skill}a vanilla one, readRecord {{\"record\": \"{example}\"}}, and write yours with its field names and nesting"
                 : "";
             problems.Add($"{relative}: {Droppable(kind ?? type, relative, text, texts.Value, pluginDir)}" +
-                $"{Article(type.Name)} has no field {Unknown(kind ?? type, known, unknown, text, pluginDir, relative)}{read}");
+                $"{Article(type.Name)} has no field {Unknown(kind ?? type, known, unknown, text, pluginDir, relative, texts.Value)}{read}");
         }
         // Two files of one record: the reader names the FormKey but neither file (eval round 11: 000000 in each new record).
         foreach (var (formKey, holders) in formKeys.Where(pair => pair.Value.Count > 1))
