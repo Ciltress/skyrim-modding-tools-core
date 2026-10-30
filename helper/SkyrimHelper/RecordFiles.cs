@@ -1419,6 +1419,8 @@ public static class RecordFiles
         }
         else if (path.Length > 0 && File.Exists(path) && message.Contains("hex string") && Groups.GetValueOrDefault(where.Split('/')[0]) is { } type)
             quoted = BytesWritten(File.ReadAllLines(path), type);
+        else if (path.Length > 0 && File.Exists(path) && Regex.Match(message, @"^(\w+) was null\.?$") is { Success: true } nulled)
+            quoted = EmptyWritten(File.ReadAllLines(path), nulled.Groups[1].Value);
         return new HelperException("badRecord",
             $"{where} cannot be read as a record: {message}{quoted} Write it the way readRecord shows a record of its " +
             "type — the same field names, nesting and value formats.");
@@ -1435,6 +1437,24 @@ public static class RecordFiles
         return wrong.Count == 0 ? ""
             : $" Of bytes, written otherwise: {string.Join(", ", wrong)} — a field of bytes is written as readRecord shows it, 0x and two hex " +
                 "digits a byte, as `Unused2: 0x000000`.";
+    }
+
+    /// <summary>
+    /// The lines that write a field empty — `ObjectEffect: ''` — for the reader's "ObjectEffect was null", which names no
+    /// line: the model's Flame Blade was so refused three builds running, and its edits of `''` found it twice in the file
+    /// (eval round 94's sword+detailed #1). A field at the margin is named with editRecord's path, which needs no old text.
+    /// Empty where none is.
+    /// </summary>
+    private static string EmptyWritten(string[] lines, string key)
+    {
+        var empty = new Regex($@"^([ \t]*){Regex.Escape(key)}:[ \t]*(?:''|""""|~|null)?[ \t]*(?:#.*)?$");
+        var found = lines.Select((line, at) => (Line: line, At: at, Match: empty.Match(line.TrimEnd('\r')))).Where(l => l.Match.Success).ToList();
+        if (found.Count == 0) return "";
+        return $" Written empty: {string.Join(", ", found.Select(l => $"line {l.At + 1}, `{l.Line.Trim()}`"))} — write its value there, " +
+            "for a link the editor ID of the record it names, or delete the line for none" +
+            (found.All(l => l.Match.Groups[1].Length == 0)
+                ? $"; editRecord does either with no old text to match, `set` with the path `{key}` or `remove` with it."
+                : ".");
     }
 
     /// <summary>Each field of bytes a record file writes, with a value (see <see cref="ValueFields"/>).</summary>
