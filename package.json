@@ -18,6 +18,7 @@
   },
   "files": [
     "dist",
+    "agents",
     "docs",
     "skills",
     "helper/SkyrimHelper",

@@ -83,6 +83,8 @@ src/
   backend/skyrim/mo2.ts             reading an MO2 instance: ini, profile, mod order, load order, files;
                                     under Proton, the Wine prefix its ini's paths are read through
   backend/skyrim/mo2Profile.ts      the profile edits deploy makes, and refreshing a running MO2
+  backend/skyrim/mo2Instances.ts    a product's setup finding the instance: MO2's global instances for Skyrim
+                                    (checkMo2Instance, in backend/index.ts, reads a typed folder as the tools do)
   backend/skyrim/amethyst.ts        Amethyst as the mod manager: finding its config, its profile, its
                                     deploy command
   backend/skyrim/projects.ts        a project on disk: paths, FormID assignment, text sync, deploy state
@@ -110,6 +112,7 @@ src/
   handlers/DocsHandlers.ts, SkillsHandlers.ts   readServerGuide and readSkill
   types/tools.ts           ToolDefinition / ToolProperty / ToolAnnotations — the inputSchema contract
   lib/product.ts           Product, CORE_ROOT, CORE_INFO, resourceScheme()
+  lib/muddy.ts             Muddy, the modding agent the products set up: MUDDY, muddyPrompt(), writeMuddyWorkspace()
   lib/                     logger, guides, skills, profiles, responseBudget, capabilityGate, instructions,
                            toolDocs, env
   testing/fakes.ts         the shared doubles and CORE_PRODUCT, also a product's through
@@ -122,6 +125,8 @@ helper/SkyrimHelper/       the C# plugin helper: Session.cs (the methods), Recor
                            RecordFiles.cs (a project's record files checked before a build: folders, fields,
                            copied FormKeys), RecordLinks.cs (links written as editor IDs made FormIDs)
 skills/Domain              the modding skills — ours, edit freely
+agents/muddy               Muddy's soul, identity, working rules and avatar: what every product installs; small,
+                           as a small local model reads them every turn
 scripts/build-helper.mjs   npm run build:helper, over helperBuild.ts
 scripts/check-helper.mjs   starts the built helper and checks it answers; CI runs it on both systems
 ```

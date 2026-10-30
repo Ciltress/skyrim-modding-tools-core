@@ -42,6 +42,25 @@ This is the engine of the Skyrim Modding Tools. Use it from your own code, or ta
 The Creation Kit stays for what only it can do, like placing objects and navmesh; its work is pulled back into the
 text.
 
+## Modding with Muddy! 🦀
+
+<img src="agents/muddy/avatars/mudcrab.png" align="right" width="140" alt="Muddy, a mudcrab with a sword">
+
+Meet **Muddy**, the modding agent: a mudcrab from the shore below Riverwood who learned to mod Skyrim. Cheerful,
+proud of his shell, and exact at the workbench. He reads the skills before he writes a record, builds until the build
+says `success`, and leaves your mod manager alone unless you ask.
+
+He lives here, in [`agents/muddy`](agents/muddy): his soul, his identity, his working rules and his avatar. Every
+product sets up the same Muddy:
+
+- **OpenClaw:** `openclaw skyrim setup`, the [plugin's](https://github.com/Ciltress/skyrim-modding-tools-openclaw-plugin#modding-with-muddy-)
+  wizard, makes him an agent. It asks for his model, his context and how long he thinks, and gives him his tools and skills.
+- **Claude Code, Claude Desktop, VS Code, ChatGPT or any other MCP client:** the [MCP server's guide to Muddy](https://github.com/Ciltress/skyrim-modding-tools-mcp/blob/main/docs/Muddy.md).
+- **The simplest way:** copy `AGENTS.md` and `SOUL.md` from [`agents/muddy`](agents/muddy) into the folder your agent
+  works in.
+- **Your own program:** `MUDDY` (his name, emoji and avatar), `muddyPrompt()` (his instructions as one text) and
+  `writeMuddyWorkspace(folder)` (his files in a workspace).
+
 ## Use it in your own program
 
 You need **Node.js 24.18** or later, the **.NET 10 SDK** (it builds the plugin helper, which reads and writes

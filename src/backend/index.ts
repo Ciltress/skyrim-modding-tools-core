@@ -8,7 +8,7 @@ import { HelperClient } from './skyrim/helperClient.js';
 import { Mo2Manager } from './skyrim/mo2Manager.js';
 import { NexusCatalogue } from './skyrim/nexus.js';
 import type { ModManager, ModManagerName } from './skyrim/modManager.js';
-import { readPathSettings, settingGiven, type PathSettings } from './skyrim/pathSettings.js';
+import { pathSetting, readPathSettings, settingGiven, type PathSettings } from './skyrim/pathSettings.js';
 import { SkyrimInstanceBackend } from './skyrim/SkyrimInstanceBackend.js';
 import { currentPlatform, type Platform } from './skyrim/platform.js';
 import type { SkyrimBackend } from './skyrim/SkyrimBackend.js';
@@ -137,6 +137,23 @@ export function readConfiguration(env: NodeJS.ProcessEnv, options: { root: strin
         modManager: createModManager(env, paths, platform, home),
         papyrusCompilerCandidates: platform.papyrusCompilerCandidates(env.PATH, home, options.root)
     };
+}
+
+/**
+ * A Mod Organizer instance folder a user typed or pasted, for a product's setup: quotes around it dropped, resolved
+ * as the tools resolve the setting, and read as the tools read it. Answers the folder, or why it cannot be used.
+ */
+export function checkMo2Instance(typed: string, env: NodeJS.ProcessEnv, options: { root: string; home?: string }): { instance: string } | { error: string } {
+    const folder = typed.replace(/^\s*["']|["']\s*$/g, '').trim();
+    if (!folder) return { error: 'No folder given.' };
+    try {
+        const instance = pathSetting({ ...env, SKYRIM_MO2_INSTANCE: folder }, 'SKYRIM_MO2_INSTANCE',
+            { platform: currentPlatform(), home: options.home ?? os.homedir(), base: options.root })!;
+        readConfiguration({ ...env, SKYRIM_MOD_MANAGER: 'mo2', SKYRIM_MO2_INSTANCE: instance }, options).modManager.readInstance();
+        return { instance };
+    } catch (error) {
+        return { error: error instanceof Error ? error.message : String(error) };
+    }
 }
 
 /** Builds the backend for one server: per process, or per session in HTTP mode. Starts nothing: the helper starts on connect(). */
