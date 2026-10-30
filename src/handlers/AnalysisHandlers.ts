@@ -26,6 +26,7 @@ export class AnalysisHandlers extends BaseHandler {
                         'Answers the crash, up to 5 `diagnoses` — known crashes, most certain first, each with its fix — and up ' +
                         'to 5 `suspects`: the mods whose DLL, plugin, mesh or texture the log points at, with the lines that do; ' +
                         'and for each record the log names, the plugin that defines it and the one that changed it last. ' +
+                        'Advice on the setup that holds whatever crashed — Engine Fixes not installed — comes apart, in `setup`. ' +
                         '`section` answers one part of the log as written instead. Reads files; changes nothing.',
                     inputSchema: {
                         type: 'object',

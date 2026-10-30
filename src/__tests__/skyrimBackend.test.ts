@@ -47,6 +47,9 @@ const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** A full path as a call written into an answer names it: forward slashes, which no layer of JSON escapes. */
 const slashed = (file: string) => file.split(path.sep).join('/');
+/** What a successful build's nextStep says of the records it lists in `built`. */
+const TOLD = 'The plugin holds what `built` lists: tell the user what you made with its names and numbers. Where one ' +
+    'differs from what the user asked, fix the file and build again.';
 
 /** A Skyrim SE instance with a high- and a low-priority mod shipping the same plugin. */
 function makeInstance(options: { edition?: string; gameName?: string } = {}) {
@@ -909,7 +912,7 @@ describe('the Skyrim backend', () => {
         const built = await answer();
 
         expect(Object.keys(built).slice(0, 2)).toEqual(['status', 'nextStep']);
-        expect(built).toMatchObject({ status: 'success', nextStep: `Built. ${done}`, corrected: [expect.stringContaining(change)] });
+        expect(built).toMatchObject({ status: 'success', nextStep: `Built. ${done} ${TOLD}`, corrected: [expect.stringContaining(change)] });
         helperAnswers.checkRecords = () => ({ records: 1, leftOut: [], notes: ['a note'], corrected: [{ file: 'Npcs/Hilda.yaml', change }] });
         expect((await answer()).nextStep).toMatch(/^Built, with a warning: fix what it says .* just what it names\. Each change in `corrected` is done:/);
     });
@@ -932,7 +935,7 @@ describe('the Skyrim backend', () => {
 
         expect(Object.keys(built).slice(0, 2)).toEqual(['status', 'nextStep']);
         expect(built).toMatchObject({
-            status: 'success', nextStep: 'Changed and built: the plugin has this change.', records: 1, edited: { file: full, changed }
+            status: 'success', nextStep: `Changed and built: the plugin has this change. ${TOLD}`, records: 1, edited: { file: full, changed }
         });
         expect(built.edited).not.toHaveProperty('text');
         expect(fs.existsSync(built.output)).toBe(true);
@@ -983,6 +986,25 @@ describe('the Skyrim backend', () => {
             new RegExp('moved `Level` under `Configuration`\\. The corrections are made: redo none of them, and read a corrected file ' +
                 'before editing it — it no longer reads as you wrote it\\. Fix what else this names, then build again — only a build ' +
                 'that answers success writes the plugin\\.$'));
+    });
+
+    it('answers a build with each record the plugin holds, and says to tell the user from those lines', async () => {
+        // The model's answer named an enchantment and a value its files did not hold (eval round 87's sword+detailed #4).
+        const { backend, fixture, helperAnswers } = makeBackend();
+        await newProjectWithRecord(backend, fixture.projects, 'FlameBlade');
+        const lines = [
+            'Weapon FlameBlade "Flame Blade" (new): damage 12, weight 10, value 25; enchantment EnchFlameDamageBurn, no charge',
+            'ObjectEffect EnchFlameDamageBurn "Flame Damage Burn" (new): EnchFireDamageFFContact magnitude 10'
+        ];
+        helperAnswers.build = params => {
+            write(params.outputPath, 'plugin');
+            return { records: 2, masters: ['Skyrim.esm'], headerVersion: params.headerVersion, resolvedLinks: [], built: lines };
+        };
+        const handler = createHandlers(backend as unknown as AppBackend, CORE_PRODUCT).find(h => h.getTools().some(t => t.name === 'buildProject'))!;
+
+        const built = JSON.parse((await handler.handle('buildProject', { project: 'FlameBlade' })).content[0].text);
+
+        expect(built).toMatchObject({ status: 'success', nextStep: `Built. ${TOLD}`, built: lines });
     });
 
     it('passes on what the helper notes once the plugin is written — an override that changes nothing — as a warning', async () => {

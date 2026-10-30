@@ -102,7 +102,10 @@ export const skseRules: CrashRule[] = [
                     'and without it a save can become unplayable.' +
                     (wheelerCrashes ? ' Wheeler.dll v1 is confirmed to crash without it on game 1.6.1170 and later.' : ''),
                 fix: engineFixesSteps(view, 'Install'),
-                evidence: wheelerCrashes ? wheeler : []
+                evidence: wheelerCrashes ? wheeler : [],
+                // Without Wheeler it is true of the setup whatever crashed, and an answer ranked it above the logo mesh that
+                // crashed the game (eval round 87's crash-mesh #4).
+                ...(wheelerCrashes ? {} : { setup: true as const })
             };
         }
     },
@@ -143,7 +146,8 @@ export const skseRules: CrashRule[] = [
                     (version ? ` The log lists EngineFixes.dll ${version}.` : ' The log lists no EngineFixes.dll.'),
                 fix: `${version ? 'Update' : 'Install'} SSE Engine Fixes (Nexus 17230) to ${ENGINE_FIXES_LATEST} or later, following ` +
                     'the sticky posts in its forum, and carry over any custom settings from its .toml and .ini files.',
-                evidence: [...(preventable ? shadowScene : []), ...view.find('sksePlugins', /^EngineFixes\.dll\b/i)]
+                evidence: [...(preventable ? shadowScene : []), ...view.find('sksePlugins', /^EngineFixes\.dll\b/i)],
+                ...(preventable ? {} : { setup: true as const })
             };
         }
     },
@@ -178,7 +182,8 @@ export const skseRules: CrashRule[] = [
                 confidence: 'possible',
                 explain: 'Newer versions of Crash Logger fix bugs and write fuller logs, which can make the cause of a crash easier to find.',
                 fix: `Update Crash Logger SSE AE VR (Nexus 59818) to ${CRASH_LOGGER_LATEST} or later.`,
-                evidence: view.find('header', /^CrashLogger/i)
+                evidence: view.find('header', /^CrashLogger/i),
+                setup: true
             };
         }
     },
@@ -196,7 +201,8 @@ export const skseRules: CrashRule[] = [
                     'that does not support recent game versions. Crash Logger SSE replaces it.',
                 fix: 'Disable .NET Script Framework (Nexus 21294) and any other crash logging mod; keep Crash Logger SSE AE VR ' +
                     '(Nexus 59818), which writes its logs to Documents\\My Games\\Skyrim Special Edition\\SKSE.',
-                evidence
+                evidence,
+                setup: true
             };
         }
     },

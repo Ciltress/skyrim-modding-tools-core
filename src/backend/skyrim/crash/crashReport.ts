@@ -8,7 +8,7 @@ import { GAME_FOLDER } from './attribution.js';
 
 /**
  * readCrashLog's answer: the crash, at most five diagnoses and five suspect mods, each with the lines
- * that point at it, the records the log names with the plugins behind them, and what to do next.
+ * that point at it, the records the log names with the plugins behind them, advice on the setup apart, and what to do next.
  */
 export interface CrashReport {
     log: LogFacts;
@@ -25,6 +25,11 @@ export interface CrashReport {
     diagnoses: ReportedDiagnosis[];
     suspects: Suspect[];
     records?: ReportedRecord[];
+    /**
+     * Advice on the setup, true whatever crashed — Engine Fixes not installed, an outdated Crash Logger: not a cause this
+     * log points at, so apart from the diagnoses, which it would otherwise outrank.
+     */
+    setup?: SetupAdvice[];
     /** The crash logs in the folder, by whose they are. */
     logs: ChosenLog['counts'];
     nextStep: string;
@@ -50,6 +55,8 @@ export interface ReportedDiagnosis {
     evidence: string[];
     rule: string;
 }
+
+export type SetupAdvice = Omit<ReportedDiagnosis, 'confidence'>;
 
 export interface Suspect {
     mod: string;
@@ -79,6 +86,7 @@ export interface CrashLogSection {
 
 export const MAX_DIAGNOSES = 5;
 export const MAX_SUSPECTS = 5;
+const MAX_SETUP = 3;
 const MAX_RECORDS = 8;
 const MAX_EVIDENCE = 3;
 export const SECTION_LINES = 300;
@@ -136,14 +144,20 @@ export async function buildCrashReport(
 ): Promise<CrashReport> {
     const { log } = chosen;
     const view = new CrashView(log);
-    const diagnoses = rankFindings(view, rules).slice(0, MAX_DIAGNOSES).map(finding => ({
+    const ranked = rankFindings(view, rules);
+    const reported = (finding: Finding & { rule: string }): SetupAdvice => ({
         title: finding.title,
-        confidence: finding.confidence,
         explain: finding.explain,
         fix: finding.fix,
         evidence: finding.evidence.slice(0, MAX_EVIDENCE).map(describe),
         rule: finding.rule
-    }));
+    });
+    const diagnoses = ranked.filter(finding => !finding.setup).slice(0, MAX_DIAGNOSES)
+        .map(finding => {
+            const { title, ...rest } = reported(finding);
+            return { title, confidence: finding.confidence, ...rest };
+        });
+    const setup = ranked.filter(finding => finding.setup).slice(0, MAX_SETUP).map(reported);
 
     const suspects = await suspectMods(candidates(log), attributor, nexusOf);
     const owner = (plugin: string | undefined) => {
@@ -172,8 +186,9 @@ export async function buildCrashReport(
         diagnoses,
         suspects,
         ...(records.length ? { records } : {}),
+        ...(setup.length ? { setup } : {}),
         logs: chosen.counts,
-        nextStep: nextStep(chosen, diagnoses, suspects)
+        nextStep: nextStep(chosen, diagnoses, suspects, setup)
     };
 }
 
@@ -226,7 +241,7 @@ function describe(item: Evidence): string {
     return `${PLACE_NAMES[item.place] ?? item.place}${item.place === 'firstLine' ? '' : ` ${item.index}`}: ${text}`;
 }
 
-function nextStep(chosen: ChosenLog, diagnoses: ReportedDiagnosis[], suspects: Suspect[]): string {
+function nextStep(chosen: ChosenLog, diagnoses: ReportedDiagnosis[], suspects: Suspect[], setup: SetupAdvice[]): string {
     const notes: string[] = [];
     if (chosen.thisSetup === false) {
         notes.push(`This log is from another setup's game (${path.basename(chosen.file)}): what it names may not be in this one.`);
@@ -240,5 +255,6 @@ function nextStep(chosen: ChosenLog, diagnoses: ReportedDiagnosis[], suspects: S
             'they ask: disableMod takes a suspect mod out, installMod installs a fixed or newer file' +
             (suspects.some(suspect => suspect.files.some(file => file.endsWith('(SKSE plugin)'))) ? ', checkGameVersion says whether an SKSE plugin fits the game' : '') + '.');
     }
+    if (setup.length > 0) notes.push('`setup` is advice on the setup whatever crashed, not the cause of this crash: give it last, as advice.');
     return notes.join(' ');
 }

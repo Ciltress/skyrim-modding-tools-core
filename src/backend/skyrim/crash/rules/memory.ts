@@ -258,7 +258,8 @@ export const memoryRules: CrashRule[] = [
                     '"HKLM:\\HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0").\'Update Revision\',0). Below 0x129 (good: ' +
                     '0x129, 0x12B, 0x12F), install the latest BIOS from the motherboard maker; Windows Update does not bring ' +
                     'it. Then test the CPU with the Intel Processor Diagnostic Tool.',
-                evidence
+                evidence,
+                setup: true
             };
         }
     },

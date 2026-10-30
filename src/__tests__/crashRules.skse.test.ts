@@ -33,12 +33,14 @@ const MODDED: LogParts = {
 describe('skse rules', () => {
     it('engine-fixes-missing: a full mod list without EngineFixes.dll; certain with Wheeler on 1.6.1170 and later', () => {
         const [found] = run('engine-fixes-missing', MODDED);
-        expect(found).toMatchObject({ confidence: 'likely', evidence: [] });
+        expect(found).toMatchObject({ confidence: 'likely', evidence: [], setup: true });
         expect(found.fix).toContain('Nexus 17230');
         expect(found.fix).toContain('Use version 7');
 
         const [wheeler] = run('engine-fixes-missing', { ...MODDED, game: '1.6.1170', sksePlugins: [...MODDED.sksePlugins!, 'wheeler.dll v1'] });
         expect(wheeler).toMatchObject({ confidence: 'certain', evidence: [{ place: 'sksePlugins', text: 'wheeler.dll v1' }] });
+        // A cause then, not advice on the setup.
+        expect(wheeler).not.toHaveProperty('setup');
 
         // 1.6.640 has no Engine Fixes 7: its settings instead.
         const [old] = run('engine-fixes-missing', { ...MODDED, game: '1.6.640', sksePlugins: [...MODDED.sksePlugins!, 'wheeler.dll v1'] });
@@ -60,7 +62,7 @@ describe('skse rules', () => {
 
     it('engine-fixes-outdated: Engine Fixes before 7.0.20, or before 7.0.18 with ShadowSceneNode near the crash', () => {
         const [found] = run('engine-fixes-outdated', { sksePlugins: ['EngineFixes.dll v7.0.19'] });
-        expect(found).toMatchObject({ confidence: 'possible', evidence: [{ place: 'sksePlugins', text: 'EngineFixes.dll v7.0.19' }] });
+        expect(found).toMatchObject({ confidence: 'possible', evidence: [{ place: 'sksePlugins', text: 'EngineFixes.dll v7.0.19' }], setup: true });
         expect(found.title).toContain('7.0.20');
 
         const [shadow] = run('engine-fixes-outdated', {
@@ -68,6 +70,7 @@ describe('skse rules', () => {
         });
         expect(shadow).toMatchObject({ confidence: 'possible', evidence: [{ place: 'relevantObjects' }, { place: 'sksePlugins' }] });
         expect(shadow.title).toContain('may prevent');
+        expect(shadow).not.toHaveProperty('setup');
 
         expect(run('engine-fixes-outdated', { relevantObjects: ['RSP+48: (ShadowSceneNode*)'], sksePlugins: ['EngineFixes.dll v7.0.20'] })).toEqual([]);
         // 1.6.640 has no Engine Fixes 7 to update to.
@@ -85,14 +88,14 @@ describe('skse rules', () => {
 
     it('crash-logger-outdated: a log Crash Logger before 1.27.0 wrote', () => {
         const [found] = run('crash-logger-outdated', { logger: '1.23.1' });
-        expect(found).toMatchObject({ confidence: 'possible', evidence: [{ place: 'header', text: expect.stringMatching(/^CrashLoggerSSE v1-23-1/) }] });
+        expect(found).toMatchObject({ confidence: 'possible', evidence: [{ place: 'header', text: expect.stringMatching(/^CrashLoggerSSE v1-23-1/) }], setup: true });
         expect(found.fix).toContain('Nexus 59818');
         expect(run('crash-logger-outdated', { logger: '1.27.0' })).toEqual([]);
     });
 
     it('netscriptframework-installed: .NET Script Framework among the modules of a Crash Logger log', () => {
         const [found] = run('netscriptframework-installed', { modules: ['NetScriptFramework.Runtime.dll                0x7FFC006E0000'] });
-        expect(found).toMatchObject({ confidence: 'possible', evidence: [{ place: 'modules' }] });
+        expect(found).toMatchObject({ confidence: 'possible', evidence: [{ place: 'modules' }], setup: true });
         expect(found.fix).toContain('Nexus 21294');
         expect(run('netscriptframework-installed', { modules: ['CrashLogger.dll                0x7FFC006E0000'] })).toEqual([]);
     });

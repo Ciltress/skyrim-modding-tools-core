@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parseCrashLog } from '../backend/skyrim/crash/crashLog';
 import { CrashView } from '../backend/skyrim/crash/crashRules';
-import { rankFindings } from '../backend/skyrim/crash/crashReport';
+import type { Attributor } from '../backend/skyrim/crash/attribution';
+import { buildCrashReport, rankFindings } from '../backend/skyrim/crash/crashReport';
 import { CRASH_RULES } from '../backend/skyrim/crash/rules/index';
 import { candidates } from '../backend/skyrim/crash/suspects';
 
@@ -76,4 +77,18 @@ describe('crashes with a known cause', () => {
         expect(places[0]).toBe('modelPaths');
         expect(places.slice(1).every(place => place === 'stack')).toBe(true);
     });
+
+    it('reports advice on the setup apart from the diagnoses: Engine Fixes not installed caused neither crash', async () => {
+        // An answer ranked it first, above the logo mesh that crashed the game (eval round 87's crash-mesh #4).
+        const none = { plugin: () => undefined, dll: () => undefined, files: async () => new Map() } as unknown as Attributor;
+        for (const name of ['crash-2026-10-30-06-13-38.log', 'crash-2026-10-30-06-24-26.log']) {
+            const chosen = { file: name, log: read(name), thisSetup: true, counts: { thisSetup: 1, otherSetups: 0, unknown: 0 } };
+            const report = await buildCrashReport(chosen, CRASH_RULES, none, () => undefined);
+            expect(report.diagnoses.map(found => found.rule)).not.toContain('engine-fixes-missing');
+            expect(report.setup).toEqual([expect.objectContaining({ rule: 'engine-fixes-missing', title: 'SSE Engine Fixes is not installed' })]);
+            expect(report.setup![0]).not.toHaveProperty('confidence');
+            expect(report.nextStep).toMatch(/`setup` is advice on the setup whatever crashed, not the cause of this crash/);
+        }
+    });
+
 });

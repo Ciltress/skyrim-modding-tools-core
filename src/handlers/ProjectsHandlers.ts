@@ -245,9 +245,9 @@ export class ProjectsHandlers extends BaseHandler {
                         if (error instanceof Error) error.message = `Changed ${change.file}: ${change.changed.join('; ')}. ${error.message}`;
                         throw error;
                     });
-                    return built.nextStep
-                        ? { ...built, edited: change }
-                        : { nextStep: 'Changed and built: the plugin has this change.', ...built, edited: change };
+                    if (built.status) return { ...built, edited: change };
+                    const { nextStep, ...rest } = built;
+                    return { nextStep: nextStep?.replace(/^Built\./, 'Changed and built: the plugin has this change.'), ...rest, edited: change };
                 }
             },
             // A file written where the build does not read it stayed there: OpenClaw gives a model no tool that moves or deletes
@@ -354,7 +354,8 @@ export class ProjectsHandlers extends BaseHandler {
                         'What builds but likely not as meant — record files outside the plugin folder, an override ' +
                         'renamed as if it were a new record, a woman\'s voice on a man — is answered with status ' +
                         '`built_with_warnings` and the `warnings` first: the plugin is written, and each warning says ' +
-                        'what to fix. Does not touch the mod manager — deployProject does.',
+                        'what to fix. `built` lists each record the written plugin holds, with its name and numbers. ' +
+                        'Does not touch the mod manager — deployProject does.',
                     inputSchema: { type: 'object', properties: { project: PROJECT }, required: ['project'] }
                 },
                 onFailure: 'Failed to build the project',
@@ -432,7 +433,11 @@ export class ProjectsHandlers extends BaseHandler {
             ? 'Each change in `corrected` is done: the build wrote it into the file, and the plugin has it. A file it ' +
                 'changed no longer reads as it was written — read it before editing it again.'
             : undefined;
-        if (!warnings?.length) return done ? { nextStep: `Built. ${done}`, ...built } : built;
+        // The model's answer named an enchantment and a value its files did not hold: it had written another name, and the call
+        // that set the value had failed (eval round 87's sword+detailed #4). The plugin read back says what the game gets.
+        const told = 'The plugin holds what `built` lists: tell the user what you made with its names and numbers. Where one ' +
+            'differs from what the user asked, fix the file and build again.';
+        if (!warnings?.length) return { nextStep: done ? `Built. ${done} ${told}` : `Built. ${told}`, ...built };
         // A warning at the end of an answer that said success was passed by: five of the eight misses
         // in eval round 21 end on one, each a build that did what was not asked. Its exception, written
         // "unless the user asked for it so", was read as "the user did not ask for a fix" in three runs of

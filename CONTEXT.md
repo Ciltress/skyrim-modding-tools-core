@@ -116,6 +116,11 @@ A known crash a rule recognises in a crash log, with its fix and how sure it is 
 possible. The rules are Phostwood's analyzer's, ported ([ADR-0011](docs/adr/0011-crash-rules-are-phostwoods-ported.md)).
 _Avoid_: finding, insight, result
 
+**Setup advice**:
+What a rule finds true of the setup whatever crashed — Engine Fixes not installed, an outdated Crash
+Logger — reported apart from the diagnoses: it is never the cause the log points at.
+_Avoid_: recommendation, warning
+
 **Suspect**:
 A mod whose file — DLL, plugin, mesh, texture — a crash log points at, found in the setup by
 attribution. A suspect is a lead, not a cause.

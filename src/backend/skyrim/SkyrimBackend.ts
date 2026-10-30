@@ -349,6 +349,12 @@ export interface BuildResult {
      * the load order named, and the next build keeps to it.
      */
     resolvedLinks: { file: string; field: string; from: string; to: string }[];
+    /**
+     * Each record the plugin holds, read back from it: type, editor ID, name, new or an override, and what a player sees —
+     * a weapon's damage, weight, value, enchantment and charge, an enchantment's or spell's effects, an NPC's race, sex
+     * and level. The first 20, then how many more.
+     */
+    built: string[];
     scripts: { compiled: number };
     /** What did not stop the build but was not built: record files outside the plugin folder. */
     warnings?: string[];

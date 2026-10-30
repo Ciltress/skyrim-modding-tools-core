@@ -70,7 +70,7 @@ describe('memory rules', () => {
         const [thirteenth] = run('intel-13th-14th-gen-cpu', {
             systemSpecs: specs('10 GB/31.68 GB', '3/14 GB', 'GenuineIntel 13th Gen Intel(R) Core(TM) i7-13700K')
         });
-        expect(thirteenth).toMatchObject({ title: expect.stringContaining('13th'), confidence: 'possible', evidence: [{ place: 'systemSpecs' }] });
+        expect(thirteenth).toMatchObject({ title: expect.stringContaining('13th'), confidence: 'possible', evidence: [{ place: 'systemSpecs' }], setup: true });
         expect(thirteenth.fix).toContain('0x129');
         const [fourteenth] = run('intel-13th-14th-gen-cpu', {
             systemSpecs: specs('10 GB/31.68 GB', '3/14 GB', 'GenuineIntel Intel(R) Core(TM) i9-14900K')

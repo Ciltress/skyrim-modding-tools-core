@@ -192,6 +192,7 @@ export class InMemorySkyrimBackend implements AppBackend {
         return {
             project: name, plugin: project.plugin, output: `projects/${name}/build/${project.plugin}`,
             records: project.records.size, masters: ['Skyrim.esm'], headerVersion: 1.71, assignedFormIds: [], resolvedLinks: [],
+            built: [...project.records].map(formId => `Weapon ${formId} (override of ${formId.split(':')[1]})`),
             scripts: { compiled: 0 }
         };
     }

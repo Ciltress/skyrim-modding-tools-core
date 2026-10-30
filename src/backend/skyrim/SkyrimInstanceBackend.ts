@@ -421,7 +421,9 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
         // A build that fails leaves the record files as they were before it. The helper writes the FormIDs that links
         // named by editor ID stand for only into its own copy of them (eval round 47).
         const giveBack = keepRecordTexts(paths.plugin);
-        let built: { records: number; masters: string[]; headerVersion: number; resolvedLinks: BuildResult['resolvedLinks']; notes?: string[] };
+        let built: {
+            records: number; masters: string[]; headerVersion: number; resolvedLinks: BuildResult['resolvedLinks']; built?: string[]; notes?: string[];
+        };
         try {
             built = await afterLocalWrites(this.engine.helper.call<typeof built>('build', {
                 projectPluginDir: paths.plugin,
@@ -455,6 +457,7 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
             headerVersion: built.headerVersion,
             assignedFormIds: assignedFormIds.map(record => ({ ...record, file: fullPath(record.file) })),
             resolvedLinks: (built.resolvedLinks ?? []).map(link => ({ ...link, file: fullPath(link.file) })),
+            built: built.built ?? [],
             scripts: { compiled },
             ...(warnings.length > 0 ? { warnings } : {})
         };

@@ -25,6 +25,8 @@ every change.
    - The first suspect is the mod the strongest evidence points at. A suspect with a `certain` or
      `likely` diagnosis naming its mod or file is the lead; with only `possible` ones, it is a guess.
    - `records`: each record's defining plugin and the one that changed it last, with their mods.
+   - `setup`: advice on the setup that holds whatever crashed — Engine Fixes not installed, an old
+     Crash Logger. It is never the cause of this crash: tell it last, as advice.
 2. **Check the lead**, with the tool for its kind. Done when the check has answered:
    - An SKSE plugin (`… (SKSE plugin)`): `checkGameVersion` — a DLL for another game version crashes.
    - A mod: `listMods` with `text` and `details: true` — its version, and whether it is enabled.

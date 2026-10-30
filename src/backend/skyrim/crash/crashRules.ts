@@ -46,6 +46,11 @@ export interface Finding {
     /** What to do, concretely; a mod by its Nexus name and number, "SSE Engine Fixes (Nexus 17230)". */
     fix: string;
     evidence: Evidence[];
+    /**
+     * Advice on the setup, true whatever crashed — an outdated Crash Logger, Engine Fixes not installed — not a cause this
+     * log points at. Reported apart from the diagnoses, so it does not rank above one.
+     */
+    setup?: true;
 }
 
 export interface CrashRule {

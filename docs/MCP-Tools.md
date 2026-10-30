@@ -113,6 +113,12 @@ arguments, see [`Tool-Reference.md`](./Tool-Reference.md), which is generated fr
      still sent. `links.lock.json`, beside the plugin folder, keeps the FormID each link to the load
      order named first, and the next build keeps to it: a mod installed later whose record has the
      same editor ID does not change the link.
+   - **A build answers what the plugin holds.** `built` lists each record read back from the written
+     plugin — its type, editor ID and name, new or an override, and what a player sees: a weapon's
+     damage, weight, value, enchantment and charge, an enchantment's or spell's effects, an NPC's race,
+     sex and level — the first 20, then how many more. Its nextStep says to tell the user from those
+     lines, and to fix and build again where one differs from what was asked, since eval round 87,
+     whose miss answered with a name and a value its files did not hold.
    - **Change other mods through a patch** (`addPatch`), never in their plugins: an override copied
      from the winning version keeps every other mod's changes, and survives their updates.
    - **Build, deploy and pull are explicit steps.** Deploy refuses a stale build and refuses to
@@ -432,7 +438,10 @@ the rest (`logs`). `SKYRIM_CRASH_LOG_DIR` names another folder. The answer: `cra
 model being loaded, the game state), up to 5 `diagnoses` — Phostwood's rules, ported (ADR 0011), most certain
 first, then by where their evidence is — up to 5 `suspects`, each a mod with the files the log names (DLLs, plugins,
 meshes and textures, loose or in an archive — ADR 0012) and the lines that do, and `records`, each with its
-defining plugin and the one that changed it last. `section` answers one part of the log as written. A fix is made
+defining plugin and the one that changed it last. Advice on the setup that holds whatever crashed — Engine Fixes not
+installed, an outdated Crash Logger, .NET Script Framework beside it, an Intel CPU without its microcode update — is
+no diagnosis: it comes in `setup`, up to 3, so it never ranks above the crash's cause. `section` answers one part of
+the log as written. A fix is made
 with the mod tools, on the user's word: `disableMod` and `enableMod`, `installMod`, `editIni`.
 
 ### 4.7 Find out what you are connected to
