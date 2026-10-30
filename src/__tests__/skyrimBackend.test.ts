@@ -728,7 +728,7 @@ describe('the Skyrim backend', () => {
     it('gives a refused editRecord\'s call back, to send once its file is written', async () => {
         // Refused for a sword not written yet, a model wrote it from the Iron Sword with its value 25, and told the user the
         // value of 150 that only the refused call had (eval round 90's sword+detailed #3).
-        const { backend, helperAnswers } = makeBackend();
+        const { backend, fixture, helperAnswers } = makeBackend();
         await backend.newProject({ project: 'FlameBlade' });
         const notFound = 'No record file \'Weapons/FlameBlade.yaml\' in the project — its record files: none yet; write one first.';
         helperAnswers.editRecord = () => { throw new HelperError('notFound', notFound); };
@@ -740,8 +740,15 @@ describe('the Skyrim backend', () => {
         expect((refused as HelperError).message).toBe(`${notFound} Nothing was changed: once the file is written, send this call again ` +
             'for its changes — editRecord {"project": "FlameBlade", "record": "Weapons/FlameBlade.yaml", "set": [{"path": "Name.Value", ' +
             '"value": "Flame Blade"}, {"path": "Value", "value": 150}], "build": true}');
-        // An EditorID no file has is only refused: no file is to be written for a mistyped name.
-        await expect(backend.editRecord({ project: 'FlameBlade', record: 'FlameBlaed', set })).rejects.toThrow(new RegExp(`^${escape(notFound)}$`));
+        // A bare name comes back too while the project has no record file for it to be a typo of: two calls named their
+        // record so before its file was written (eval round 91).
+        await expect(backend.editRecord({ project: 'FlameBlade', record: 'FlameBlade', set })).rejects.toThrow(
+            'send this call again for its changes — editRecord {"project": "FlameBlade", "record": "FlameBlade", "set": [');
+        // In a project with record files, a name that is no file — an EditorID mistyped — is only refused.
+        write(path.join(fixture.projects, 'FlameBlade', 'plugin', 'Weapons', 'FlameBlade.yaml'), 'EditorID: FlameBlade\n');
+        const listed = 'No record file \'FlameBlaed\' in the project — its record files: Weapons/FlameBlade.yaml.';
+        helperAnswers.editRecord = () => { throw new HelperError('notFound', listed); };
+        await expect(backend.editRecord({ project: 'FlameBlade', record: 'FlameBlaed', set })).rejects.toThrow(new RegExp(`^${escape(listed)}$`));
     });
 
     it('takes editRecord\'s record as a path from the projects folder too, as moveRecord and deleteRecord do', async () => {
@@ -758,12 +765,16 @@ describe('the Skyrim backend', () => {
         const edit = (record: string) => backend.editRecord({ project: 'HildaTheNord', record, set: { 'AIData.Aggression': 'Unaggressive' } });
         await edit('HildaTheNord/plugin/Npcs/Hilda.yaml');
         await edit('HildaTheNord\\plugin\\Npcs\\Hilda.yaml');
+        // A path in the plugin folder without its .yaml is that file where it is there (eval round 91's npc+detailed #4).
+        await edit('Npcs/Hilda');
+        await edit('Npcs\\Hilda');
         // The plugin folder's own paths, an EditorID, and a path to no file pass as given: the helper names what is there.
         await edit('Npcs/Hilda.yaml');
         await edit('Hilda');
         await edit('HildaTheNord/plugin/Npcs/Helga.yaml');
-        expect(sent).toEqual([path.join(plugin, 'Npcs', 'Hilda.yaml'), path.join(plugin, 'Npcs', 'Hilda.yaml'), 'Npcs/Hilda.yaml', 'Hilda',
-            'HildaTheNord/plugin/Npcs/Helga.yaml']);
+        await edit('Npcs/Helga');
+        const hilda = path.join(plugin, 'Npcs', 'Hilda.yaml');
+        expect(sent).toEqual([hilda, hilda, hilda, hilda, 'Npcs/Hilda.yaml', 'Hilda', 'HildaTheNord/plugin/Npcs/Helga.yaml', 'Npcs/Helga']);
     });
 
     it('takes a file of a projects folder reached through a link: one not there is missing, not outside', () => {

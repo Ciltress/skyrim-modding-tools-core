@@ -351,14 +351,19 @@ export function projectsFile(projectsDir: string, paths: ProjectPaths, given: st
  * A record as editRecord takes it: a relative path from the projects folder to a file of the project's plugin folder — as
  * OpenClaw's file tools take a Skyrim agent's paths, `HildaTheNord/plugin/Npcs/Hilda.yaml` — as that file's full path, which
  * the helper takes; any other as given. Refused for it, the model sent the path in the plugin folder next (eval round 83's
- * npc+detailed #1, round 80's sword+detailed #1); moveRecord and deleteRecord take it so too (projectsFile).
+ * npc+detailed #1, round 80's sword+detailed #1); moveRecord and deleteRecord take it so too (projectsFile). A path in the
+ * plugin folder without its `.yaml`, `Npcs/Hilda`, is that file where it is there: it was refused, though `Npcs/Hilda.yaml`
+ * was the only file it could name (eval round 91's npc+detailed #4).
  */
 export function editedRecord(projectsDir: string, paths: ProjectPaths, given: string): string {
     const name = given.trim();
     const isFile = (file: string) => fs.existsSync(file) && fs.statSync(file).isFile();
     // Either slash, on either system: the helper reads a backslash as a separator too.
     const parts = name.split(/[\\/]+/).filter(part => part.length > 0);
-    if (parts.length < 2 || path.isAbsolute(name) || isFile(path.resolve(paths.plugin, ...parts))) return given;
+    if (parts.length < 2 || path.isAbsolute(name)) return given;
+    const inPlugin = path.resolve(paths.plugin, ...parts);
+    if (isFile(inPlugin)) return given;
+    if (!/\.ya?ml$/i.test(name) && isFile(`${inPlugin}.yaml`)) return `${inPlugin}.yaml`;
     const fromProjects = path.resolve(projectsDir, ...parts);
     const relative = path.relative(paths.plugin, fromProjects);
     return relative && !relative.startsWith('..') && !path.isAbsolute(relative) && isFile(fromProjects) ? fromProjects : given;

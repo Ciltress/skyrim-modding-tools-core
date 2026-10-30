@@ -241,8 +241,10 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
             }
             // A file not written yet: the call's changes, given back. Refused for a sword not written yet, a model wrote it from
             // the Iron Sword with its value 25, and told the user the value of 150 that only the refused call had (eval round 90).
-            // A name that is no file — an EditorID mistyped — is only refused.
-            if (!/\.ya?ml$/i.test(request.record.trim())) throw error;
+            // A bare name comes back too in a project with no record file yet, where it cannot be a typo of one: two calls named
+            // their record so, "SteelSword" and "FlameBlade", before its file was written (eval round 91). In a project with
+            // record files, a name that is no file — an EditorID mistyped — is only refused.
+            if (!/\.ya?ml$/i.test(request.record.trim()) && recordFiles(paths.plugin).length > 0) throw error;
             throw new HelperError(error.code, `${error.message} Nothing was changed: once the file is written, send this ` +
                 `call again for its changes — ${editCall(paths, request)}`);
         });
