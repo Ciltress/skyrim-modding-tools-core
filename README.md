@@ -1,22 +1,99 @@
+<p align="center">
+  <img src=".github/banner.jpg" alt="Skyrim Modding Tools: Core — a mudcrab at its workbench, forging a glowing sword" width="100%">
+</p>
+
+<p align="center">
+  <a href="https://github.com/Ciltress/skyrim-modding-tools-core/actions/workflows/ci.yml"><img src="https://github.com/Ciltress/skyrim-modding-tools-core/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/Ciltress/skyrim-modding-tools-core/tags"><img src="https://img.shields.io/github/v/tag/Ciltress/skyrim-modding-tools-core?label=version" alt="Latest version"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="License: GPL-3.0"></a>
+  <img src="https://img.shields.io/badge/Skyrim-Special%20Edition-5a6b7c" alt="Skyrim Special Edition">
+</p>
+
 # skyrim-modding-tools-core
 
-The core of the Skyrim Special Edition modding tools: it looks records up across a mod manager's load order —
-Mod Organizer 2 on Windows, or Amethyst on Linux — authors mods and patches as text projects, builds them into
-plugins through a Mutagen helper and deploys them to the instance, and installs downloaded mods, with Nexus
-Mods search for an API key's owner. The tools, their guides and the modding skills are all here.
+**Skyrim Special Edition modding as tools a program — or an AI agent — can call.** Look up any record across your
+whole load order, write mods as plain text and build them into real plugins, install mods from Nexus Mods, and find
+out why the game crashed. On Mod Organizer 2 (Windows) or Amethyst Mod Manager (Linux).
 
-A modder does not install this package by itself. Two products serve it:
+This is the engine of the Skyrim Modding Tools. Use it from your own code, or take one of the ready-made products:
 
-- **[skyrim-modding-tools-mcp](https://github.com/Ciltress/skyrim-modding-tools-mcp)**, the MCP server, for any
-  MCP client — the complete product;
-- **skyrim-modding-tools-openclaw-plugin**, the same tools as native OpenClaw tools.
+| | |
+| --- | --- |
+| **[skyrim-modding-tools-mcp](https://github.com/Ciltress/skyrim-modding-tools-mcp)** | The MCP server, for Claude Code, Claude Desktop, VS Code and any other MCP client. One `npm run setup` and you are modding. |
+| **[skyrim-modding-tools-openclaw-plugin](https://github.com/Ciltress/skyrim-modding-tools-openclaw-plugin)** | The same tools as a native [OpenClaw](https://openclaw.ai) plugin, made to work well with small local models. |
+| **This package** | For your own program: a script, a bot, another agent framework. [See below](#use-it-in-your-own-program). |
 
-Why it is a package of its own, and what a product hands it: [ADR-0009](docs/adr/0009-the-core-is-its-own-package.md).
+## What it does
 
-## Requirements
+- 🔍 **Look it up.** Any record by name, editor ID or FormID, across the whole load order: which mod adds it, which
+  one wins, who else changes it. Read it as text, or every mod's version side by side.
+- ✍️ **Mods as text.** A mod is a folder of YAML files, one per record, in [Spriggit](https://github.com/Mutagen-Modding/Spriggit)'s
+  format: easy to read, to diff and to keep in git. The build checks every link, gives new records their FormIDs,
+  compiles Papyrus scripts and writes the plugin — then reads it back and tells you what it holds.
+- 🩹 **Patch without touching.** Copy another mod's record into your patch and change it there; the original mod
+  stays as it is.
+- 📦 **Install mods.** Search Nexus Mods, read a mod's page and what it requires, download, install with its FOMOD
+  installer answered, enable or disable, and check SKSE plugins against your game version.
+- 💥 **Read crash logs.** Crash Logger SSE's logs against 105 known crashes, with the mod behind every DLL, mesh,
+  texture and record the log names.
+- 📚 **Teach the agent.** Skills for items and crafting, magic, NPCs, leveled lists, game updates and crash analysis,
+  and guides to which tool does what — the knowledge a model needs to mod well.
 
-- Node.js 24.18 or later.
-- The .NET 10 SDK, to build the plugin helper.
+The Creation Kit stays for what only it can do, like placing objects and navmesh; its work is pulled back into the
+text.
+
+## Use it in your own program
+
+You need **Node.js 24.18** or later, the **.NET 10 SDK** (it builds the plugin helper, which reads and writes
+plugins with [Mutagen](https://github.com/Mutagen-Modding/Mutagen)), and Skyrim Special Edition in Mod Organizer 2 or
+Amethyst.
+
+```bash
+npm install github:Ciltress/skyrim-modding-tools-core#v0.2.1
+npm --prefix node_modules/skyrim-modding-tools-core run build:helper
+```
+
+Every tool is one call away:
+
+```js
+import { CORE_GUIDES, createBackend, createHandlers, stopBackends } from 'skyrim-modding-tools-core';
+
+// Your program, as the tools know it: Nexus Mods is told its name and version, and its folder holds the projects.
+const product = { name: 'my-skyrim-app', version: '1.0.0', root: process.cwd(), guides: Object.values(CORE_GUIDES) };
+
+const backend = createBackend({ ...process.env, SKYRIM_MO2_INSTANCE: 'C:/Modding/SkyrimSE' }, { product });
+const tools = createHandlers(backend, product);
+
+async function call(name, args) {
+    const handler = tools.find(handler => handler.getTools().some(tool => tool.name === name));
+    const answer = await handler.handle(name, args);
+    return JSON.parse(answer.content[0].text);
+}
+
+console.log(await call('findRecords', { text: 'iron sword', limit: 3 }));
+stopBackends();
+```
+
+Each tool comes with a name, a description and a JSON Schema for its arguments (`handler.getTools()`): hand them to
+any model's function calling, and it can mod. The tools `readSkill` and `readServerGuide` teach it how.
+
+The settings are environment variables. On Linux, Amethyst is found by itself; with Mod Organizer,
+`SKYRIM_MO2_INSTANCE` names the instance folder. `NEXUS_API_KEY` adds the Nexus Mods tools, and
+`SKYRIM_PROJECTS_DIR` says where the projects go. Every other setting: the
+[MCP server's table](https://github.com/Ciltress/skyrim-modding-tools-mcp#configuration).
+
+**Try it on a test instance first.** Deploying and installing write into the instance's mods and profile. A portable
+Mod Organizer on a clean game is the safe place to learn the tools.
+
+## Documentation
+
+| Document | For |
+| --- | --- |
+| [`docs/Tool-Router.md`](docs/Tool-Router.md) | Which tool does what, in the words people use |
+| [`docs/MCP-Tools.md`](docs/MCP-Tools.md) | How the tools behave: rules, workflows, errors, troubleshooting |
+| [`skills/`](skills) | The modding knowledge served to agents |
+| [`CONTEXT.md`](CONTEXT.md) | The vocabulary |
+| [`AGENTS.md`](AGENTS.md) | Working on this code: the layout and the conventions |
 
 ## Development
 
@@ -26,13 +103,11 @@ npm run build:helper   # the C# plugin helper, into helper/bin
 npm test
 ```
 
-Guidance for agents working on it, the layout and the conventions: [AGENTS.md](AGENTS.md). The vocabulary:
-[CONTEXT.md](CONTEXT.md).
+## License and thanks
 
-## License
-
-GPL-3.0-only ([ADR-0006](docs/adr/0006-gpl-3.md)).
+GPL-3.0-only, as [Mutagen](https://github.com/Mutagen-Modding/Mutagen), which reads and writes the plugins, is
+GPL-3.0. The project text is [Spriggit](https://github.com/Mutagen-Modding/Spriggit)'s format.
 
 The crash rules `readCrashLog` applies are Phostwood's [Skyrim Crash Log Analyzer](https://github.com/Phostwood/crash-analyzer)'s
-(GPL-3.0), rewritten in TypeScript ([ADR-0011](docs/adr/0011-crash-rules-are-phostwoods-ported.md)). Thanks to
-Phostwood for years of collecting them. Details in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+(GPL-3.0), rewritten in TypeScript. Thanks to Phostwood for years of collecting them. Details in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
