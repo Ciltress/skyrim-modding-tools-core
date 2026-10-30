@@ -158,8 +158,17 @@ public static class RecordLinks
                 {
                     // A weapon's enchantment named as the magic effect it was to cast: all 3 runs of eval rounds 40–53 that
                     // were refused so failed — round 53's sword+detailed #5 rewrote its magic effect until the turns ran out.
+                    // An enchantment's base named as the magic effect it casts, the line beside its Effects: offered another
+                    // enchantment to name, the model's went round its files until the turns ran out, naming the game's base on
+                    // the last (eval round 95's sword #1). A new enchantment does without one.
                     problems.Add($"{relative}: {field} names {found.EditorId}, which is {RecordFiles.Article(Kind(found.Type))}; {field} takes {RecordFiles.Article(wanted)}" +
-                        (wanted == "ObjectEffect" && Kind(found.Type) == "MagicEffect"
+                        (wanted == "ObjectEffect" && Kind(found.Type) == "MagicEffect" && field == "BaseEnchantment"
+                            ? $" — the enchantment the player learns by disenchanting this one, not a magic effect it casts (that is `- BaseEffect: " +
+                                $"{found.EditorId}` among its Effects); the game's enchantments of one kind name their base there, as readRecord " +
+                                $"{{\"record\": \"{RecordFiles.ExampleName("ObjectEffect")}\"}} shows, and a new enchantment does without one: one " +
+                                "call deletes the line and builds again — " +
+                                ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, "", "\"BaseEnchantment\"", build: true)
+                        : wanted == "ObjectEffect" && Kind(found.Type) == "MagicEffect"
                             ? $" — an enchantment, whose Effects name the magic effects it casts: name one, such as {RecordFiles.ExampleName("ObjectEffect")}, " +
                                 $"or write one in ObjectEffects with `- BaseEffect: {found.EditorId}` among its Effects, as readRecord {{\"record\": " +
                                 $"\"{RecordFiles.ExampleName("ObjectEffect")}\"}} shows them, and name it here"
