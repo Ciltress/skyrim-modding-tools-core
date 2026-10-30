@@ -93,3 +93,4 @@ there before installing a mod or a requirement twice.
 - [`TOOLS.md`](TOOLS.md) — the community's tools, what each is for, and when to send the user to one.
 - Record families, one skill each: `skyrim-modding-items-and-crafting`, `skyrim-modding-magic`, `skyrim-modding-npcs`, `skyrim-modding-leveled-lists`.
 - `skyrim-modding-game-versions` — mods whose SKSE plugins do not fit the game: finding them, and fixing each.
+- `skyrim-modding-crash-analysis` — a game that crashed: its crash log read, the mod behind it, the fix.

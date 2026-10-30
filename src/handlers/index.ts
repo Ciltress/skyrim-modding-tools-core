@@ -1,5 +1,6 @@
 import type { AppBackend } from '../backend/index.js';
 import type { Product } from '../lib/product.js';
+import { AnalysisHandlers } from './AnalysisHandlers.js';
 import type { BaseHandler } from './BaseHandler.js';
 import { DocsHandlers } from './DocsHandlers.js';
 import { ModsHandlers } from './ModsHandlers.js';
@@ -11,7 +12,7 @@ import { SkillsHandlers } from './SkillsHandlers.js';
 export { BaseHandler } from './BaseHandler.js';
 export type { ToolSpec } from './BaseHandler.js';
 export { ToolError, ToolErrorCode } from './errors.js';
-export { DocsHandlers, ModsHandlers, NexusHandlers, ProjectsHandlers, RecordsHandlers, SkillsHandlers };
+export { AnalysisHandlers, DocsHandlers, ModsHandlers, NexusHandlers, ProjectsHandlers, RecordsHandlers, SkillsHandlers };
 
 /**
  * Every handler, in tools/list order — the one list.
@@ -29,6 +30,7 @@ export function createHandlers(backend: AppBackend, product: Product): BaseHandl
         new RecordsHandlers(backend),
         new ProjectsHandlers(backend),
         new NexusHandlers(backend),
-        new ModsHandlers(backend)
+        new ModsHandlers(backend),
+        new AnalysisHandlers(backend)
     ];
 }

@@ -17,6 +17,8 @@ export interface EngineOptions {
     papyrusCompiler?: string;
     /** Where a compiler is looked for when SKYRIM_PAPYRUS_COMPILER names none (Platform.papyrusCompilerCandidates). */
     papyrusCompilerCandidates?: readonly string[];
+    /** SKYRIM_CRASH_LOG_DIR: where Crash Logger's logs are read from instead of My Games' SKSE folder. */
+    crashLogDir?: string;
 }
 
 /**
@@ -46,6 +48,7 @@ export class SkyrimEngine {
     /** The Papyrus compiler SKYRIM_PAPYRUS_COMPILER names; undefined means the platform's default. */
     readonly papyrusCompiler?: string;
     readonly papyrusCompilerCandidates: readonly string[];
+    readonly crashLogDir?: string;
     private readonly creationKitOverride?: string;
 
     /**
@@ -62,6 +65,7 @@ export class SkyrimEngine {
         this.papyrusCompiler = options.papyrusCompiler;
         this.papyrusCompilerCandidates = options.papyrusCompilerCandidates ?? [];
         this.creationKitOverride = options.creationKitDir;
+        this.crashLogDir = options.crashLogDir;
     }
 
     get creationKitDir(): string {

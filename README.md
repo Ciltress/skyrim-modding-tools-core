@@ -32,3 +32,7 @@ Guidance for agents working on it, the layout and the conventions: [AGENTS.md](A
 ## License
 
 GPL-3.0-only ([ADR-0006](docs/adr/0006-gpl-3.md)).
+
+The crash rules `readCrashLog` applies are Phostwood's [Skyrim Crash Log Analyzer](https://github.com/Phostwood/crash-analyzer)'s
+(GPL-3.0), rewritten in TypeScript ([ADR-0011](docs/adr/0011-crash-rules-are-phostwoods-ported.md)). Thanks to
+Phostwood for years of collecting them. Details in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

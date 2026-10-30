@@ -22,6 +22,7 @@ one, at any depth; every directory containing a `SKILL.md` is one skill, and eve
 | `skyrim-modding-npcs` | NPCs, templates, FaceGen, outfits, factions, AI packages, followers | `REFERENCE.md` |
 | `skyrim-modding-leveled-lists` | Leveled items, NPCs and spells: how a pick works, the conflict problem | `REFERENCE.md` |
 | `skyrim-modding-game-versions` | Mods whose SKSE plugins do not fit the game version: checking, a fitting file or disabling, saves | `REFERENCE.md` (game versions, SKSE builds, the rules) |
+| `skyrim-modding-crash-analysis` | A game that crashed: Crash Logger SSE's log read, diagnoses and suspect mods weighed, the fix on the user's word | — |
 
 Each `SKILL.md` stays short and points at its `REFERENCE.md`, where the record family's fields,
 gotchas, real project text and typical bugs live. The `SKILL.md` of items, magic and NPCs holds one

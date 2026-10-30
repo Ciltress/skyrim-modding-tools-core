@@ -111,6 +111,11 @@ export interface ModManager {
     resolveDataFiles(instance: Instance, mods: readonly ModEntry[], folder: string, extensions: ReadonlySet<string>): Map<string, string>;
     /** The Wine prefix the game runs in, under Proton — where its My Games folder is; undefined on Windows. */
     winePrefix(instance: Instance): string | undefined;
+    /**
+     * Where the game's INIs are for the selected profile when the mod manager keeps them per profile (Mod Organizer's
+     * profile-specific INI files); undefined when the game reads its own, in My Games.
+     */
+    profileIniDir(instance: Instance): string | undefined;
     /** Changes whenever the active load order may have: another profile, a mod or a plugin toggled. */
     fingerprint(): string;
     /**

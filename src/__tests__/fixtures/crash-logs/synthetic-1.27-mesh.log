@@ -1,0 +1,100 @@
+CRASH TIME: 2026-10-30 14:02:11
+Skyrim SSE v1.7.104
+CrashLoggerSSE v1-27-0-0 Oct 25 2026 06:01:12
+
+Unhandled exception "EXCEPTION_ACCESS_VIOLATION" at 0x7FF6A1C3D2E0 SkyrimSE.exe+0D3D2E0	mov rax, [rcx+0x28] |  BSLightingShaderProperty::sub_140D3D2E0_D3D2E0)
+Exception Flags: 0x00000000 (Continuable)
+Number of Parameters: 2
+Exception Thread ID: 18044
+Access Violation: Tried to read memory at 0x000000000028
+ACCESS VIOLATION ANALYSIS:
+	Instruction: mov rax, [rcx+0x28]
+	Memory Operand: [base=rcx, index=none, scale=0, disp=+0x28]
+	Base Register: rcx = 0x0000000000000000 (likely invalid)
+	Computed Address: 0x0000000000000028
+
+POSSIBLE RELEVANT OBJECTS:
+	RBX: (BSFadeNode*) "CrashTestStatue.nif"
+	RSP+58: (TESObjectSTAT*) "Crash Test Statue" [0x08000800] ("CrashTestMesh.esp")
+	RSP+90: (TESObjectREFR*) [0x08000801] ("CrashTestMesh.esp")
+	RSP+120: (TESObjectCELL*) "Riverwood Trader" [0x000133C6] ("Skyrim.esm")
+
+CRASHED WHILE LOADING A MODEL (this thread, newest first):
+	    0.412 ms ago  meshes\CrashTest\CrashTestStatue.nif  (in progress)
+	   12.903 ms ago  meshes\clutter\common\basket01.nif
+
+MODEL PATHS FOR RESOURCE IDS ON THIS THREAD'S STACK (innermost first):
+	[RSP+0x48] meshes\CrashTest\CrashTestStatue.nif
+
+PROCESS INFO:
+	Process ID: 11208
+	Crash Thread ID: 18044
+	Process Uptime: 00:01:04 (64122ms)
+	Working Directory: G:\Steam\steamapps\common\Skyrim Special Edition
+	Command Line: "G:\Steam\steamapps\common\Skyrim Special Edition\SkyrimSE.exe"
+	Executable MD5: 00000000000000000000000000000000
+	Executable Size: 37157144 bytes
+	Executable Modified: 2026-08-27 15:00:00
+	Elevated: No
+
+THREAD CONTEXT (HEURISTIC):
+	Thread Priority: 0
+	Likely Role: Main Thread
+
+SYSTEM SPECS:
+	OS: Microsoft Windows 11
+	CPU: GenuineIntel
+	CPU Cores: 16 logical, 8 physical, 1 packages
+	GPU #1: Nvidia
+	PHYSICAL MEMORY: 14.02 GB/31.68 GB
+	VIRTUAL MEMORY: 90.11 GB/131072.00 GB
+	PROCESS MEMORY: Working Set: 2201.10 MB, Private: 3011.95 MB, Peak: 2650.40 MB
+	PAGE FAULTS: 1203391 (Peak: 3101244416)
+	GPU MEMORY: 3.10/14.41 GB
+
+CALL STACK ([P]robable / [S]tack scan):
+	[ 0][P] 0x7FF6A1C3D2E0                   SkyrimSE.exe+0D3D2E0	mov rax, [rcx+0x28] |  BSLightingShaderProperty::sub_140D3D2E0_D3D2E0 -> 100565+0x40	mov rax, [rcx+0x28]
+	[ 1][P] 0x7FF6A1C3A10B                   SkyrimSE.exe+0D3A10B	test al, al |  BSFadeNode::sub_140D3A0C0_D3A10B -> 100510+0x4B	test al, al
+	[ 2][P] 0x7FF6A1B7D7E2                   SkyrimSE.exe+0C7D7E2	mov rbx, rax |  NiNode::sub_140C7D7A0_C7D7E2 -> 99331+0x42	mov rbx, rax
+	[ 3][P] 0x7FF6A0F21C44                   SkyrimSE.exe+0021C44	add rsp, 0x40 |  TESObjectREFR::Load3D_21C44 -> 19300+0x104	add rsp, 0x40
+	[ 4][S] 0x7FF6A1006E15                   SkyrimSE.exe+0106E15	mov rcx, rbx |  FUN_140106d90_106E15 -> 11910+0x85	mov rcx, rbx
+	[ 5][S] 0x7FFCF113CD87                   KERNEL32.DLL+002CD87
+
+REGISTERS:
+	RAX 0x0                (size_t) [0]
+	RBX 0x2A7C1D30B00      (BSFadeNode*) "CrashTestStatue.nif"
+	RCX 0x0                (size_t) [0]
+
+STACK:
+	[RSP+0  ] 0x0                (size_t) [0]
+	[RSP+58 ] 0x2A7C0A0F980      (TESObjectSTAT*) "Crash Test Statue" [0x08000800] ("CrashTestMesh.esp")
+
+MODULES:
+	SkyrimSE.exe                     0x7FF6A0F00000
+	KERNEL32.DLL                     0x7FFCF1110000
+	skse64_1_7_104.dll               0x7FFC54A00000
+	CrashLogger.dll                  0x7FFC4C000000
+
+SKSE PLUGINS:
+	CrashLogger.dll v1.27.0
+	skse64_1_7_104.dll
+
+GAME STATE:
+	Main loop: active
+	Open menus: HUD Menu
+	Player: interior cell "Riverwood Trader" [000133C6], position (412.0, -130.5, 64.0), 3D loaded
+
+PLUGINS:
+	Light: 3	Regular: 9	Total: 12
+	[ 0]     Skyrim.esm
+	[ 1]     Update.esm
+	[ 2]     Dawnguard.esm
+	[ 3]     HearthFires.esm
+	[ 4]     Dragonborn.esm
+	[ 5]     ccBGSSSE001-Fish.esm
+	[ 6]     ccBGSSSE025-AdvDSGS.esm
+	[ 7]     CrashTestHelper.esp
+	[ 8]     CrashTestMesh.esp
+	[FE:000] ccQDRSSE001-SurvivalMode.esl
+	[FE:001] ccBGSSSE037-Curios.esl
+	[FE:002] _ResourcePack.esl

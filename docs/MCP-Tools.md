@@ -419,7 +419,23 @@ a plugin that named it in `missingMasters`, or installed again after `disableMod
 manager told, as for `deployProject`. Its `meta.ini` names the Nexus mod and file, so Mod Organizer's update check knows
 it. `missingMasters` lists plugins the game cannot load until another mod is installed.
 
-### 4.6 Find out what you are connected to
+### 4.6 Find out why the game crashed
+
+```jsonc
+{"tool":"readCrashLog","args":{}}
+{"tool":"readCrashLog","args":{"log":"2026-10-30 14:02","section":"callStack"}}
+```
+
+Crash Logger SSE writes `crash-<time>.log` into My Games' SKSE folder, which every setup of the game on the
+computer shares; `readCrashLog` reads the newest whose PROCESS INFO names this instance's game folder, and counts
+the rest (`logs`). `SKYRIM_CRASH_LOG_DIR` names another folder. The answer: `crash` (the exception, where, the
+model being loaded, the game state), up to 5 `diagnoses` — Phostwood's rules, ported (ADR 0011), most certain
+first, then by where their evidence is — up to 5 `suspects`, each a mod with the files the log names (DLLs, plugins,
+meshes and textures, loose or in an archive — ADR 0012) and the lines that do, and `records`, each with its
+defining plugin and the one that changed it last. `section` answers one part of the log as written. A fix is made
+with the mod tools, on the user's word: `disableMod` and `enableMod`, `installMod`, `editIni`.
+
+### 4.7 Find out what you are connected to
 
 ```jsonc
 {"tool":"healthcheck","args":{}}
@@ -585,6 +601,11 @@ Start with `healthcheck`.
 | `disableMod` → `missingMasters` | Active plugins of other mods need a plugin the disabled mod took out of the load order | Tell the user: the game will not start like this. Disable those mods too — on the user's word — or have the user enable the mod again |
 | `disableMod` → "Amethyst is open…" | Amethyst writes its own state of the mods it knows over a change made outside it | The user closes Amethyst and the call is repeated, or the user unticks the mod in Amethyst and deploys |
 | `disableMod` → "Amethyst has 'X' locked" / "is part of the game" / "is the mod of the project" | A mod the user locked on; MO2's DLC and Creation Club entries; a project's mod, which `deployProject` keeps enabled | The user unlocks it in Amethyst, or disables it in the mod manager themselves |
+| `enableMod` → `missingMasters` | A plugin of the mod needs one no active plugin is | Tell the user: the game will not start like this. Enable or install the mods they come from — on the user's word |
+| `readCrashLog` → "There is no crash log in …" | The game has not crashed since Crash Logger SSE was installed, or it is not installed | `listMods` with `text: "Crash Logger"`; install Crash Logger SSE (Nexus 59818) and Address Library (32444) on the user's word |
+| `readCrashLog` → "None of the N crash logs … is this setup's" | The logs are another setup's — a Wabbajack list sharing My Games — or the game folder moved | Give the newest's name as `log` to read it anyway; its `thisSetup: false` says so |
+| `readCrashLog` → `complete: false` | The game was gone before Crash Logger finished the log | Its first line and call stack still count; the load order is missing |
+| `editIni` → "file is one of …" | Another file than the game's three INIs | Only Skyrim.ini, SkyrimPrefs.ini and SkyrimCustom.ini are edited; a mod's INI is changed in its mod |
 | `readNexusMod` → "No Nexus mod N for Skyrim Special Edition" | A guessed number, or a mod of another game (Skyrim LE, VR) | `searchNexus` for it; `modId` is the number in the page's address |
 | `buildProject` on Linux → "a Windows program … SKYRIM_PAPYRUS_COMPILER" | The Creation Kit's Papyrus compiler does not run on Linux | Install russo-2025's compiler and name it in `SKYRIM_PAPYRUS_COMPILER` ([Hosting](Hosting.md) §4) |
 | `Unknown tool: X` | Not in the catalogue at all | `tools/list` — the router is derived from it |

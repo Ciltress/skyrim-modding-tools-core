@@ -75,6 +75,7 @@ describe('resolveSkill', () => {
         expect(named('items-and-crafting')).toBe('skyrim-modding-items-and-crafting');
         expect(named('leveled-lists')).toBe('skyrim-modding-leveled-lists');
         expect(named('game-versions')).toBe('skyrim-modding-game-versions');
+        expect(named('crash-analysis')).toBe('skyrim-modding-crash-analysis');
     });
 
     it('takes a singular, or words of the name', () => {
@@ -91,6 +92,8 @@ describe('resolveSkill', () => {
         // skyrim-modding-basics names SKSE too, but skyrim-modding-game-versions leads with it.
         expect(named('skse')).toBe('skyrim-modding-game-versions');
         expect(named('game version')).toBe('skyrim-modding-game-versions');
+        expect(named('crash')).toBe('skyrim-modding-crash-analysis');
+        expect(named('crash log')).toBe('skyrim-modding-crash-analysis');
     });
 
     it('answers nothing for a word no skill has', () => {

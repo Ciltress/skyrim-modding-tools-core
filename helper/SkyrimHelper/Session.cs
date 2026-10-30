@@ -38,7 +38,7 @@ public sealed class Session : IDisposable
         // Overlays are read by one thread at a time: whatever reads plugins waits for the background index.
         // Downloaded files and plugin headers are read from files of their own, and need not wait; record
         // files do, since a FormKey of another plugin's is checked against the record it names.
-        if (method is not ("hello" or "gameVersion" or "setLoadOrder" or "readArchive" or "extractArchive" or "pluginHeaders")
+        if (method is not ("hello" or "gameVersion" or "setLoadOrder" or "readArchive" or "extractArchive" or "pluginHeaders" or "bsaFiles")
             && indexing is { } running)
         {
             try { await running; } catch { /* surfaced by the call that needs the index */ }
@@ -62,6 +62,7 @@ public sealed class Session : IDisposable
         "checkRecords" => CheckRecords(Required(p, "projectPluginDir")),
         "editRecord" => RecordEdits.Edit(Required(p, "projectPluginDir"), Required(p, "record"), p["set"] as JsonObject, p["remove"] as JsonArray),
         "sksePlugins" => SksePlugins.Read(p),
+        "bsaFiles" => BsaFiles.Find(p),
         _ => throw new HelperException("unknownMethod", $"No method '{method}'.")
     };
 

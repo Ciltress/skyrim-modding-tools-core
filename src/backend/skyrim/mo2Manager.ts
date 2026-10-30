@@ -1,6 +1,6 @@
 import os from 'node:os';
 import path from 'node:path';
-import { loadOrderFingerprint, readInstance, readLoadOrder, readModList, resolveDataFiles, resolvePluginFiles, winePrefix, type IniPaths } from './mo2.js';
+import { loadOrderFingerprint, profileUsesLocalInis, readInstance, readLoadOrder, readModList, resolveDataFiles, resolvePluginFiles, winePrefix, type IniPaths } from './mo2.js';
 import { activatePlugins, disableMod, enableMod, refreshIfRunning, removePlugins, runningMo2 } from './mo2Profile.js';
 import type { Instance, ModDisabled, ModEnabled, ModEntry, ModManager, ModManagerNotice, PluginEntry, ProfileWrite } from './modManager.js';
 import type { Platform } from './platform.js';
@@ -60,6 +60,11 @@ export class Mo2Manager implements ModManager {
     // Mod Organizer and the game it starts share the prefix.
     winePrefix(): string | undefined {
         return this.platform.runsWindowsPrograms ? undefined : winePrefix(this.location, this.namedPrefix, this.home);
+    }
+
+    // A profile with 'Use profile-specific Game INI Files' has LocalSettings=true, and its own skyrim.ini and the rest.
+    profileIniDir(instance: Instance): string | undefined {
+        return profileUsesLocalInis(instance.profileDir) ? instance.profileDir : undefined;
     }
 
     fingerprint(): string {

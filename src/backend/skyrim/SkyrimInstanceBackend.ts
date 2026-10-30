@@ -11,8 +11,13 @@ import {
     topFolders, type ArchiveListing, type InstallEnvironment, type PluginHeader, type UnpackedFile
 } from './installer.js';
 import type { Instance } from './modManager.js';
-import { ModError, findMod, listedMods, ownerOf, pluginFiles } from './modList.js';
-import { checkGameVersion } from './gameVersion.js';
+import { ModError, findMod, listedMods, nexusRecord, ownerOf, pluginFiles } from './modList.js';
+import { checkGameVersion, myGamesDir } from './gameVersion.js';
+import { Attributor } from './crash/attribution.js';
+import { CrashLogNotFoundError, chooseCrashLog } from './crash/crashLogFiles.js';
+import { buildCrashReport, crashLogSection, type CrashLogSection, type CrashReport } from './crash/crashReport.js';
+import { CRASH_RULES } from './crash/rules/index.js';
+import { setIniValue } from './gameIni.js';
 import { findCaseInsensitive } from './paths.js';
 import {
     ProjectError, assignFormIds, belongsAt, correctCopiedEscapes, createProject, type CopiedEscape, deleteCall, deleteRecordFile, editedRecord, fencedRecordFiles, fileHash,
@@ -24,7 +29,7 @@ import type { SkyrimEngine } from './engine.js';
 import { NexusCatalogue, markDownloadInstalled, readDownloadMeta } from './nexus.js';
 import type {
     AddPatchRequest, AddPatchResult, BuildResult, DeleteRecordRequest, DeleteRecordResult, DeployResult, DisableModRequest, DisableModResult,
-    EditRecordRequest, EditRecordResult, InstallModQuestions, InstallModRequest,
+    EditIniRequest, EditIniResult, EditRecordRequest, EditRecordResult, EnableModRequest, EnableModResult, InstallModQuestions, InstallModRequest, ReadCrashLogRequest,
     InstallModResult, GameVersionCheck, ModList, ModListQuery, MoveRecordRequest, MoveRecordResult,
     NewProjectRequest, NexusAccount, NexusDownload, NexusMod, NexusSearchQuery, NexusSearchResult, ProjectFile, ProjectInfo,
     PullResult, RecordQuery, RecordRequest, RecordSearchResult, RecordVersion, RecordVersions, SkyrimBackend
@@ -806,6 +811,138 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
             ...(missingMasters.length > 0 ? { missingMasters, warnings: [needsMastersWarning(missingMasters, mod)] } : {}),
             profile: { name: instance.profile, ...disabled },
             ...(notice ? { modManager: notice } : {})
+        };
+    }
+
+    /**
+     * A disabled mod enabled where it stands, on the user's word — disableMod's mirror: its plugins join the
+     * load order as installMod places them, at the end or before an active plugin that needs one.
+     */
+    async enableMod(request: EnableModRequest): Promise<EnableModResult> {
+        const modManager = this.engine.modManager;
+        const instance = modManager.readInstance();
+        const mods = modManager.readModList(instance);
+        const entry = findMod(mods, request.mod, instance.profile);
+        const mod = entry.name;
+        if (!entry.managed) throw new ModError(`'${mod}' is part of the game, which Mod Organizer lists but does not manage: it is always enabled.`);
+        const loadOrder = modManager.readLoadOrder(instance);
+        const active = new Set(loadOrder.filter(plugin => plugin.active).map(plugin => plugin.name.toLowerCase()));
+        const modFolder = path.join(instance.modsDir, mod);
+        const own = pluginFiles(modFolder);
+        if (entry.enabled && own.every(plugin => active.has(plugin.toLowerCase()))) {
+            return {
+                mod, note: `'${mod}' was enabled already: nothing changed.`, plugins: own,
+                profile: { name: instance.profile, modEnabled: false, activated: [], addedToLoadOrder: [] }
+            };
+        }
+        const refusal = await modManager.writeRefusal(instance, 'change');
+        if (refusal) throw new ModError(refusal);
+
+        const warnings: string[] = [];
+        const plugins = await this.pluginsOf(modFolder, warnings);
+        const order = pluginOrder(plugins);
+        const loaded = new Set([...active, ...order.map(name => name.toLowerCase())]);
+        const missingMasters = order
+            .map(name => ({ plugin: name, masters: plugins.find(p => p.name === name)!.masters.filter(m => !loaded.has(m.toLowerCase())) }))
+            .filter(found => found.masters.length > 0);
+        if (missingMasters.length > 0) {
+            const masters = [...new Set(missingMasters.flatMap(found => found.masters))];
+            warnings.push(`The game will not start while ${masters.join(', ')} ${masters.length === 1 ? 'is' : 'are'} missing from the load ` +
+                `order: enable or install the mods ${masters.length === 1 ? 'it comes' : 'they come'} from.`);
+        }
+        const listed = new Set(loadOrder.map(plugin => plugin.name.toLowerCase()));
+        const joining = order.map(name => plugins.find(plugin => plugin.name === name)!);
+        let placed = { before: new Map<string, string>(), warnings: [] as string[] };
+        if (joining.some(plugin => !listed.has(plugin.name.toLowerCase()))) {
+            const files = modManager.resolvePluginFiles(instance, mods);
+            const read = await this.activeMasters(instance, files);
+            placed = placeInLoadOrder(loadOrder.map(plugin => plugin.name), joining,
+                new Map(read.map(plugin => [path.basename(plugin.path).toLowerCase(), plugin.masters])));
+            warnings.push(...placed.warnings);
+        }
+
+        const enabled = modManager.enable(instance, mod, order, placed.before);
+        const notice = await modManager.afterDeploy(instance);
+        return {
+            mod,
+            plugins: order,
+            ...(placed.before.size > 0 ? {
+                placedBefore: order.filter(name => placed.before.has(name.toLowerCase()))
+                    .map(name => ({ plugin: name, before: placed.before.get(name.toLowerCase())! }))
+            } : {}),
+            ...(missingMasters.length > 0 ? { missingMasters } : {}),
+            ...(warnings.length > 0 ? { warnings } : {}),
+            profile: { name: instance.profile, ...enabled },
+            modManager: notice
+        };
+    }
+
+    /**
+     * A Crash Logger SSE log read for this setup (docs/adr/0011): the newest of this setup's by default —
+     * the folder is shared by every setup of the game on the computer — or the one asked for.
+     */
+    async readCrashLog(request: ReadCrashLogRequest): Promise<CrashReport | CrashLogSection> {
+        const { modManager, platform } = this.engine;
+        const instance = modManager.readInstance();
+        const folder = this.engine.crashLogDir ?? (await myGamesDir(modManager, platform, instance).then(dir => dir && path.join(dir, 'SKSE')));
+        if (!folder) {
+            throw new CrashLogNotFoundError('The Documents folder, where the game keeps My Games and Crash Logger its logs, could not be ' +
+                'found. Set SKYRIM_CRASH_LOG_DIR to the folder with the crash-*.log files.');
+        }
+        const toLocal = platform.windowsPaths(modManager.winePrefix(instance));
+        const gameDir = path.resolve(instance.gameDir).toLowerCase();
+        const chosen = chooseCrashLog(folder, request.log, seen => {
+            const local = toLocal(seen);
+            return !!local && path.resolve(local).toLowerCase() === gameDir;
+        });
+        if (request.section) return crashLogSection(chosen, request.section);
+
+        const mods = modManager.readModList(instance);
+        const loadOrder = modManager.readLoadOrder(instance).filter(plugin => plugin.active).map(plugin => plugin.name);
+        const attributor = new Attributor(modManager, instance, mods, loadOrder, async files => {
+            await this.engine.ensureFresh();
+            return this.engine.helper.call('bsaFiles', files, BUILD_TIMEOUT_MS);
+        });
+        return buildCrashReport(chosen, CRASH_RULES, attributor, mod => nexusRecord(path.join(instance.modsDir, mod))?.modId);
+    }
+
+    /**
+     * Settings of the game's own INIs set or removed, on the user's word: the profile's copies when the mod manager
+     * keeps the INIs per profile, else those in My Games. Only Skyrim.ini, SkyrimPrefs.ini and SkyrimCustom.ini.
+     */
+    async editIni(request: EditIniRequest): Promise<EditIniResult> {
+        const { modManager, platform } = this.engine;
+        const instance = modManager.readInstance();
+        const profileDir = modManager.profileIniDir(instance);
+        const folder = profileDir ?? await myGamesDir(modManager, platform, instance);
+        if (!folder) throw new ModError('The Documents folder, where the game keeps its INIs in My Games, could not be found.');
+
+        const changed: EditIniResult['changed'] = [];
+        const unchanged: string[] = [];
+        const texts = new Map<string, string>();
+        for (const setting of request.set) {
+            const name = setting.file ?? 'Skyrim.ini';
+            // Mod Organizer names a profile's copies in lower case; the game's own are as the game writes them.
+            const file = findCaseInsensitive(folder, name) ?? path.join(folder, profileDir ? name.toLowerCase() : name);
+            const text = texts.get(file) ?? (fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '');
+            const edit = setIniValue(text, setting.section, setting.key, setting.value);
+            texts.set(file, edit.text);
+            if (edit.changed) {
+                changed.push({
+                    file, section: setting.section, key: setting.key,
+                    ...(edit.was !== undefined ? { was: edit.was } : {}),
+                    ...(setting.value !== null ? { now: setting.value } : {})
+                });
+            } else {
+                unchanged.push(`${name} [${setting.section}] ${setting.key}`);
+            }
+        }
+        for (const file of new Set(changed.map(entry => entry.file))) fs.writeFileSync(file, texts.get(file)!, 'utf8');
+        return {
+            changed,
+            ...(unchanged.length > 0 ? { unchanged } : {}),
+            note: (profileDir ? `These are the INIs of the profile '${instance.profile}', which the game reads when started from the mod manager. ` : '') +
+                'The game reads them when it starts: a game running now keeps its settings until it is started again.'
         };
     }
 

@@ -145,7 +145,8 @@ export function createBackend(env: NodeJS.ProcessEnv, options: BackendOptions): 
         readConfiguration(env, { root: options.product.root, home: options.home });
     const projectsDir = paths.SKYRIM_PROJECTS_DIR ?? defaultProjectsDir(options.product.root);
     const current = sharedEngine?.modManager;
-    if (current?.name !== modManager.name || current.location !== modManager.location || sharedEngine?.projectsDir !== projectsDir) {
+    if (current?.name !== modManager.name || current.location !== modManager.location || sharedEngine?.projectsDir !== projectsDir
+        || sharedEngine?.crashLogDir !== paths.SKYRIM_CRASH_LOG_DIR) {
         sharedEngine?.stop();
         sharedEngine = new SkyrimEngine(
             modManager,
@@ -155,7 +156,8 @@ export function createBackend(env: NodeJS.ProcessEnv, options: BackendOptions): 
                 platform,
                 creationKitDir: paths.SKYRIM_CK_DIR,
                 papyrusCompiler: paths.SKYRIM_PAPYRUS_COMPILER,
-                papyrusCompilerCandidates
+                papyrusCompilerCandidates,
+                crashLogDir: paths.SKYRIM_CRASH_LOG_DIR
             }
         );
     }

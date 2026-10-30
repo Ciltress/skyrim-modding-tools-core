@@ -55,6 +55,16 @@ Workflows and the error model: [`MCP-Tools.md`](./MCP-Tools.md). The vocabulary:
 | Know whether the mods work on this game version — after a game update, say | `checkGameVersion` — SKSE, Address Library and every SKSE plugin the game loads, judged by SKSE's log of the last start and by the rules SKSE applies; `problems` names each plugin's mod and Nexus `modId` |
 | Find out why an SKSE mod does nothing in the game | `checkGameVersion` → `problems`: `refusedAtLastStart` is SKSE's own word |
 | Turn a mod off — one that does not fit the game, say — only when the user says so | `disableMod` with the mod's name from `listMods`; its plugins leave the load order, its files stay. `missingMasters` names plugins that now stop the game from starting |
+| Turn a disabled mod back on, only when the user says so | `enableMod` with its name; its plugins rejoin the load order as `installMod` places them |
+| Change a setting of the game's Skyrim.ini, SkyrimPrefs.ini or SkyrimCustom.ini, only when the user says so | `editIni` with `set: [{section, key, value}]` — the profile's own INIs where it has them; `remove: true` takes a setting out |
+
+## When the game crashed
+
+| You want to… | Call |
+| --- | --- |
+| Find out why the game crashed | `readCrashLog` — the newest crash log of this setup: the crash, up to 5 diagnoses with their fixes, up to 5 suspect mods with the lines that point at them. Skill: `skyrim-modding-crash-analysis` |
+| Read an older crash, or one part of a log | `readCrashLog` with `log` (its name, or `2026-10-30 14:02`), or `section` (`callStack`, `relevantObjects`, `plugins`…) |
+| Know which plugin defines a record a crash log names, and which changed it last | `readCrashLog` → `records`, each plugin with its mod |
 | Find an installed mod's Nexus page, or the version installed | `listMods` → `nexus.modId` (for `readNexusMod`); with `details: true`, `nexus.version` and the file |
 
 ## Mods on Nexus Mods

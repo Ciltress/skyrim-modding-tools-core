@@ -103,6 +103,34 @@ choices — and the load order — decide which of its files the mod gets. Each 
 id, `step.group.option`.
 _Avoid_: wizard, script installer, BAIN
 
+### Crash analysis
+
+**Crash log**:
+The file Crash Logger SSE writes when the game crashes — `crash-<time>.log` in My Games' SKSE folder,
+which every setup of the game on the computer shares. One is this setup's when its PROCESS INFO names
+this instance's game folder.
+_Avoid_: dump, report, trace
+
+**Diagnosis**:
+A known crash a rule recognises in a crash log, with its fix and how sure it is — certain, likely,
+possible. The rules are Phostwood's analyzer's, ported ([ADR-0011](docs/adr/0011-crash-rules-are-phostwoods-ported.md)).
+_Avoid_: finding, insight, result
+
+**Suspect**:
+A mod whose file — DLL, plugin, mesh, texture — a crash log points at, found in the setup by
+attribution. A suspect is a lead, not a cause.
+_Avoid_: culprit, offender
+
+**Evidence**:
+The lines of a crash log a diagnosis or a suspect rests on, ranked by where they are: the first line,
+the probable call stack, the relevant objects, the stack scan.
+_Avoid_: indicator, hit, match
+
+**Attribution**:
+Finding which mod gives the game a file — loose, or in an archive
+([ADR-0012](docs/adr/0012-archives-are-read-for-attribution.md)).
+_Avoid_: ownership, blame
+
 ### Authoring
 
 **Project**:

@@ -184,6 +184,11 @@ export class AmethystManager implements ModManager {
         return fs.existsSync(prefix) ? prefix : undefined;
     }
 
+    // Amethyst keeps no INIs per profile: the game reads its own, in the prefix's My Games.
+    profileIniDir(): string | undefined {
+        return undefined;
+    }
+
     fingerprint(): string {
         let profileDir = '';
         try {

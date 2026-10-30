@@ -1,0 +1,14 @@
+CRASH TIME: 2026-09-18 11:24:30
+Skyrim SSE v1.6.1170
+CrashLoggerSSE v1-23-1-0 Jun  7 2026 10:09:53
+
+Unhandled exception "EXCEPTION_ACCESS_VIOLATION" at 0x7FFA7CB32039 dxgi.dll+0112039	mov rax, [rcx]
+Exception Flags: 0x00000000 (Continuable)
+Number of Parameters: 2
+Exception Thread ID: 14280
+Access Violation: Tried to read memory at 0x000000000000
+ACCESS VIOLATION ANALYSIS:
+	Instruction: mov rax, [rcx]
+	Memory Operand: [base=rcx, index=none, scale=0, disp=+0x0]
+	Base Register: rcx = 0x0000000000000000 (likely invalid)
+	Computed Address: 0x0000000000000000

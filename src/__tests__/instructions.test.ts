@@ -51,6 +51,8 @@ describe('the instructions', () => {
         for (const [name] of text.matchAll(/skyrim-modding-[a-z-]+/g)) expect(skills, name).toContain(name);
         for (const family of FAMILY_SKILLS) expect(text).toContain(family.skill);
         expect(text).toContain('Mods that break after a game update: skyrim-modding-game-versions.');
+        // The analysis wave, 2026-10-30: crash logs get a skill of their own, named where a crash first comes up.
+        expect(text).toContain('A game that crashed: skyrim-modding-crash-analysis.');
     });
 
     it('say when a mod is delivered, beside the line that asks for it, and nowhere else', () => {
@@ -72,6 +74,6 @@ describe('the instructions', () => {
 
     it('send a new record to a vanilla one to follow, and keep the mod manager\'s tools for when the user asks', () => {
         expect(text).toContain('is a new file you write, following a vanilla record read with readRecord: copy its values instead of guessing.');
-        expect(text).toContain('- deployProject, installMod and disableMod change the user\'s mod manager: only when asked.');
+        expect(text).toContain('- deployProject, installMod, disableMod, enableMod and editIni change the user\'s setup: only when asked.');
     });
 });

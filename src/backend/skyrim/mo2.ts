@@ -179,6 +179,13 @@ export function readInstance(instanceDir: string, iniPaths: IniPaths = windowsPa
     };
 }
 
+/** Whether a profile has its own game INIs: settings.ini's `LocalSettings=true` ('Use profile-specific Game INI Files'). */
+export function profileUsesLocalInis(profileDir: string): boolean {
+    const file = path.join(profileDir, 'settings.ini');
+    if (!fs.existsSync(file)) return false;
+    return parseIni(fs.readFileSync(file, 'utf8')).get('General')?.get('LocalSettings')?.toLowerCase() === 'true';
+}
+
 // ---------------------------------------------------------------- mod order
 
 /** modlist.txt, highest priority first — the order MO2 writes it in. */

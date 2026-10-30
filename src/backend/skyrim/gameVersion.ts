@@ -87,13 +87,23 @@ async function skseInGame(instance: Instance, mods: readonly ModEntry[], helper:
     }
 }
 
-/** SKSE's log, where the game writes My Games — the user's Documents, or the Proton prefix's — and whether it is this game's. */
-async function skseLog(manager: ModManager, platform: Platform, instance: Instance) {
-    const prefix = manager.winePrefix(instance);
-    const documents = await platform.documentsDir(prefix);
+/**
+ * The game's folder in My Games — in the user's Documents, or the Proton prefix's — where it keeps its
+ * INIs, saves and the SKSE folder with SKSE's and Crash Logger's logs; undefined when Documents cannot be found.
+ */
+export async function myGamesDir(manager: ModManager, platform: Platform, instance: Instance): Promise<string | undefined> {
+    const documents = await platform.documentsDir(manager.winePrefix(instance));
     if (!documents) return undefined;
     const store = Object.keys(MY_GAMES).find(key => instance.edition.toLowerCase().includes(key));
-    const file = path.join(documents, 'My Games', store ? MY_GAMES[store] : 'Skyrim Special Edition', 'SKSE', 'skse64.log');
+    return path.join(documents, 'My Games', store ? MY_GAMES[store] : 'Skyrim Special Edition');
+}
+
+/** SKSE's log, where the game writes My Games, and whether it is this game's. */
+async function skseLog(manager: ModManager, platform: Platform, instance: Instance) {
+    const prefix = manager.winePrefix(instance);
+    const myGames = await myGamesDir(manager, platform, instance);
+    if (!myGames) return undefined;
+    const file = path.join(myGames, 'SKSE', 'skse64.log');
     if (!fs.existsSync(file)) return undefined;
     const parsed = parseSkseLog(fs.readFileSync(file, 'utf8'));
     const seen = parsed?.pluginDir ? platform.windowsPaths(prefix)(parsed.pluginDir) : undefined;

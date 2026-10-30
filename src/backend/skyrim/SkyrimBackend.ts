@@ -38,16 +38,78 @@ export interface SkyrimBackend extends Backend {
 
     /** A mod disabled where it stands, its plugins out of the load order; its files stay. */
     disableMod(request: DisableModRequest): Promise<DisableModResult>;
+    /** A disabled mod enabled where it stands, its plugins back in the load order. */
+    enableMod(request: EnableModRequest): Promise<EnableModResult>;
 
     /** The selected profile's mods, lowest priority first: each one's plugins, Nexus record and SKSE plugins. */
     listMods(query: ModListQuery): Promise<ModList>;
 
     /** Whether SKSE, Address Library and each SKSE plugin the game loads fit its version — SKSE's log of the last start first. */
     checkGameVersion(): Promise<GameVersionCheck>;
+
+    /** A Crash Logger SSE log of this setup read: the crash, ranked diagnoses and suspect mods — or one raw section. */
+    readCrashLog(request: ReadCrashLogRequest): Promise<CrashReport | CrashLogSection>;
+
+    /** Settings of the game's Skyrim.ini, SkyrimPrefs.ini or SkyrimCustom.ini set or removed — those the game reads for this profile. */
+    editIni(request: EditIniRequest): Promise<EditIniResult>;
 }
 
 export type { GameProblem, GameVersionCheck } from './sksePlugins.js';
 import type { GameVersionCheck } from './sksePlugins.js';
+export type { CrashLogSection, CrashReport, ReportedDiagnosis, ReportedRecord, Suspect } from './crash/crashReport.js';
+import type { CrashLogSection, CrashReport } from './crash/crashReport.js';
+import type { SectionName } from './crash/crashLog.js';
+
+export interface ReadCrashLogRequest {
+    /** A log by its file name, or by a time its name starts with: `2026-10-30`, `2026-10-30 14:02`. The newest of this setup's by default. */
+    log?: string;
+    /** Only this section of the log, as written. */
+    section?: SectionName;
+}
+
+export interface EnableModRequest {
+    /** The mod's name as listMods shows it; a name differing only in letter case finds it too. */
+    mod: string;
+}
+
+export interface EnableModResult {
+    mod: string;
+    /** Set when the mod was enabled already, and nothing changed. */
+    note?: string;
+    plugins: string[];
+    /** Plugins new to the load order placed before an active plugin that needs them. */
+    placedBefore?: { plugin: string; before: string }[];
+    /** Its plugins needing masters no active plugin is: the game will not start until their mods are enabled too. */
+    missingMasters?: { plugin: string; masters: string[] }[];
+    warnings?: string[];
+    profile: { name: string } & ModEnabled;
+    modManager?: ModManagerNotice;
+}
+
+export const INI_FILES = ['Skyrim.ini', 'SkyrimPrefs.ini', 'SkyrimCustom.ini'] as const;
+export type IniFile = typeof INI_FILES[number];
+
+export interface IniSetting {
+    /** Skyrim.ini unless given. */
+    file?: IniFile;
+    /** `General`, without brackets. */
+    section: string;
+    key: string;
+    /** The value as the INI holds it; null removes the setting. */
+    value: string | null;
+}
+
+export interface EditIniRequest {
+    set: IniSetting[];
+}
+
+export interface EditIniResult {
+    /** Each setting as it was and is, by the file it is in. */
+    changed: { file: string; section: string; key: string; was?: string; now?: string }[];
+    /** Settings that already had the value asked for. */
+    unchanged?: string[];
+    note: string;
+}
 
 export interface ModListQuery {
     /** Only the mods whose name holds this, in any case. */

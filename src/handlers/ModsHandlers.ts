@@ -2,6 +2,7 @@ import { BaseHandler } from './BaseHandler.js';
 import type { ToolSpec } from './BaseHandler.js';
 import { asRequestError, limitArg, offsetArg, optionalBoolean, optionalString, requireString } from './args.js';
 import { ToolError, ToolErrorCode } from './errors.js';
+import { INI_FILES, type IniSetting } from '../backend/skyrim/SkyrimBackend.js';
 
 /** listMods' page: a whole list of most setups, within core's 24 KB (a short row is ~135 bytes); a part of a Wabbajack one's. */
 const MOD_PAGE = 150;
@@ -190,9 +191,112 @@ export class ModsHandlers extends BaseHandler {
                 run: args => asRequestError(this.backend.disableMod({
                     mod: requireString(args, 'mod', 'Give the mod\'s name as listMods shows it.')
                 }))
+            },
+            {
+                definition: {
+                    name: 'enableMod',
+                    annotations: {
+                        title: 'Enable mod',
+                        readOnlyHint: false,
+                        destructiveHint: false,
+                        // A mod enabled already is left as it is.
+                        idempotentHint: true,
+                        openWorldHint: false
+                    },
+                    description:
+                        'Enable a disabled mod in the mod manager\'s selected profile — only when the user said so, for this mod: ' +
+                        'it stays where it is in the mod order, and its plugins join the load order as installMod places them. ' +
+                        'Then the mod manager is told, as for installMod. `missingMasters` names its plugins that need one no ' +
+                        'active plugin is: the game will not start until those mods are enabled too.',
+                    inputSchema: {
+                        type: 'object',
+                        properties: {
+                            mod: {
+                                type: 'string',
+                                description: 'The mod\'s name, as listMods shows it, e.g. "Better Jumping SE".'
+                            }
+                        },
+                        required: ['mod']
+                    }
+                },
+                onFailure: 'Failed to enable the mod',
+                run: args => asRequestError(this.backend.enableMod({
+                    mod: requireString(args, 'mod', 'Give the mod\'s name as listMods shows it.')
+                }))
+            },
+            {
+                definition: {
+                    name: 'editIni',
+                    annotations: {
+                        title: 'Edit game INI',
+                        readOnlyHint: false,
+                        // A setting removed, or a value written over, is gone; the answer names what it was.
+                        destructiveHint: true,
+                        idempotentHint: true,
+                        openWorldHint: false
+                    },
+                    description:
+                        'Set or remove settings of the game\'s Skyrim.ini, SkyrimPrefs.ini or SkyrimCustom.ini — only when the user ' +
+                        'said so, for these settings: the copies the game reads for the selected profile (the profile\'s own, ' +
+                        'when the mod manager keeps them per profile; else those in My Games). Every other line stays as it was; ' +
+                        'the answer names each value as it was and is. The game reads them when it starts.',
+                    inputSchema: {
+                        type: 'object',
+                        properties: {
+                            set: {
+                                type: 'array',
+                                description: 'The settings, e.g. [{"section": "Papyrus", "key": "bEnableLogging", "value": "1"}].',
+                                items: {
+                                    type: 'object',
+                                    description: 'One setting: its file, section and key, and its value or remove.',
+                                    properties: {
+                                        file: { type: 'string', enum: [...INI_FILES], description: 'Skyrim.ini unless given.' },
+                                        section: { type: 'string', description: 'The section, without brackets: "General".' },
+                                        key: { type: 'string', description: 'The setting\'s name: "sLanguage".' },
+                                        value: { type: 'string', description: 'Its new value as text, "1" for on.' },
+                                        remove: { type: 'boolean', description: 'True to remove the setting instead; give no value then.' }
+                                    },
+                                    required: ['section', 'key']
+                                }
+                            }
+                        },
+                        required: ['set']
+                    }
+                },
+                onFailure: 'Failed to edit the game INI',
+                run: args => asRequestError(this.backend.editIni({ set: iniSettingsArg(args) }))
             }
         ];
     }
+}
+
+/** The settings as given, each checked: one of the three INIs, a section and a key, a text or null. */
+function iniSettingsArg(args: any): IniSetting[] {
+    const value = args?.set;
+    if (!Array.isArray(value) || value.length === 0) {
+        throw new ToolError(ToolErrorCode.InvalidParams,
+            '\'set\' is a list of settings, e.g. [{"section": "Papyrus", "key": "bEnableLogging", "value": "1"}].');
+    }
+    return value.map((item: any, i: number) => {
+        const at = `set[${i}]`;
+        if (!item || typeof item !== 'object') throw new ToolError(ToolErrorCode.InvalidParams, `${at} must be an object with section, key and value.`);
+        const file = item.file === undefined || item.file === null ? undefined : INI_FILES.find(name => name.toLowerCase() === String(item.file).toLowerCase());
+        if (item.file !== undefined && item.file !== null && !file) {
+            throw new ToolError(ToolErrorCode.InvalidParams, `${at}.file is one of ${INI_FILES.join(', ')}: no other file is edited.`);
+        }
+        const section = typeof item.section === 'string' ? item.section.trim().replace(/^\[|\]$/g, '') : '';
+        const key = typeof item.key === 'string' ? item.key.trim() : '';
+        if (!section || !key || /[\r\n=[\]]/.test(key) || /[\r\n\]]/.test(section)) {
+            throw new ToolError(ToolErrorCode.InvalidParams, `${at} needs a section and a key, each on one line: {"section": "General", "key": "sLanguage", ...}.`);
+        }
+        const remove = item.remove === true || item.remove === 'true' || item.value === null;
+        if (!remove && typeof item.value !== 'string' && typeof item.value !== 'number' && typeof item.value !== 'boolean') {
+            throw new ToolError(ToolErrorCode.InvalidParams, `${at} needs a value, the setting's value as text — or "remove": true to remove it.`);
+        }
+        const text = remove ? null : typeof item.value === 'boolean' ? (item.value ? '1' : '0') : String(item.value);
+        if (text !== null && /[\r\n]/.test(text)) throw new ToolError(ToolErrorCode.InvalidParams, `${at}.value must be one line.`);
+        return { ...(file ? { file } : {}), section, key, value: text };
+    });
 }
 
 /** The choices as given — an empty list too, which installs every default. */

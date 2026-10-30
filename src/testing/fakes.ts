@@ -12,8 +12,10 @@ import type {
     InstallModRequest, InstallModResult,
     NewProjectRequest, NexusDownload, NexusMod, NexusModSummary,
     NexusSearchQuery, NexusSearchResult, ProjectInfo, PullResult, RecordQuery, RecordRequest, RecordSearchResult,
-    RecordSummary, RecordVersions, ListedMod, ModList, ModListQuery, GameVersionCheck
+    RecordSummary, RecordVersions, ListedMod, ModList, ModListQuery, GameVersionCheck,
+    CrashLogSection, CrashReport, EditIniRequest, EditIniResult, EnableModRequest, EnableModResult, ReadCrashLogRequest
 } from '../backend/skyrim/SkyrimBackend.js';
+import { CrashLogNotFoundError } from '../backend/skyrim/crash/crashLogFiles.js';
 import { CORE_GUIDES } from '../lib/guides.js';
 import { CORE_INFO, CORE_ROOT, type Product } from '../lib/product.js';
 
@@ -256,6 +258,47 @@ export class InMemorySkyrimBackend implements AppBackend {
         };
     }
 
+    /** The mod `sample`, whose one plugin joins the load order; no other mod is there. */
+    async enableMod(request: EnableModRequest): Promise<EnableModResult> {
+        if (request.mod !== SAMPLE) {
+            throw new ModError(`No mod '${request.mod}' in the profile 'Default'. listMods with \`text\` finds a mod's exact name.`);
+        }
+        return {
+            mod: SAMPLE, plugins: ['Sample.esp'],
+            profile: { name: 'Default', modEnabled: true, activated: ['Sample.esp'], addedToLoadOrder: [] },
+            modManager: { manager: 'mo2', status: 'notRunning' }
+        };
+    }
+
+    /** A crash in the mod `Sample Mod`'s SKSE plugin; a log asked for by another name is not there. */
+    async readCrashLog(request: ReadCrashLogRequest): Promise<CrashReport | CrashLogSection> {
+        if (request.log !== undefined && request.log !== SAMPLE) {
+            throw new CrashLogNotFoundError(`No crash log in the SKSE folder is named or dated '${request.log}'.`);
+        }
+        const log = { file: 'crash-2026-10-30-12-00-00.log', crashTime: '2026-10-30 12:00:00', game: '1.7.104', crashLogger: '1.27.0', thisSetup: true, complete: true };
+        const firstLine = 'Unhandled exception "EXCEPTION_ACCESS_VIOLATION" at 0x7FFA5C69B361 Sample.dll+002B361\tmov rax, [rcx]';
+        if (request.section) return { log, section: request.section, lines: [firstLine] };
+        return {
+            log,
+            crash: { exception: 'EXCEPTION_ACCESS_VIOLATION', at: 'Sample.dll+002B361', firstLine },
+            diagnoses: [],
+            suspects: [{ mod: 'Sample Mod', files: ['Sample.dll (SKSE plugin)'], evidence: [`first line: ${firstLine}`], nexus: { modId: NEXUS_MOD.modId } }],
+            logs: { thisSetup: 1, otherSetups: 0, unknown: 0 },
+            nextStep: 'Tell the user the first suspect mod.'
+        };
+    }
+
+    /** Every setting changed, from nothing. */
+    async editIni(request: EditIniRequest): Promise<EditIniResult> {
+        return {
+            changed: request.set.map(setting => ({
+                file: `profiles/Default/${(setting.file ?? 'Skyrim.ini').toLowerCase()}`, section: setting.section, key: setting.key,
+                ...(setting.value !== null ? { now: setting.value } : {})
+            })),
+            note: 'The game reads them when it starts.'
+        };
+    }
+
     /** One mod, from Nexus, with its plugin active; a text that is not in its name lists nothing. */
     async listMods(query: ModListQuery): Promise<ModList> {
         const mod: ListedMod = {
@@ -331,7 +374,8 @@ export interface FakeBackendOptions {
 
 const DOMAIN_METHODS = [
     'findRecords', 'readRecord', 'newProject', 'addPatch', 'editRecord', 'buildProject', 'deployProject', 'pullProject',
-    'searchNexus', 'readNexusMod', 'downloadNexusFile', 'installMod', 'disableMod', 'listMods', 'checkGameVersion'
+    'searchNexus', 'readNexusMod', 'downloadNexusFile', 'installMod', 'disableMod', 'enableMod', 'listMods', 'checkGameVersion',
+    'readCrashLog', 'editIni'
 ] as const;
 
 /**

@@ -27,7 +27,8 @@ export const PATH_SETTINGS = [
     'SKYRIM_PROJECTS_DIR',
     'SKYRIM_CK_DIR',
     'SKYRIM_PAPYRUS_COMPILER',
-    'SKYRIM_HELPER_PATH'
+    'SKYRIM_HELPER_PATH',
+    'SKYRIM_CRASH_LOG_DIR'
 ] as const;
 
 export type PathSetting = typeof PATH_SETTINGS[number];

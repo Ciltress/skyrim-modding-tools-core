@@ -32,7 +32,7 @@ export function serverInstructions(target: string): string {
         '',
         'Before modding, read the skill skyrim-modding-basics, then the skill of the records you will write: ' +
         `${FAMILY_SKILLS.map(family => `${family.skill} (${family.covers})`).join(', ')} (readSkill). ` +
-        'Mods that break after a game update: skyrim-modding-game-versions.',
+        'Mods that break after a game update: skyrim-modding-game-versions. A game that crashed: skyrim-modding-crash-analysis.',
         '',
         'How a mod is made:',
         '- A mod is a project. newProject creates it and answers the full path where each record file goes: write the ' +
@@ -46,7 +46,7 @@ export function serverInstructions(target: string): string {
         '- buildProject checks and builds. A refusal names the line to write: fix it, build again. `built_with_warnings`: ' +
         'the plugin is built — fix what each warning says and build again, that is part of the task. A warning stays ' +
         'only where the user asked for just what it names.',
-        '- deployProject, installMod and disableMod change the user\'s mod manager: only when asked.',
+        '- deployProject, installMod, disableMod, enableMod and editIni change the user\'s setup: only when asked.',
         '- Answer short: what you made, each file you wrote by its full path, what is left to do.',
         '',
         'If you know the job but not the tool, call readServerGuide with `{"guide":"router"}`; with no ' +
