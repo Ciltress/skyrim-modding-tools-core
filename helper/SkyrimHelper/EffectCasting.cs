@@ -190,7 +190,7 @@ public static class EffectCasting
     }
 
     /// <summary>The project's record files by the FormKey each writes.</summary>
-    private static Dictionary<FormKey, string> Files(string pluginDir) => RecordFiles.FlatRecords(pluginDir)
+    internal static Dictionary<FormKey, string> Files(string pluginDir) => RecordFiles.FlatRecords(pluginDir)
         .Select(f => (f.Relative, RecordFiles.Identity(File.ReadAllText(f.File)).FormKey))
         .Where(f => f.FormKey is not null)
         .GroupBy(f => f.FormKey!.Value).ToDictionary(g => g.Key, g => g.First().Relative);
