@@ -436,6 +436,29 @@ export function moveCall(paths: ProjectPaths, from: string, to: string): string 
         `"to": ${JSON.stringify(callPath(paths, to))}}`;
 }
 
+/**
+ * A refused editRecord call, given back as the tool takes it — `set` as a list of `{path, value}` — with
+ * `"build": true`, to send again once its file is there.
+ */
+export function editCall(paths: ProjectPaths, request: { record: string; set?: Record<string, unknown>; remove?: string[] }): string {
+    return `editRecord ${callJson({
+        project: path.basename(paths.root),
+        record: request.record,
+        ...(request.set ? { set: Object.entries(request.set).map(([field, value]) => ({ path: field, value })) } : {}),
+        ...(request.remove ? { remove: request.remove } : {}),
+        build: true
+    })}`;
+}
+
+/** JSON as the other calls in answers are written: a space after each colon and comma. */
+function callJson(value: unknown): string {
+    if (Array.isArray(value)) return `[${value.map(callJson).join(', ')}]`;
+    if (value && typeof value === 'object') {
+        return `{${Object.entries(value).map(([key, item]) => `${JSON.stringify(key)}: ${callJson(item)}`).join(', ')}}`;
+    }
+    return JSON.stringify(value);
+}
+
 export function deleteCall(paths: ProjectPaths, file: string): string {
     return `deleteRecord {"project": ${JSON.stringify(path.basename(paths.root))}, "record": ${JSON.stringify(callPath(paths, file))}}`;
 }

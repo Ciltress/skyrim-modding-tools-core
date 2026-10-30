@@ -23,9 +23,16 @@ import { CORE_PRODUCT, SAMPLE, recordingBackend } from '../testing/fakes';
 type Stubs = ReturnType<typeof recordingBackend>;
 const handlersFrom = (stubs: Stubs) => createHandlers(stubs.backend, CORE_PRODUCT);
 
+/**
+ * The arguments whose values the handler checks against a list the schema leaves out — readCrashLog's section, as a
+ * client turns a null into "" against an enum — with one of those values.
+ */
+const LISTED_VALUES: Record<string, string> = { section: 'callStack' };
+
 /** A plausible value for one declared argument, derived from its schema. */
 function sampleValue(name: string, property: ToolProperty): any {
     if (property.enum?.length) return property.enum[0];
+    if (LISTED_VALUES[name] && property.type === 'string') return LISTED_VALUES[name];
     switch (property.type) {
         case 'string': return SAMPLE;
         case 'number': return 1;

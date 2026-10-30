@@ -725,6 +725,25 @@ describe('the Skyrim backend', () => {
         await expect(backend.editRecord(edit)).rejects.toThrow(/^Nothing to change$/);
     });
 
+    it('gives a refused editRecord\'s call back, to send once its file is written', async () => {
+        // Refused for a sword not written yet, a model wrote it from the Iron Sword with its value 25, and told the user the
+        // value of 150 that only the refused call had (eval round 90's sword+detailed #3).
+        const { backend, helperAnswers } = makeBackend();
+        await backend.newProject({ project: 'FlameBlade' });
+        const notFound = 'No record file \'Weapons/FlameBlade.yaml\' in the project — its record files: none yet; write one first.';
+        helperAnswers.editRecord = () => { throw new HelperError('notFound', notFound); };
+        // The handler hands the backend the tool's list of {path, value} as fields by path.
+        const set = { 'Name.Value': 'Flame Blade', Value: 150 };
+        const refused = await backend.editRecord({ project: 'FlameBlade', record: 'Weapons/FlameBlade.yaml', set }).catch((error: unknown) => error);
+        expect(refused).toBeInstanceOf(HelperError);
+        expect((refused as HelperError).code).toBe('notFound');
+        expect((refused as HelperError).message).toBe(`${notFound} Nothing was changed: once the file is written, send this call again ` +
+            'for its changes — editRecord {"project": "FlameBlade", "record": "Weapons/FlameBlade.yaml", "set": [{"path": "Name.Value", ' +
+            '"value": "Flame Blade"}, {"path": "Value", "value": 150}], "build": true}');
+        // An EditorID no file has is only refused: no file is to be written for a mistyped name.
+        await expect(backend.editRecord({ project: 'FlameBlade', record: 'FlameBlaed', set })).rejects.toThrow(new RegExp(`^${escape(notFound)}$`));
+    });
+
     it('takes editRecord\'s record as a path from the projects folder too, as moveRecord and deleteRecord do', async () => {
         // Refused for `HildaTheNord/plugin/Npcs/Hilda.yaml`, the model sent `Npcs/Hilda.yaml` next (eval round 83's npc+detailed #1).
         const { backend, fixture, helperAnswers } = makeBackend();

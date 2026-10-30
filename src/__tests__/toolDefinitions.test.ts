@@ -121,4 +121,11 @@ describe('tool catalogue', () => {
             }
         }
     });
+
+    it('takes a null for readCrashLog\'s section: no enum, which OpenClaw\'s check turns a null into "" against', () => {
+        // Sent `{"log": null, "section": null}`, the call was refused before the tool (eval rounds 89 and 90).
+        const readCrashLog = allTools.find(({ tool }) => tool.name === 'readCrashLog')!.tool;
+        expect(readCrashLog.inputSchema.properties.section).not.toHaveProperty('enum');
+        expect(readCrashLog.inputSchema.properties.section.description).toContain('callStack');
+    });
 });

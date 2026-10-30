@@ -243,6 +243,7 @@ function describe(item: Evidence): string {
 
 function nextStep(chosen: ChosenLog, diagnoses: ReportedDiagnosis[], suspects: Suspect[], setup: SetupAdvice[]): string {
     const notes: string[] = [];
+    if (chosen.instead) notes.push(chosen.instead);
     if (chosen.thisSetup === false) {
         notes.push(`This log is from another setup's game (${path.basename(chosen.file)}): what it names may not be in this one.`);
     }

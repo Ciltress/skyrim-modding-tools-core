@@ -17,6 +17,8 @@ export interface ChosenLog {
     log: CrashLog;
     /** True: this setup's game wrote it; false: another's; undefined: the log stops before saying. */
     thisSetup?: boolean;
+    /** Why this log, where it is not the one asked for: the minute asked for had none. */
+    instead?: string;
     counts: { thisSetup: number; otherSetups: number; unknown: number };
 }
 
@@ -49,7 +51,8 @@ export function gameFolderOf(log: CrashLog): string | undefined {
 /**
  * Picks the log to read: the one `wanted` names — its file name, or a time it starts with, `2026-10-30`
  * or `2026-10-30 14:02` — else the newest of this setup's. Among several a time matches, this setup's
- * newest wins.
+ * newest wins. A time down to the hour that no log has reads the newest before it that day: asked about a crash
+ * "just now", a model sends the time of asking (eval round 90: three of ten crash runs).
  *
  * @param isThisSetup  Whether a game folder a log names, as the game saw it, is this setup's.
  */
@@ -78,15 +81,23 @@ export function chooseCrashLog(folder: string, wanted: string | undefined, isThi
     }
 
     let chosen: CrashLogFile | undefined;
+    let instead: string | undefined;
     if (wanted?.trim()) {
         const given = wanted.trim();
         const byName = files.find(file => file.name.toLowerCase() === given.toLowerCase() || file.name.toLowerCase() === `${given.toLowerCase()}.log`);
         if (byName) {
             chosen = byName;
         } else {
-            const time = given.replace(/^crash-/i, '').replace(/\.log$/i, '').replace(/[\sT:_.]+/g, '-');
-            const matching = files.filter(file => file.name.toLowerCase().startsWith(`crash-${time.toLowerCase()}`));
+            const time = `crash-${given.replace(/^crash-/i, '').replace(/\.log$/i, '').replace(/[\sT:_.]+/g, '-').toLowerCase()}`;
+            const matching = files.filter(file => file.name.toLowerCase().startsWith(time));
             chosen = matching.find(file => setupOf(file) === true) ?? matching[0];
+            const day = /^crash-\d{4}-\d{2}-\d{2}(?=-\d{2})/.exec(time)?.[0];
+            if (!chosen && day) {
+                // Names are times, so a name before the asked one is a log from before it.
+                const before = files.filter(file => file.name.toLowerCase().startsWith(day) && file.name.toLowerCase() < time);
+                chosen = before.find(file => setupOf(file) === true) ?? before[0];
+                if (chosen) instead = `No crash log is dated '${given}'; this is the newest before it that day, ${chosen.name}.`;
+            }
         }
         if (!chosen) {
             throw new CrashLogNotFoundError(`No crash log in ${folder} is named or dated '${given}'. ` +
@@ -103,5 +114,11 @@ export function chooseCrashLog(folder: string, wanted: string | undefined, isThi
                   'give its name as `log` to read it anyway.');
         }
     }
-    return { file: chosen.file, log: parsed(chosen), ...(setupOf(chosen) !== undefined ? { thisSetup: setupOf(chosen) } : {}), counts };
+    return {
+        file: chosen.file,
+        log: parsed(chosen),
+        ...(setupOf(chosen) !== undefined ? { thisSetup: setupOf(chosen) } : {}),
+        ...(instead ? { instead } : {}),
+        counts
+    };
 }

@@ -20,7 +20,7 @@ import { CRASH_RULES } from './crash/rules/index.js';
 import { setIniValue } from './gameIni.js';
 import { findCaseInsensitive } from './paths.js';
 import {
-    ProjectError, assignFormIds, belongsAt, correctCopiedEscapes, createProject, type CopiedEscape, deleteCall, deleteRecordFile, editedRecord, fencedRecordFiles, fileHash,
+    ProjectError, assignFormIds, belongsAt, correctCopiedEscapes, createProject, type CopiedEscape, deleteCall, deleteRecordFile, editCall, editedRecord, fencedRecordFiles, fileHash,
     keepRecordTexts, misnamedRecordFiles, looseRecordFiles, moveCall, moveRecordFile, newestSourceTime, outsideRecordCalls, placeCall,
     projectExists, projectInfo, projectPaths, readDeployState, readProjectHeader, recordFileList, recordFiles, strayRecordFiles, syncFolder, syncYaml,
     whereRecordsGo, writeDeployState
@@ -235,8 +235,16 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
             // (eval round 67's npc+detailed #3): the files outside the plugin folder first, each with its call.
             if (!(error instanceof HelperError) || error.code !== 'notFound') throw error;
             const outside = outsideRecordCalls(this.engine.projectsDir, paths);
-            throw outside ? new HelperError(error.code, `No record file '${request.record}' in the project's plugin folder, where ` +
-                `editRecord changes records.${outside} The project's record files: ${recordFileList(paths)}.`) : error;
+            if (outside) {
+                throw new HelperError(error.code, `No record file '${request.record}' in the project's plugin folder, where ` +
+                    `editRecord changes records.${outside} The project's record files: ${recordFileList(paths)}.`);
+            }
+            // A file not written yet: the call's changes, given back. Refused for a sword not written yet, a model wrote it from
+            // the Iron Sword with its value 25, and told the user the value of 150 that only the refused call had (eval round 90).
+            // A name that is no file — an EditorID mistyped — is only refused.
+            if (!/\.ya?ml$/i.test(request.record.trim())) throw error;
+            throw new HelperError(error.code, `${error.message} Nothing was changed: once the file is written, send this ` +
+                `call again for its changes — ${editCall(paths, request)}`);
         });
         return { ...edited, file: path.resolve(paths.plugin, edited.file) };
     }

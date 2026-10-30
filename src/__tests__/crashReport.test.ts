@@ -111,6 +111,25 @@ describe('choosing a crash log', () => {
         expect(() => chooseCrashLog(fixture.logs, '2025-01-01', isGame)).toThrow(/No crash log .* named or dated '2025-01-01'/);
     });
 
+    it('reads the newest log before a minute that has none, that day, and says so', () => {
+        // Asked about a crash "just now", a model sent the time of asking: three of ten crash runs in eval round 90.
+        const fixture = makeInstance();
+        write(path.join(fixture.logs, 'crash-2026-10-01-09-00-00.log'), meshCrash(fixture.game));
+        write(path.join(fixture.logs, 'crash-2026-10-01-07-30-00.log'), meshCrash(fixture.game));
+        const isGame = (seen: string) => seen.toLowerCase() === asGameSees(fixture.game).toLowerCase();
+
+        const chosen = chooseCrashLog(fixture.logs, '2026-10-01 12:42', isGame);
+        expect(path.basename(chosen.file)).toBe('crash-2026-10-01-09-00-00.log');
+        expect(chosen.instead).toBe('No crash log is dated \'2026-10-01 12:42\'; this is the newest before it that day, crash-2026-10-01-09-00-00.log.');
+        expect(path.basename(chooseCrashLog(fixture.logs, '2026-10-01 08:00', isGame).file)).toBe('crash-2026-10-01-07-30-00.log');
+        // Never one from after it, nor from another day, nor for a day alone.
+        expect(() => chooseCrashLog(fixture.logs, '2026-10-01 07:00', isGame)).toThrow(/named or dated '2026-10-01 07:00'/);
+        expect(() => chooseCrashLog(fixture.logs, '2026-10-02 12:00', isGame)).toThrow(CrashLogNotFoundError);
+        expect(() => chooseCrashLog(fixture.logs, '2026-09-30', isGame)).toThrow(CrashLogNotFoundError);
+        // The minute a log has is that log, with nothing to say.
+        expect(chooseCrashLog(fixture.logs, '2026-10-01 09:00', isGame).instead).toBeUndefined();
+    });
+
     it('says why when there is no log of this setup\'s, or none at all', () => {
         const fixture = makeInstance();
         expect(() => chooseCrashLog(fixture.logs, undefined, () => false)).toThrow(CrashLogNotFoundError);
@@ -247,5 +266,11 @@ describe('readCrashLog', () => {
             log: report.log, section: 'modelPaths', heading: 'MODEL PATHS FOR RESOURCE IDS ON THIS THREAD\'S STACK (innermost first):',
             lines: ['\t[RSP+0x48] meshes\\CrashTest\\CrashTestStatue.nif']
         });
+
+        // A minute with no log reads the newest before it that day, and its nextStep says which, first.
+        const before = await backend.readCrashLog({ log: '2026-10-01 12:42' });
+        if (!('crash' in before)) throw new Error('a section came back');
+        expect(before.log.file).toBe(report.log.file);
+        expect(before.nextStep).toMatch(/^No crash log is dated '2026-10-01 12:42'; this is the newest before it that day, crash-2026-10-01-09-00-00\.log\. /);
     });
 });

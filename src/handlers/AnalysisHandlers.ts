@@ -34,12 +34,14 @@ export class AnalysisHandlers extends BaseHandler {
                             log: {
                                 type: 'string',
                                 description: 'A log by its file name, `crash-2026-10-30-14-02-11.log`, or by when: `2026-10-30`, ' +
-                                    '`2026-10-30 14:02`. Leave it out for the newest.'
+                                    '`2026-10-30 14:02`, a minute with no log reading the newest before it that day. Leave it ' +
+                                    'out for the newest.'
                             },
+                            // No enum: OpenClaw's argument check turns a null into "", which an enum refuses before the tool
+                            // sees it (eval rounds 89 and 90, one crash run each); sectionArg checks the name.
                             section: {
                                 type: 'string',
-                                enum: [...SECTION_NAMES],
-                                description: 'Only this part of the log, line by line: `callStack`, `relevantObjects`, `plugins`…'
+                                description: `Only this part of the log, line by line: one of ${SECTION_NAMES.join(', ')}.`
                             }
                         }
                     },
