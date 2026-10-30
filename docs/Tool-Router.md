@@ -30,7 +30,7 @@ Workflows and the error model: [`MCP-Tools.md`](./MCP-Tools.md). The vocabulary:
 
 | You want to… | Call |
 | --- | --- |
-| Change a record of another mod or the base game | `addPatch` with the records — then edit the copied files it answers with |
+| Change a record of another mod or the base game | `addPatch` with the records — then change the copy's fields with `editRecord` |
 | Combine two mods' changes to one record | `readRecord` with `allVersions`, then `addPatch`, and merge both into the copy |
 | Add items to a leveled list | `addPatch` with the list, then add entries to the copy — keep every entry it has |
 | Copy a particular mod's version, not the winning one | `addPatch` with `from` |
@@ -41,6 +41,7 @@ Workflows and the error model: [`MCP-Tools.md`](./MCP-Tools.md). The vocabulary:
 | --- | --- |
 | Start a new mod | `newProject` — then write record files into its `plugin/` folder |
 | Add a record (a new sword, spell, NPC…) | Write a YAML file into the project, without `FormKey`; mirror a vanilla record |
+| Change fields of a record file — a sword's damage, a copy's value | `editRecord` with the fields by path, `set: [{"path": "BasicStats.Damage", "value": 12}]` — no old text to match; `"build": true` builds after |
 | Turn the text into a plugin | `buildProject` — it also checks every link, and turns links written as editor IDs into FormIDs |
 | Put a record file where the build reads it, or drop one | `moveRecord`, `deleteRecord` — a build's answer names each misplaced or left-over file with its call |
 | Put the mod into the game | `deployProject` — enables it in the mod manager; with Amethyst, also deploys or says to |

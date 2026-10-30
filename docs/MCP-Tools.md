@@ -129,11 +129,11 @@ arguments, see [`Tool-Reference.md`](./Tool-Reference.md), which is generated fr
 
 | profile | listed | for |
 | --- | --- | --- |
-| `core` | 12 | look up, patch, build, deploy; list the mods, check them against the game, install or disable one — small local models |
-| `readonly` | 9 | looking records and mods up only; the write tools are absent, not discouraged |
-| `all` | 17 | the default; right for clients that fetch tool schemas on demand |
+| `core` | 17 | look up, patch, edit, build, deploy; move or delete a record file; list the mods, check them against the game, install, disable or enable one; read a crash log — small local models |
+| `readonly` | 10 | looking records and mods up, on Nexus Mods too, and reading crash logs only; the write tools are absent, not discouraged |
+| `all` | 23 | the default; right for clients that fetch tool schemas on demand. 22 without a Nexus API key, which `downloadNexusFile` needs |
 
-Counts include `healthcheck`, which every profile lists.
+Counts include `healthcheck`, which every profile lists. `profiles.test.ts` holds them to `PROFILES`.
 
 ---
 

@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import {
     applyProfile,
     resolveProfile,
@@ -8,6 +10,7 @@ import {
 } from '../lib/profiles';
 import type { ProfileName } from '../lib/profiles';
 import { createHandlers } from '../handlers/index';
+import { CORE_ROOT } from '../lib/product';
 import { CORE_PRODUCT } from '../testing/fakes';
 import type { AppBackend } from '../backend/index';
 import type { ToolDefinition } from '../types/tools';
@@ -115,5 +118,15 @@ describe('profile definitions', () => {
 
     it('has a default that exists', () => {
         expect(PROFILE_NAMES).toContain(DEFAULT_PROFILE);
+    });
+
+    it('lists as many tools as the table in MCP-Tools.md says', () => {
+        // The table said 12, 9 and 17 while the profiles had grown to 17, 10 and 23.
+        const guide = fs.readFileSync(path.join(CORE_ROOT, 'docs', 'MCP-Tools.md'), 'utf8');
+        const listed = (name: ProfileName) => Number(guide.match(new RegExp(`^\\| \`${name}\` \\| (\\d+) \\|`, 'm'))?.[1]);
+        // healthcheck is every profile's, registered outside the handlers.
+        expect(listed('core')).toBe(named('core').length + 1);
+        expect(listed('readonly')).toBe(named('readonly').length + 1);
+        expect(listed('all')).toBe(CATALOGUE.size + 1);
     });
 });
