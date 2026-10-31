@@ -332,12 +332,18 @@ public static class RecordEdits
     /// A text — Name, Description — takes its words, braces and all, except its own two fields: the model sent a Name as
     /// `{"TargetLanguage": "English", "Value": "Hilda"}`, and the NPC was called that in game (eval round 68's
     /// npc+detailed #3). `{Hilda}` stays the words.
+    ///
+    /// Those two fields count also as the lines a file writes them in, a line end sent as `\n`: the model sent a spell's Name
+    /// as `TargetLanguage: English\nValue: Storm Bolt`, the spell was called that in game, and its build answered success
+    /// (eval round 100's spell+detailed #2).
     /// </summary>
     private static JsonObject? Fielded(string said, Type type)
     {
         var written = said.Trim();
+        var lines = Translated(type) && Regex.IsMatch(written, @"^(?:TargetLanguage|Value):");
+        if (lines) written = Regex.Replace(written, @"\\r\\n|\\n", "\n");
         // A text lists its languages, so it is read as a text before anything else.
-        if (!written.StartsWith('{') || !written.EndsWith('}') || !Translated(type) && (!type.IsClass || type == typeof(string)
+        if (!lines && (!written.StartsWith('{') || !written.EndsWith('}')) || !Translated(type) && (!type.IsClass || type == typeof(string)
             || Items(type) is not null || RecordLinks.LinkTarget(type) is not null))
             return null;
         var yaml = new YamlStream();
