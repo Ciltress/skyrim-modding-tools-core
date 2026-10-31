@@ -473,7 +473,10 @@ public static class RecordFiles
     /// Weight (move them under BasicStats)" — and those without any last, set apart, so that "Type, Level
     /// (move it under Configuration)" does not send Type along (eval round 11's probes). Those the type has
     /// nowhere are to be deleted, and said so first: "has no field Description" alone was read as one
-    /// missing, and a model wrote it back build after build (eval probe 9 after round 11).
+    /// missing, and a model wrote it back build after build (eval probe 9 after round 11). With the call that deletes them
+    /// and builds: told "an ObjectEffect has no field Description (delete it: an ObjectEffect has it nowhere)", the model
+    /// wrote its enchantment anew five times, Description back in four of them — "the build is suggesting that a
+    /// Description field might be missing" — until its turns ran out (eval round 101's sword+detailed #4).
     /// </summary>
     private static string Unknown(Type type, HashSet<string> known, IEnumerable<string> keys, string text, string pluginDir, string relative,
         IEnumerable<(string Relative, string Text)> others)
@@ -501,7 +504,8 @@ public static class RecordFiles
                     $"write this file anew as {Article(type.Name)}, with {Article(type.Name)}'s fields alone"
                 : $"{(bare.Count == 1 ? "it is" : "they are")} {Article(of!.Name)}'s, which {Article(type.Name)} has nowhere: if this is " +
                     $"{Article(of.Name)}, move the file into {folder}/ — {ToolCalls.Move(pluginDir, relative, $"{folder}/{Path.GetFileName(relative)}")}"
-            : $"delete {them}: {Article(type.Name)} has {them} nowhere";
+            : $"delete {them}: {Article(type.Name)} has {them} nowhere; one call deletes {them} and builds again: " +
+                ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, "", string.Join(", ", bare.Select(ToolCalls.Quoted)), build: true);
         return string.Join(", ", named.Append(bare.Count == 0 ? "" : $"{string.Join(", ", bare)} ({deleted})")
             .Where(s => s.Length > 0));
     }
