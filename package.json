@@ -1,6 +1,6 @@
 {
   "name": "skyrim-modding-tools-core",
-  "version": "0.2.18",
+  "version": "0.2.19",
   "description": "The core of the Skyrim SE modding tools: records across a mod manager's load order, mods and patches authored as text projects and built into plugins, and the tools, guides and skills for them, served by skyrim-modding-tools-mcp and its OpenClaw plugin",
   "type": "module",
   "main": "dist/index.js",
