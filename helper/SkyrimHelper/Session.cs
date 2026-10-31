@@ -539,7 +539,8 @@ public sealed class Session : IDisposable
             ["resolvedLinks"] = resolvedLinks,
             ["built"] = new JsonArray(BuiltRecords.Lines(written, lookup).Select(l => (JsonNode)l).ToArray()),
             ["notes"] = new JsonArray((await OverrideNotes(dir, mod.ModKey)).Concat(EffectCasting.Notes(mod, lookup, Index, dir))
-                .Concat(KeptFromSource.Notes(mod, lookup, Index, dir)).Concat(LevelBounds.Notes(mod, dir)).Select(n => (JsonNode)n).ToArray())
+                .Concat(KeptFromSource.Notes(mod, lookup, Index, dir)).Concat(LevelBounds.Notes(mod, dir))
+                .Concat(WeaponEffects.Notes(mod, lookup, Index, dir)).Select(n => (JsonNode)n).ToArray())
         };
     }
 
