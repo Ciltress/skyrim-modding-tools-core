@@ -60,6 +60,25 @@ public static class EffectCasting
         var problems = new List<string>();
         // The project's effects offered the game's in their place already: one refusal says it once.
         var offered = new HashSet<FormKey>();
+        // A weapon's enchantment is cast on each hit, FireAndForget on Touch. Told to cast its sword's enchantment ConstantEffect
+        // on Self, as the armor's Fortify Health it named is, a model would have built a sword whose enchantment does nothing,
+        // and a constant enchantment on a weapon built with no word (refusal probes of 2026-10-31).
+        var carriedBy = mod.Weapons.Where(w => w.FormKey.ModKey == mod.ModKey && !w.ObjectEffect.IsNull)
+            .GroupBy(w => w.ObjectEffect.FormKey).ToDictionary(g => g.Key, g => g.First());
+        var weaponExample = RecordFiles.ExampleName("ObjectEffect") ?? "EnchWeaponFireDamage01";
+        string Carried(string name, IWeaponGetter weapon) =>
+            $"{name} is carried by {weapon.EditorID ?? Session.FormKeyText(weapon.FormKey)}, a weapon, whose enchantment is cast FireAndForget on " +
+            $"Touch, on each hit — a constant effect does nothing there. For the weapon, its enchantment's Effects name an effect the game's " +
+            $"weapons cast, as {weaponExample}'s do (readRecord {{\"record\": \"{weaponExample}\"}}); a constant effect is an armor's enchantment's";
+        foreach (var (enchantmentKey, weapon) in carriedBy)
+        {
+            var enchantment = mod.ObjectEffects.FirstOrDefault(o => o.FormKey == enchantmentKey)
+                ?? (lookup.TryResolve<IObjectEffectGetter>(enchantmentKey, out var loaded) ? loaded : null);
+            if (enchantment is null || enchantment.CastType != CastType.ConstantEffect) continue;
+            var name = enchantment.EditorID ?? Session.FormKeyText(enchantmentKey);
+            problems.Add($"{files.GetValueOrDefault(enchantmentKey) ?? files.GetValueOrDefault(weapon.FormKey) ?? name}: {name} is cast ConstantEffect on " +
+                $"{enchantment.TargetType}, and {Carried(name, weapon)}");
+        }
         foreach (var caster in Casters(mod).Where(c => c.Record.FormKey.ModKey == mod.ModKey))
         {
             var name = caster.Record.EditorID ?? Session.FormKeyText(caster.Record.FormKey);
@@ -78,6 +97,14 @@ public static class EffectCasting
                 if (caster.Kind == "Scroll" && effect.CastType == CastType.FireAndForget && effect.TargetType == caster.Target)
                 {
                     problems.Add(said + "write CastType: 3 in the scroll, the cast type every scroll of the game has");
+                    continue;
+                }
+                // Never "cast the enchantment as its effect is" for a weapon's: a constant one does nothing on a weapon.
+                if (caster.Kind == "ObjectEffect" && carriedBy.TryGetValue(caster.Record.FormKey, out var carrier)
+                    && (effect.CastType == CastType.ConstantEffect || effect.TargetType == TargetType.Self))
+                {
+                    problems.Add($"{where}: Effects[{i}].BaseEffect {effectName} is cast {effect.CastType} on {effect.TargetType}, as an armor's or " +
+                        $"an ability's effect is, and {Carried(name, carrier)}");
                     continue;
                 }
                 // Left out, CastType and TargetType read as ConstantEffect and Self: a weapon's enchantment without

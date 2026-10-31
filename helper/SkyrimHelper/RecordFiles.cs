@@ -498,12 +498,25 @@ public static class RecordFiles
         var fields = TopLevelKey.Matches(text).Select(m => m.Groups[1].Value).Where(k => k != "MutagenObjectType").Distinct().ToList();
         var owner = bare.Count == 0 ? [] : Groups.Where(g => g.Value is { IsAbstract: false } other && other != type && fields.All(FieldsOf(other).Contains))
             .DistinctBy(g => g.Value).ToList();
+        // The project's own record of that type, where it has one: an enchantment written as a copy of the Iron Sword, in
+        // MagicEffects/ beside the project's sword, was moved into Weapons/ as this said, a second sword, and two runs failed
+        // (eval rounds 96 and 104); the move is offered only where the project has none.
+        var theirs = owner is [var (ownFolder, _)]
+            ? others.Select(o => o.Relative.Replace('\\', '/'))
+                .FirstOrDefault(o => o != relative.Replace('\\', '/') && o.StartsWith($"{ownFolder}/", StringComparison.OrdinalIgnoreCase))
+            : null;
+        var example = ExampleName(type.Name) is { } vanilla ? $" (readRecord {{\"record\": \"{vanilla}\"}})" : "";
         var deleted = owner is [var (folder, of)]
             ? NamedAs(type, of!, relative, text, others) is { } namer
                 ? $"{(bare.Count == 1 ? "it is" : "they are")} {Article(of!.Name)}'s, which {Article(type.Name)} has nowhere, and {namer}: " +
                     $"write this file anew as {Article(type.Name)}, with {Article(type.Name)}'s fields alone"
-                : $"{(bare.Count == 1 ? "it is" : "they are")} {Article(of!.Name)}'s, which {Article(type.Name)} has nowhere: if this is " +
-                    $"{Article(of.Name)}, move the file into {folder}/ — {ToolCalls.Move(pluginDir, relative, $"{folder}/{Path.GetFileName(relative)}")}"
+                : theirs is not null
+                    ? $"{(bare.Count == 1 ? "it is" : "they are")} {Article(of!.Name)}'s, which {Article(type.Name)} has nowhere, and the project " +
+                      $"has its {of.Name} already, {theirs}: this file is a copy of {Article(of.Name)} written in {Path.GetDirectoryName(relative)?.Replace('\\', '/')}/. " +
+                      $"If {Article(type.Name)} was meant, write this file anew with {Article(type.Name)}'s fields alone{example}; if not, delete it — " +
+                      ToolCalls.Delete(pluginDir, relative)
+                    : $"{(bare.Count == 1 ? "it is" : "they are")} {Article(of!.Name)}'s, which {Article(type.Name)} has nowhere: if this is " +
+                      $"{Article(of.Name)}, move the file into {folder}/ — {ToolCalls.Move(pluginDir, relative, $"{folder}/{Path.GetFileName(relative)}")}"
             : $"delete {them}: {Article(type.Name)} has {them} nowhere; one call deletes {them} and builds again: " +
                 ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, "", string.Join(", ", bare.Select(ToolCalls.Quoted)), build: true);
         return string.Join(", ", named.Append(bare.Count == 0 ? "" : $"{string.Join(", ", bare)} ({deleted})")
@@ -1193,6 +1206,30 @@ public static class RecordFiles
     /// was answered "has no EditorID" three builds long, and the copied FormKey beside it kept the note an override of
     /// Maven's (eval round 39's note #5); 7 runs of rounds 23–39 wrote one. A name taken is left to the note.
     /// </summary>
+    /// <summary>
+    /// A group folder written in other letters — `weapons/` — renamed to its own, through a name of its own first: on a drive
+    /// that ignores letter case, the build refused "the folder is spelled Weapons", moveRecord answered success and changed
+    /// nothing, and a file written anew landed in the same folder (refusal probes of 2026-10-31). Left alone where the folder
+    /// of the right name is there too, as Linux allows: those are two folders, and the refusal names the files.
+    /// </summary>
+    public static List<(string File, string Change)> FolderCase(string pluginDir)
+    {
+        var corrected = new List<(string File, string Change)>();
+        if (!Directory.Exists(pluginDir)) return corrected;
+        foreach (var folder in Directory.EnumerateDirectories(pluginDir))
+        {
+            var name = Path.GetFileName(folder);
+            if (Groups.ContainsKey(name) || Groups.Keys.FirstOrDefault(g => g.Equals(name, StringComparison.OrdinalIgnoreCase)) is not { } group) continue;
+            var target = Path.Combine(pluginDir, group);
+            if (Directory.EnumerateDirectories(pluginDir).Any(d => Path.GetFileName(d) == group)) continue;
+            var between = Path.Combine(pluginDir, $"{group}.renaming-{Guid.NewGuid():N}");
+            Directory.Move(folder, between);
+            Directory.Move(between, target);
+            corrected.Add(($"{name}/", $"renamed the folder {name} to {group}, the group folder's name"));
+        }
+        return corrected;
+    }
+
     public static List<(string File, string Change)> CleanEditorIds(string pluginDir, RecordIndex index)
     {
         var changes = new List<(string File, string Change)>();

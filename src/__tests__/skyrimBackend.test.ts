@@ -985,8 +985,10 @@ describe('the Skyrim backend', () => {
         helperAnswers.checkRecords = () => {
             throw new HelperError('badRecord', '1 field(s) cannot be built as written: Weapons/FlameBlade.yaml: Damage is high.');
         };
-        await expect(edit({ build: true })).rejects.toThrow(new RegExp(`^Changed ${escape(full)}: set EditorID: IronSword → FlameBlade; ` +
-            'removed FormKey\\. Not built: 1 field\\(s\\) cannot be built as written: .* then build again — only a build that answers success writes the plugin\\.$'));
+        // The edit said made, ahead of the refusal: told only "Changed …", the model sent the same edit again (eval rounds 89–101).
+        await expect(edit({ build: true })).rejects.toThrow(new RegExp(`^Changed ${escape(full)} — this edit is made, and sending it again ` +
+            'changes nothing: set EditorID: IronSword → FlameBlade; removed FormKey\\. The build after it: Not built: 1 field\\(s\\) cannot be ' +
+            'built as written: .* then build again — only a build that answers success writes the plugin\\.$'));
 
         // Without it, the change alone: the file's text, and the build named as the next step.
         expect(await edit({})).toMatchObject({
@@ -1367,12 +1369,18 @@ describe('the Skyrim backend', () => {
             String.raw`  Value: >-\n    <font face="$HandwrittenFont">Recipient,\n\n    Maven\n`,
             String.raw`  Other: Line one\n\nLine two`,
             String.raw`  File: Armor\nightingale\nightingaleboots.nif`,
-            String.raw`  Quoted: "Line one\nLine two"`
+            String.raw`  Quoted: "Line one\nLine two"`,
+            // The record's own lines joined into one (eval round 104's sword #5): its lines again, not a text.
+            String.raw`  Data: 0x0200\nEquipmentType: RightHand\nKeywords:\n- WeapTypeSword\nBasicStats:\n  Damage: 12`
         ].join('\n') + '\n');
         expect(copiedEscapes(dir).map(({ line, kind, fixed }) => ({ line, kind, fixed }))).toEqual([
             { line: 1, kind: 'a backslash before an apostrophe', fixed: [`Name: 'Maven''s Warning'`] },
             { line: 3, kind: 'line breaks written as \\n', fixed: ['  Value: >-', '    <font face="$HandwrittenFont">Recipient,', '', '    Maven'] },
-            { line: 4, kind: 'line breaks written as \\n', fixed: ['  Other: |-', '    Line one', '', '    Line two'] }
+            { line: 4, kind: 'line breaks written as \\n', fixed: ['  Other: |-', '    Line one', '', '    Line two'] },
+            {
+                line: 7, kind: 'line breaks written as \\n',
+                fixed: ['  Data: 0x0200', 'EquipmentType: RightHand', 'Keywords:', '- WeapTypeSword', 'BasicStats:', '  Damage: 12']
+            }
         ]);
     });
 

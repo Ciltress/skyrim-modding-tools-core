@@ -66,7 +66,7 @@ public static class RecordLinks
             }
             catch (YamlException e)
             {
-                problems.Add($"{relative}: {YamlBreak(text, e, type)}");
+                problems.Add($"{relative}: {YamlBreak(text, e, type, pluginDir, relative)}");
                 continue;
             }
             if (yaml.Documents.Count == 0 || yaml.Documents[0].RootNode is not YamlMappingNode root) continue;
@@ -89,6 +89,16 @@ public static class RecordLinks
                         "call deletes the line and builds again — " +
                         ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, "", "\"BaseEnchantment\"", build: true)
                     : null;
+            // What to write for a link to a record of another type, the same however the link was written: by FormID the magic effect
+            // named as a sword's enchantment got the short text, the model wrote the same effect by its editor ID, and was told only
+            // then that an enchantment names the effects it casts (eval round 104's sword #4, which failed).
+            string WrongType(string field, string wanted, string kind, string editorId) =>
+                BaseAsEffect(field, wanted, kind, editorId) is { } baseText ? baseText
+                    : wanted == "ObjectEffect" && kind == "MagicEffect"
+                        ? $" — an enchantment, whose Effects name the magic effects it casts: name one, such as {RecordFiles.ExampleName("ObjectEffect")}, " +
+                          $"or write one in ObjectEffects with `- BaseEffect: {editorId}` among its Effects, as readRecord {{\"record\": " +
+                          $"\"{RecordFiles.ExampleName("ObjectEffect")}\"}} shows them, and name it here"
+                        : " — write the editor ID of the one meant, or its FormID as findRecords answers it";
             void Link(YamlScalarNode value, Type takes, string field)
             {
                 var raw = value.Value?.Trim() ?? "";
@@ -124,9 +134,8 @@ public static class RecordLinks
                     // (eval round 11's probes). The project's own are numbered by the build, and checked after it.
                     if (linked.ModKey != ownPlugin && Mismatch(linked, takes, index) is { } mismatch)
                         problems.Add($"{relative}: {field} is {raw}, {mismatch}; {field} takes {RecordFiles.Article(wanted)}" +
-                            (index.ByFormKey.TryGetValue(linked, out var linkedEntry) && linkedEntry.Signature == "MGEF"
-                                && BaseAsEffect(field, wanted, "MagicEffect", linkedEntry.EditorId ?? raw) is { } baseText
-                                ? baseText
+                            (index.ByFormKey.TryGetValue(linked, out var linkedEntry)
+                                ? WrongType(field, wanted, linkedEntry.Type, linkedEntry.EditorId ?? raw)
                                 : " — write the editor ID of the one meant, or its FormID as findRecords answers it"));
                     return;
                 }
@@ -157,6 +166,17 @@ public static class RecordLinks
                     : Pinned(editorId) ?? (index.ByEditorId.TryGetValue(editorId, out var key) && index.ByFormKey.TryGetValue(key, out var entry)
                         ? new Target(key, entry.EditorId ?? editorId, entry.GetterType)
                         : null);
+                // A record of another project the model made, which no build of this one reads: told "no record has that editor
+                // ID", the model tried addPatch from that project twice and found moveRecord four turns later (eval round 92's
+                // sword+detailed #4, which failed).
+                if (found is null && InOtherProject(pluginDir, editorId) is { } elsewhere)
+                {
+                    var group = Path.GetFileName(Path.GetDirectoryName(elsewhere)) ?? "";
+                    problems.Add($"{relative}: {field} names {editorId}, which is a record of another project, {elsewhere} — a plugin holds its own " +
+                        $"project's records alone: move the file into this project, " +
+                        ToolCalls.Move(pluginDir, elsewhere, $"{group}/{Path.GetFileName(elsewhere)}"));
+                    return;
+                }
                 if (found is null)
                 {
                     var near = Near(editorId, takes, own, index);
@@ -174,13 +194,7 @@ public static class RecordLinks
                     // A weapon's enchantment named as the magic effect it was to cast: all 3 runs of eval rounds 40–53 that
                     // were refused so failed — round 53's sword+detailed #5 rewrote its magic effect until the turns ran out.
                     problems.Add($"{relative}: {field} names {found.EditorId}, which is {RecordFiles.Article(Kind(found.Type))}; {field} takes {RecordFiles.Article(wanted)}" +
-                        (BaseAsEffect(field, wanted, Kind(found.Type), found.EditorId) is { } baseText
-                            ? baseText
-                        : wanted == "ObjectEffect" && Kind(found.Type) == "MagicEffect"
-                            ? $" — an enchantment, whose Effects name the magic effects it casts: name one, such as {RecordFiles.ExampleName("ObjectEffect")}, " +
-                                $"or write one in ObjectEffects with `- BaseEffect: {found.EditorId}` among its Effects, as readRecord {{\"record\": " +
-                                $"\"{RecordFiles.ExampleName("ObjectEffect")}\"}} shows them, and name it here"
-                            : ""));
+                        WrongType(field, wanted, Kind(found.Type), found.EditorId));
                     return;
                 }
                 if (found.FormKey is not { } target) return; // A new record, numbered after this check.
@@ -200,7 +214,7 @@ public static class RecordLinks
                     levelGiven = true;
                 }
                 problems.Add($"{relative}: {problem}");
-            }, deleting: field => ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, "", ToolCalls.Quoted(field), build: true));
+            }, deleting: (field, set) => ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, set, ToolCalls.Quoted(field), build: true));
             // A new record nothing else names can be deleted, said first, after the file's name (RecordFiles.Droppable).
             if (problems.Count > before)
                 problems[before] = problems[before].Insert(relative.Length + 2, RecordFiles.Droppable(type, relative, text,
@@ -238,7 +252,7 @@ public static class RecordLinks
     /// give every line a `Field: value`, the model rewrote a note five times with its paragraphs still at the
     /// margin, where they end the text and are read as fields (eval round 16).
     /// </summary>
-    private static string YamlBreak(string text, YamlException e, Type type)
+    private static string YamlBreak(string text, YamlException e, Type type, string pluginDir, string relative)
     {
         var lines = text.Replace("\r\n", "\n").Split('\n');
         var at = (int)e.Start.Line;
@@ -263,6 +277,22 @@ public static class RecordLinks
             var key = duplicate.Groups["key"].Value;
             var indent = lines[at - 1].Length - lines[at - 1].TrimStart().Length;
             var first = Array.FindLastIndex(lines, at - 2, line => line.Length - line.TrimStart().Length == indent && line.TrimStart().StartsWith($"{key}:"));
+            // A text's second Value, a number: told to move a price under BasicStats, the model put it under Name, and was told
+            // to keep `Value: Flame Blade` or `Value: 150` — both meant (eval rounds 97, 101 and 102, 2–4 turns each).
+            var header = first >= 1 ? Array.FindLastIndex(lines, first - 1, line => line.Trim().Length > 0 && line.Length - line.TrimStart().Length < indent) : -1;
+            if (first >= 0 && key == "Value" && header >= 0 && Regex.Match(lines[header], @"^\s*(?<text>[A-Za-z]+):\s*$") is { Success: true } part
+                && type.GetProperties(BindingFlags.Public | BindingFlags.Instance).FirstOrDefault(p => p.Name == part.Groups["text"].Value) is { } textField && typeof(ITranslatedStringGetter).IsAssignableFrom(textField.PropertyType)
+                && new[] { first, at - 1 }.Select(i => Regex.Match(lines[i], @"Value:\s*['""]?(?<n>-?\d+(?:\.\d+)?)['""]?\s*$")).ToList() is var numbers
+                && numbers.Count(m => m.Success) == 1 && WorthPath(type) is { } worth)
+            {
+                var number = numbers.First(m => m.Success).Groups["n"].Value;
+                var numberLine = numbers[0].Success ? first + 1 : at;
+                var textName = part.Groups["text"].Value;
+                return $"the YAML breaks at {where}: Value is written twice under `{textName}:` (line {header + 1}), on lines {first + 1} and {at} — " +
+                    $"{textName}'s Value is its words, and {number} is no part of a text. If {number} is the price, {RecordFiles.Article(type.Name)}'s " +
+                    $"price is {worth}: delete line {numberLine}, `{lines[numberLine - 1].Trim()}`, then set it there with one call that builds again: " +
+                    ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, $"{{\"path\": \"{worth}\", \"value\": {number}}}", build: true);
+            }
             if (first >= 0)
                 return $"the YAML breaks at {where}: {key} is written twice, on lines {first + 1} and {at}, and a field is written once — " +
                     (lines[first].Trim() == lines[at - 1].Trim()
@@ -384,8 +414,50 @@ public static class RecordLinks
     /// <param name="deleting">The editRecord call that deletes a field of the file, by its path, and builds: told "BasicStats has no
     /// field VendorValue (delete it)", a model turned it into a second Value (eval round 101's sword+detailed #4); told an NPC's
     /// level is three lines, one whose Level held its LevelMult left the LevelMult beside it, two builds (round 103's npc+detailed #3).</param>
+    /// <summary>The record file of another project, by its path from the projects folder, whose EditorID is this one; or null.</summary>
+    private static string? InOtherProject(string pluginDir, string editorId)
+    {
+        var project = Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(Path.GetFullPath(pluginDir)));
+        var projects = project is null ? null : Path.GetDirectoryName(project);
+        if (projects is null || !Directory.Exists(projects)) return null;
+        foreach (var other in Directory.EnumerateDirectories(projects).Where(d => !string.Equals(d, project, StringComparison.OrdinalIgnoreCase)))
+        {
+            var plugin = Path.Combine(other, "plugin");
+            if (!Directory.Exists(plugin)) continue;
+            foreach (var (file, inPlugin, _) in RecordFiles.FlatRecords(plugin))
+                if (string.Equals(RecordFiles.Identity(File.ReadAllText(file)).EditorId, editorId, StringComparison.OrdinalIgnoreCase))
+                    return $"{Path.GetFileName(other)}/plugin/{inPlugin.Replace('\\', '/')}";
+        }
+        return null;
+    }
+
+    /// <summary>A field's name for what a thing costs in gold: VendorValue, Price, GoldValue, Value_Custom, ValueNumeric.</summary>
+    private static readonly Regex PriceName = new(@"^(?:Vendor|Sell|Buy|Base|Gold|Item)?_?(?:Value|Price|Gold|Worth)(?:_?(?:Numeric|Custom|Amount|Gold))?$",
+        RegexOptions.IgnoreCase);
+
+    /// <summary>
+    /// A number under a price's name where the record has none — `VendorValue: 150` under BasicStats, `ValueNumeric: 150` in a
+    /// Name — offered as the price, with the one call that sets it there and deletes the line; null otherwise. Told "delete it",
+    /// a model deleted the 150 the user asked for, or wrote it as a second Value, and ran out of turns (eval round 101's
+    /// sword+detailed #4, round 93's #3).
+    /// </summary>
+    private static string? Priced(Type record, string key, YamlNode value, string field, Func<string, string, string>? deleting)
+    {
+        if (deleting is null || !PriceName.IsMatch(key) || value is not YamlScalarNode { Value: { } said }
+            || !double.TryParse(said, NumberStyles.Float, CultureInfo.InvariantCulture, out _))
+            return null;
+        if (WorthPath(record) is not { } worth || worth == field) return null;
+        return $"no such field: if {said} is the price, {RecordFiles.Article(record.Name)}'s price is {worth} — one call sets it there, deletes this " +
+            $"line and builds again: {deleting(field, $"{{\"path\": \"{worth}\", \"value\": {said}}}")}; if it is not, delete it: {deleting(field, "")}";
+    }
+
+    /// <summary>Where a record keeps what it is worth in gold: a weapon's BasicStats.Value, an armor's or a book's Value; null for none.</summary>
+    private static string? WorthPath(Type record) =>
+        record.Name == "Weapon" ? "BasicStats.Value"
+            : record.GetProperties(BindingFlags.Public | BindingFlags.Instance).FirstOrDefault(p => p.Name == "Value") is { } own && own.PropertyType.IsPrimitive ? "Value" : null;
+
     private static void Walk(YamlMappingNode mapping, Type type, string path, Action<YamlScalarNode, Type, string> link,
-        Action<string> problem, Type? parent = null, Type? record = null, Func<string, string>? deleting = null)
+        Action<string> problem, Type? parent = null, Type? record = null, Func<string, string, string>? deleting = null)
     {
         record ??= type;
         // A field of several kinds names its kind, as a group of several does.
@@ -431,12 +503,13 @@ public static class RecordLinks
                     // A magic effect's Data, below one of its parts: found by name, the Data was a condition's, and the model
                     // moved Storm Bolt's magnitude into its Conditions (eval round 39's spell+detailed #4), as at the
                     // margin in round 24.
-                    var deleted = deleting is null ? "" : $"; one call deletes it and builds again: {deleting(field)}";
+                    var deleted = deleting is null ? "" : $"; one call deletes it and builds again: {deleting(field, "")}";
                     problem($"{path} has no field {key}" + (RecordFiles.LevelHint(type, key) is { } level
                             ? (deleting is not null && Holds(mapping, "Level", key) ? $" (its Level holds {key} already: delete this one{deleted})" : $" ({level})")
                         : record.Name == "MagicEffect" && key == "Data" ? $" ({RecordFiles.EffectStrength})"
                         : RecordFiles.HintFor(type, key) is { Length: > 0 } hint ? hint
                         : record != type && RecordFiles.WhereIn(record, key) is { } at ? $" (move it: {RecordFiles.Article(record.Name)}'s {key} is {at})"
+                        : Priced(record, key, value, field, deleting) is { } priced ? $" ({priced})"
                         : $" (delete it{deleted})"));
                 }
                 continue;
@@ -458,7 +531,9 @@ public static class RecordLinks
                 else if (value is YamlMappingNode words)
                     foreach (var other in words.Children.Keys.OfType<YamlScalarNode>().Select(k => k.Value).Where(k => k is not null && !TextFields.Contains(k)))
                         problem($"{field}.{other}: a text holds `TargetLanguage` and `Value` alone — " +
-                            (RecordFiles.WhereIn(record, other!) is { } at ? $"{RecordFiles.Article(record.Name)}'s {other} is {at}" : $"delete `{other}`"));
+                            (RecordFiles.WhereIn(record, other!) is { } at ? $"{RecordFiles.Article(record.Name)}'s {other} is {at}"
+                                : Priced(record, other!, words.Children[new YamlScalarNode(other!)], $"{field}.{other}", deleting) is { } priced ? priced
+                                : $"delete `{other}`" + (deleting is null ? "" : $"; one call deletes it and builds again: {deleting($"{field}.{other}", "")}")));
             }
             else if (typeof(System.Collections.IList).IsAssignableFrom(propertyType) && ElementType(propertyType) is { } element)
             {

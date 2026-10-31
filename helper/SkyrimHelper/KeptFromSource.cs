@@ -92,15 +92,18 @@ internal static class KeptFromSource
                 .Concat(kept.Select(n => $"{{\"path\": \"{n.Path}\", \"value\": {n.Mine}}}"));
             var shown = (named is null ? [] : new[] { $"'{named}'" }).Concat(kept.Select(n => n.Mine)).ToList();
             var one = shown.Count == 1;
-            // Numbers alone may be right: a user who named none left them as the copied record's.
+            // Numbers alone may be right: a user who named none left them as the copied record's. Said first: said last, after the
+            // call, the call was made with the kept numbers unchanged — a build for nothing in 9 runs of eval rounds 87–105 — and
+            // 2 runs set numbers nobody had asked for.
             var numbersAlone = named is null
-                ? $". Where the user named no {string.Join(" or ", kept.Select(n => n.Word))}, {Listed(shown)} " +
-                  $"{(one ? "is right as it is" : "are right as they are")}: this warning stays, with nothing to change"
+                ? $" Where the user named no {string.Join(" or ", kept.Select(n => n.Word))}, {Listed(shown)} " +
+                  $"{(one ? "is right as it is" : "are right as they are")}: nothing to change, and this warning stays —" +
+                  " answer with the build."
                 : "";
-            notes.Add($"{relative}: {name} {string.Join(", and ", said)} — copied with its model; if the user asked for " +
+            notes.Add($"{relative}: {name} {string.Join(", and ", said)} — copied with its model.{numbersAlone} If the user asked for " +
                 $"{(one ? "another" : "others")}, one call sets {(one ? "it" : "them")} and builds again: " +
                 ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, string.Join(", ", set), build: true) +
-                $", with what the user asked for in place of {Listed(shown)} — what the user left as {theirs}'s stays" + numbersAlone);
+                $", with what the user asked for in place of {Listed(shown)} — what the user left as {theirs}'s stays");
         }
     }
 

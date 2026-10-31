@@ -147,15 +147,19 @@ export class ProjectsHandlers extends BaseHandler {
                         } as Record<string, string>)[first?.type ?? 'Weapon'] ?? '{"path": "<the field>", "value": <its new value>}';
                         const folder = result.project.pluginFolder;
                         const copied = first?.files[0]?.path ?? result.alreadyInProject[0]?.files[0]?.path;
-                        const drop = `deleteRecord {"project": ${JSON.stringify(result.project.project)}, "record": ` +
-                            `${JSON.stringify(copied?.startsWith(folder) ? copied.slice(folder.length + 1).replace(/\\/g, '/') : example)}}`;
+                        const record = copied?.startsWith(folder) ? copied.slice(folder.length + 1).replace(/\\/g, '/') : example;
+                        // The copy made new by one call, its changes kept: told to write a new file and delete the copy, a model
+                        // deleted the copy that held the price of 150 it had set, and wrote the new sword at 25 (eval round 89's
+                        // sword+detailed #1); 7 of 33 renamed copies of rounds 87–105 went that way.
+                        const fresh = `New${example.replace(/[^A-Za-z0-9_]/g, '')}`;
+                        const renew = `editRecord {"project": ${JSON.stringify(result.project.project)}, "record": ${JSON.stringify(record)}, ` +
+                            `"set": [{"path": "EditorID", "value": "${fresh}"}], "remove": ["FormKey"], "build": true}`;
                         return {
                             note: `${copies.join(', ')} ${one ? 'is' : 'are'} copied as ${one ? 'an override' : 'overrides'}: ` +
                                 `${one ? 'it changes that record' : 'each changes its record'} itself, everywhere the game uses ` +
                                 `${one ? 'it' : 'them'} — a new name renames ${one ? 'it' : 'them'} everywhere. If a new record ` +
-                                'like it was meant, write a new file instead, mirroring it without the FormKey line and with an ' +
-                                `EditorID of its own, where newProject's writeRecordsTo says — and delete ` +
-                                (one ? `the copy: ${drop}.` : `each copy, the first with ${drop}.`),
+                                `like it was meant, one call makes ${one ? 'the copy' : 'the first copy'} a new record, keeping what it holds and ` +
+                                `what was changed in it, and builds: ${renew}, with an EditorID of its own in place of ${fresh}.`,
                             nextStep: `Change a copy's fields with editRecord, which needs no old text to match — {"record": ` +
                                 `"${example}", "set": [${field}]} — then run buildProject.`,
                             ...result
@@ -238,16 +242,24 @@ export class ProjectsHandlers extends BaseHandler {
                         set: optionalFieldValues(args, 'set', '[{"path": "BasicStats.Damage", "value": 12}]'),
                         remove: optionalStringList(args, 'remove', '["Critical"]')
                     }));
-                    if (!build) return { nextStep: 'Run buildProject next — the plugin has this change only once a build answers success.', ...edited };
+                    // A path placed elsewhere than sent is said where the model reads first, not only among the changes.
+                    const placed = edited.changed.filter(change => change.includes('(sent as '));
+                    const placedNote = placed.length > 0 ? ` Set where the record has it, not where it was sent: ${placed.join('; ')}.` : '';
+                    if (!build) return { nextStep: `Run buildProject next — the plugin has this change only once a build answers success.${placedNote}`, ...edited };
                     // Without the file's text: the build may change the file again, and its answer says how.
                     const { text: _text, ...change } = edited;
+                    // The change is made, its build refused: told only "Changed …", the model sent the same edit again, 9 times in 3
+                    // runs of eval rounds 89–101, the refusal being for another file. The plugin's build check reads "Changed … Not built:".
                     const built = await this.build(project).catch((error: unknown) => {
-                        if (error instanceof Error) error.message = `Changed ${change.file}: ${change.changed.join('; ')}. ${error.message}`;
+                        if (error instanceof Error) {
+                            error.message = `Changed ${change.file} — this edit is made, and sending it again changes nothing: ` +
+                                `${change.changed.join('; ')}.${placedNote} The build after it: ${error.message}`;
+                        }
                         throw error;
                     });
-                    if (built.status) return { ...built, edited: change };
+                    if (built.status) return { ...built, ...(placedNote && built.nextStep ? { nextStep: `${built.nextStep}${placedNote}` } : {}), edited: change };
                     const { nextStep, ...rest } = built;
-                    return { nextStep: nextStep?.replace(/^Built\./, 'Changed and built: the plugin has this change.'), ...rest, edited: change };
+                    return { nextStep: `${nextStep?.replace(/^Built\./, 'Changed and built: the plugin has this change.') ?? ''}${placedNote}`, ...rest, edited: change };
                 }
             },
             // A file written where the build does not read it stayed there: OpenClaw gives a model no tool that moves or deletes

@@ -103,6 +103,58 @@ public static class MisplacedFields
         return changes;
     }
 
+    /// <summary>
+    /// A part's field written at the margin right below the part's line, which is left with nothing below it — `Model:`, then
+    /// `File: Weapons\Iron\LongSword.nif` two spaces short — indented under the part again, with the part's other fields at
+    /// the margin after it. Read so, a book was told "a Book has no field File (delete it)", a call that failed, and built
+    /// without a mesh once the line was deleted by hand; a weapon's texture hashes below it were taken to the margin as the
+    /// weapon's Data (refusal probes of 2026-10-31). Runs before Dedent.
+    /// </summary>
+    public static List<(string File, string Change)> IntoEmptyPart(string pluginDir)
+    {
+        var changes = new List<(string File, string Change)>();
+        foreach (var (file, relative, type) in RecordFiles.FlatRecords(pluginDir))
+        {
+            var lines = File.ReadAllText(file).Replace("\r\n", "\n").Split('\n');
+            var fields = RecordFiles.FieldsOf(type);
+            var changed = false;
+            for (var at = 0; at < lines.Length - 1; at++)
+            {
+                if (EmptyPartLine.Match(lines[at]) is not { Success: true } partLine) continue;
+                var part = partLine.Groups["key"].Value;
+                if (!fields.Contains(part) || type.GetProperties(BindingFlags.Public | BindingFlags.Instance).FirstOrDefault(p => p.Name == part) is not { } property)
+                    continue;
+                var partType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+                // A text's two lines are the YAML check's to name (a text's Value is no field of the type that holds it).
+                if (partType == typeof(string) || !partType.IsClass || typeof(ITranslatedStringGetter).IsAssignableFrom(partType)) continue;
+                var partFields = RecordFiles.FieldsOf(partType);
+                // Its fields written at the margin, each with the lines indented below it.
+                var moved = new List<string>();
+                var i = at + 1;
+                while (i < lines.Length && MarginKey.Match(lines[i]) is { Success: true } margin && partFields.Contains(margin.Groups["key"].Value)
+                       && !fields.Contains(margin.Groups["key"].Value))
+                {
+                    moved.Add(margin.Groups["key"].Value);
+                    lines[i] = "  " + lines[i];
+                    i++;
+                    while (i < lines.Length && lines[i].Length > 0 && char.IsWhiteSpace(lines[i][0])) i++;
+                }
+                if (moved.Count == 0) continue;
+                changes.Add((relative, $"moved {Quoted(moved)} under `{part}:` (line {at + 1}) — {(moved.Count == 1 ? "it is" : "they are")} " +
+                    $"{part}'s, and `{part}:` had nothing below it"));
+                changed = true;
+            }
+            if (changed) Save(file, string.Join('\n', lines));
+        }
+        return changes;
+    }
+
+    /// <summary>A part's line at the margin with nothing on it: `Model:`.</summary>
+    private static readonly System.Text.RegularExpressions.Regex EmptyPartLine = new(@"^(?<key>[A-Z][A-Za-z0-9]*):[ \t]*$");
+
+    /// <summary>A field's line at the margin: `File: …`.</summary>
+    private static readonly System.Text.RegularExpressions.Regex MarginKey = new(@"^(?<key>[A-Za-z][A-Za-z0-9_]*):(?:[ \t]|$)");
+
     /// <summary>A field at the margin with a value of its own on its line, plain — no text block, quote or flow below.</summary>
     private static readonly System.Text.RegularExpressions.Regex ValueAtMargin =
         new(@"^(?<key>[A-Z][A-Za-z0-9]*):[ \t]+[^\s'""|>\[{&*!#]");

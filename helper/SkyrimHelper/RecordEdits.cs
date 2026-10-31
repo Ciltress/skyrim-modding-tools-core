@@ -52,6 +52,14 @@ public static class RecordEdits
                 continue;
             }
             Types(type, steps, label);
+            // Never another field than the one sent: `remove: ["Damage"]`, no Damage at the margin, removed BasicStats.Damage —
+            // the weapon's damage, 0 in game.
+            if (!steps.SequenceEqual(sent) && At(text, steps) is { } there)
+            {
+                var held = there is YamlScalarNode scalar ? $", {scalar.Value}" : "";
+                throw new HelperException("badRequest", $"{path}: the file has no {path} where it was sent; {Upto(steps, steps.Count)}{held} " +
+                    $"is the one it has — to delete that, remove [\"{Upto(steps, steps.Count)}\"]. Nothing was written.");
+            }
             text = Remove(text, steps, label, changes);
         }
         // A change that left no YAML is this tool's fault, never written.
@@ -116,7 +124,9 @@ public static class RecordEdits
         {
             if (at == 0 && RecordFiles.PartFor(record, steps[0].Key, "") is { } part && Property(record, part) is not null)
                 steps.Insert(0, new Step(part, null));
-            else if (at > 0 && steps[at - 1].Index is null && above is not null && Property(above, steps[at].Key) is not null)
+            // Only below a part: BasicStats.Damage.Value, Damage a number, was set as BasicStats.Value — the price, not the damage.
+            else if (at > 0 && steps[at - 1].Index is null && above is not null && Property(above, steps[at].Key) is not null
+                     && Property(above, steps[at - 1].Key) is { } before && IsPart(Nullable.GetUnderlyingType(before.PropertyType) ?? before.PropertyType))
                 steps.RemoveAt(at - 1);
             else break;
         }
@@ -180,6 +190,12 @@ public static class RecordEdits
                 throw new HelperException("badRequest", $"{path}: {where} is a text, written as its Value and TargetLanguage — set " +
                     $"{where} to its words, or {where}.Value. Nothing was written.");
             }
+            // A field below one value: BasicStats.Damage.Value, for a weapon's damage.
+            if (i > 0 && !IsPart(current) && Property(current, step.Key) is null)
+                throw new HelperException("badRequest", Items(current) is not null && !current.IsEnum
+                    ? $"{path}: {where} is a list — name one of its items by its number from 0, {where}[0].{step.Key}. Nothing was written."
+                    : $"{path}: {where} is {OneValue(current)} and has no fields — set {where} itself, " +
+                      $"{{\"path\": \"{where}\", \"value\": …}}. Nothing was written.");
             // A magic effect's Data, found by name, was a condition's: "move it in each item of Conditions", as the build said
             // until round 24.
             var property = Property(current, step.Key)
@@ -208,6 +224,21 @@ public static class RecordEdits
         Kinds(type).SelectMany(t => t.GetProperties(Public)).Where(p => p.CanWrite).Select(p => p.Name).Distinct().Order(StringComparer.Ordinal);
 
     private static bool Translated(Type type) => typeof(ITranslatedStringGetter).IsAssignableFrom(type);
+
+    /// <summary>What one value is, for a path sent below it.</summary>
+    private static string OneValue(Type type) =>
+        type == typeof(bool) ? "a truth, true or false"
+            : type.IsEnum ? "one of a set of words"
+            : RecordLinks.LinkTarget(type) is not null ? "a link to a record"
+            : type == typeof(string) ? "a word"
+            : Items(type) is not null ? "a list"
+            : type.IsPrimitive || type == typeof(decimal) ? "a number"
+            : "one value";
+
+    /// <summary>A part: a field that holds fields of its own — not a number, a word, a flag, a link, a list or a text.</summary>
+    private static bool IsPart(Type type) =>
+        !type.IsPrimitive && !type.IsEnum && type != typeof(string) && type != typeof(decimal) && !Translated(type)
+        && Items(type) is null && RecordLinks.LinkTarget(type) is null && Fields(type).Any();
 
     /// <summary>The text a path sets — Name for `Name` and for `Name.Value` — or null for a path to no text.</summary>
     private static string? TextOf(List<Step> steps, List<Type> types) =>

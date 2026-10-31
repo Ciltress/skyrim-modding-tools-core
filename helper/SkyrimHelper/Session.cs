@@ -401,12 +401,16 @@ public sealed class Session : IDisposable
     {
         // A fix with one right answer is written first, and named in a refusal that comes after it too: the model
         // knows the file as it wrote it, and an edit of the line taken out finds nothing.
+        // A group folder in other letters before all: no file in it is read until it has its name.
+        var corrected = RecordFiles.FolderCase(dir);
         // An editor ID first: a copied FormKey is taken out by the EditorID beside it.
-        var corrected = RecordFiles.CleanEditorIds(dir, Index);
+        corrected.AddRange(RecordFiles.CleanEditorIds(dir, Index));
         corrected.AddRange(RecordFiles.DropCopiedFormKeys(dir, Index));
         corrected.AddRange(RecordFiles.DropSharedFormKeys(dir, release));
         // A line written twice first: the YAML reader the moves use refuses the file until it is gone.
         corrected.AddRange(RecordFiles.DropRepeatedLines(dir));
+        // A part's field at the margin below the part's empty line goes back under it, before Dedent reads it as the record's.
+        corrected.AddRange(MisplacedFields.IntoEmptyPart(dir));
         // So too a record's fields indented below one that has a value: the reader stops there.
         corrected.AddRange(MisplacedFields.Dedent(dir));
         // Before the links are checked: a link may name the record by its file's name.
@@ -714,10 +718,15 @@ public sealed class Session : IDisposable
                 $"'{raw.Trim()}' is not a FormID: {editorId} is {FormKeyText(key)}, defined in {key.ModKey.FileName} — write that, or {editorId} alone.");
     }
 
+    // The FormID inside what was sent, as `013989:Skyrim.esm#SteelSword` holds one: told to write it as 012EB7:Skyrim.esm, the
+    // Iron Sword's, whatever was asked, a model sent the next call by hand five times in eval rounds 87–105.
+    private static readonly Regex FormIdIn = new(@"\b[0-9A-Fa-f]{6,8}:[^\s#:,;'""]+?\.es[mpl]\b", RegexOptions.IgnoreCase);
+
     private static FormKey ParseFormKey(string raw) =>
         FormKey.TryFactory(raw.Trim(), out var key)
             ? key
-            : throw new HelperException("badRequest", $"'{raw}' is not a FormID: write it as 012EB7:Skyrim.esm.");
+            : throw new HelperException("badRequest", $"'{raw}' is not a FormID: write it as " +
+                (FormIdIn.Match(raw) is { Success: true } inside ? $"{inside.Value}, the FormID alone." : "012EB7:Skyrim.esm, its number and its plugin."));
 
     public static string FormKeyText(FormKey key) => $"{key.ID:X6}:{key.ModKey.FileName}";
 

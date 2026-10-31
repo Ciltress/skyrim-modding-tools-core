@@ -240,6 +240,11 @@ function textLines(text: string, inBlock: boolean): string[] {
     };
     const pieces = text.split(/\\+(?:r\\+)?n/).map(undone);
     while (pieces.length > 1 && !pieces[pieces.length - 1].trim()) pieces.pop();
+    // The record's own lines joined into one, not a text: each piece a `Field: value` or a `- item`. Made a text below the line's
+    // first field, the record's fields were read as its words, and the build refused the break this made (eval round 104's
+    // sword #5, which failed): put back as the lines they were, each at its own indentation.
+    const yamlLines = pieces.slice(1).filter(piece => piece.trim());
+    if (!inBlock && yamlLines.length > 0 && yamlLines.every(piece => /^\s*(?:- \S|[A-Za-z_]\w*:(?:\s|$))/.test(piece))) return pieces;
     const inline = inBlock ? null : /^(\s*)([^\s:#'"][^:#]*):\s+(?![|>][-+]?\s*$)(\S.*)$/.exec(pieces[0]);
     if (!inline || pieces.length === 1) return pieces;
     const [, indent, key, value] = inline;
