@@ -465,10 +465,13 @@ public static class RecordEdits
                     throw new HelperException("badRequest", $"{path}: {step.Key} has {(child as YamlSequenceNode)?.Children.Count ?? 0} item(s), so [{n}] is none — " +
                         $"set {step.Key} whole, as a list. Nothing was written.");
                 var item = list.Children[n];
+                if (last && list.Style == YamlDotNet.Core.Events.SequenceStyle.Flow)
+                    throw new HelperException("badRequest", $"{path}: {step.Key} is written on one line, [a, b], so no item has a line of its own — " +
+                        $"set {step.Key} whole, as a list. Nothing was written.");
                 if (last)
                 {
                     changes.Add($"set {path}: {Shown(item)} → {Shown(value)}");
-                    return ReplaceItem(text, item, Column(item), value);
+                    return ReplaceItem(text, item, DashColumn(text, item), value);
                 }
                 node = item;
                 indent = Column(item) + 2;
@@ -687,6 +690,15 @@ public static class RecordEdits
 
     /// <summary>The column a node starts at, from 0.</summary>
     private static int Column(YamlNode node) => (int)node.Start.Column - 1;
+
+    /// <summary>The column of the dash before a list's item, from 0: `- OneHanded` at the margin is 0, its item at 2. Written at
+    /// the item's column, a sword's third keyword came out under the second, which read as `VendorItemWeapon - MagicFortifyOneHanded`
+    /// (eval round 106's sword #4).</summary>
+    private static int DashColumn(string text, YamlNode item)
+    {
+        var dash = text.LastIndexOf('-', (int)item.Start.Index - 1);
+        return dash - (text.LastIndexOf('\n', dash) + 1);
+    }
 
     /// <summary>
     /// The last line of a node that holds any of it, from 0 — a block ends where the next field begins. A list's or a
