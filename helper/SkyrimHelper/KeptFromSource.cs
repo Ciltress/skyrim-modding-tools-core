@@ -17,7 +17,10 @@ namespace SkyrimHelper;
 ///   number is forgotten.
 /// - its name, that record's: addPatch's Iron Sword, given the EditorID FlameBlade and the numbers asked for, was made a
 ///   new record by the build and built as a second "Iron Sword", with no word (eval round 95's sword+detailed #1).
-/// Each note writes the one call that sets what was kept.
+/// Each note writes the one call that sets what was kept. A note of numbers alone ends on the case where they are
+/// right: the user named none. A task that names no number got the note for a damage the model chose, and in eval
+/// rounds 96–99 five of eleven such runs made the call with the kept numbers unchanged, two set numbers of their own,
+/// one of them unbuilt.
 /// </summary>
 internal static class KeptFromSource
 {
@@ -89,10 +92,15 @@ internal static class KeptFromSource
                 .Concat(kept.Select(n => $"{{\"path\": \"{n.Path}\", \"value\": {n.Mine}}}"));
             var shown = (named is null ? [] : new[] { $"'{named}'" }).Concat(kept.Select(n => n.Mine)).ToList();
             var one = shown.Count == 1;
+            // Numbers alone may be right: a user who named none left them as the copied record's.
+            var numbersAlone = named is null
+                ? $". Where the user named no {string.Join(" or ", kept.Select(n => n.Word))}, {Listed(shown)} " +
+                  $"{(one ? "is right as it is" : "are right as they are")}: this warning stays, with nothing to change"
+                : "";
             notes.Add($"{relative}: {name} {string.Join(", and ", said)} — copied with its model; if the user asked for " +
                 $"{(one ? "another" : "others")}, one call sets {(one ? "it" : "them")} and builds again: " +
                 ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, string.Join(", ", set), build: true) +
-                $", with what the user asked for in place of {Listed(shown)} — what the user left as {theirs}'s stays");
+                $", with what the user asked for in place of {Listed(shown)} — what the user left as {theirs}'s stays" + numbersAlone);
         }
     }
 
