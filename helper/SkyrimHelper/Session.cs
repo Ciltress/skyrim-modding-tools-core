@@ -538,6 +538,7 @@ public sealed class Session : IDisposable
             ["headerVersion"] = written.ModHeader.Stats.Version,
             ["resolvedLinks"] = resolvedLinks,
             ["built"] = new JsonArray(BuiltRecords.Lines(written, lookup).Select(l => (JsonNode)l).ToArray()),
+            ["models"] = ModelFiles.Unknown(mod, lookup, Index, dir),
             ["notes"] = new JsonArray((await OverrideNotes(dir, mod.ModKey)).Concat(EffectCasting.Notes(mod, lookup, Index, dir))
                 .Concat(KeptFromSource.Notes(mod, lookup, Index, dir)).Concat(LevelBounds.Notes(mod, dir))
                 .Concat(WeaponEffects.Notes(mod, lookup, Index, dir)).Select(n => (JsonNode)n).ToArray())

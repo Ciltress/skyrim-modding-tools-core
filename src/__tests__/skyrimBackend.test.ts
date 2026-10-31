@@ -1071,6 +1071,64 @@ describe('the Skyrim backend', () => {
         expect(fs.existsSync(built.output)).toBe(true);
     });
 
+    it('warns of a model the game does not have, with the call that gives it the model most like it the game has', async () => {
+        // Eval round 105's sword #5 built its Flame Blade on Weapons\Iron\Sword.nif, no file of the game, and the build said success.
+        const { backend, fixture, helperAnswers, calls } = makeBackend();
+        await newProjectWithRecord(backend, fixture.projects, 'FlameBlade');
+        write(path.join(fixture.game, 'Data', 'Skyrim - Meshes0.bsa'), 'archive');
+        write(path.join(fixture.instanceDir, 'mods', 'LowMod', 'Meshes', 'Weapons', 'Low', 'LowSword.nif'), 'mesh');
+        write(path.join(fixture.projects, 'FlameBlade', 'assets', 'meshes', 'weapons', 'flameblade.nif'), 'mesh');
+        const unknown = (editorId: string, model: string) => ({
+            file: `Weapons/${editorId}.yaml`, editorId, model,
+            like: [{ editorId: 'MadeUpSword', model: 'Weapons\\MadeUp\\Sword.nif' }, { editorId: 'IronSword', model: 'Weapons\\Iron\\LongSword.nif' }]
+        });
+        let models = [unknown('FlameBlade', 'Weapons\\Iron\\Sword.nif'), unknown('LowBlade', 'Weapons\\Low\\LowSword.nif'),
+            unknown('OwnBlade', 'Weapons\\FlameBlade.nif')];
+        helperAnswers.build = params => {
+            write(params.outputPath, 'plugin');
+            return { records: 3, masters: ['Skyrim.esm'], headerVersion: params.headerVersion, resolvedLinks: [], models };
+        };
+        helperAnswers.bsaFiles = params => ({
+            found: Object.fromEntries(params.files.filter((file: string) => /longsword/i.test(file)).map((file: string) => [file, params.archives[0]])),
+            errors: []
+        });
+
+        const built = await backend.buildProject('FlameBlade');
+
+        // A mesh a mod has loose, or the project's assets, is the game's; of the models offered, the first the game has.
+        expect(built.warnings).toHaveLength(1);
+        const [warning] = built.warnings!;
+        expect(warning).toMatch(/^Weapons\/FlameBlade\.yaml: FlameBlade's model, Weapons\\Iron\\Sword\.nif, is a mesh the game does not have/);
+        expect(warning).toContain("so the game draws nothing for FlameBlade: not in the world, in a hand or in the inventory. IronSword is the record");
+        expect(warning).toContain('editRecord {"project": "FlameBlade", "record": "Weapons/FlameBlade.yaml", "set": [{"path": "Model.File", ' +
+            '"value": "Weapons\\\\Iron\\\\LongSword.nif"}], "build": true}');
+        expect(warning).toContain(`as ${path.join(fixture.projects, 'FlameBlade', 'assets', 'meshes', 'Weapons', 'Iron', 'Sword.nif')}.`);
+
+        // None the game has: told to copy a record's Model lines. None unknown: no archive is read.
+        models = [{ ...unknown('FlameBlade', 'Weapons\\Iron\\Sword.nif'), like: [{ editorId: 'MadeUpSword', model: 'Weapons\\MadeUp\\Sword.nif' }] }];
+        expect((await backend.buildProject('FlameBlade')).warnings).toEqual([expect.stringContaining(
+            'Give it the Model lines of a record of the load order like it, as readRecord shows them, and build again; a mesh of its own')]);
+        models = [];
+        const read = calls.filter(call => call.method === 'bsaFiles').length;
+        expect((await backend.buildProject('FlameBlade')).warnings).toBeUndefined();
+        expect(calls.filter(call => call.method === 'bsaFiles')).toHaveLength(read);
+    });
+
+    it('finds where the game has a file: a mod loose, else an archive of the load order', async () => {
+        const { backend, fixture, helperAnswers } = makeBackend();
+        write(path.join(fixture.game, 'Data', 'Skyrim - Meshes0.bsa'), 'archive');
+        write(path.join(fixture.instanceDir, 'mods', 'LowMod', 'meshes', 'weapons', 'low', 'lowsword.nif'), 'mesh');
+        helperAnswers.bsaFiles = params => ({
+            found: Object.fromEntries(params.files.filter((file: string) => /longsword/i.test(file)).map((file: string) => [file, params.archives[0]])),
+            errors: []
+        });
+
+        expect(await backend.findGameFiles(['Weapons\\Low\\LowSword.nif', 'meshes\\weapons\\iron\\longsword.nif', 'Weapons\\Iron\\Sword.nif'])).toEqual({
+            'Weapons\\Low\\LowSword.nif': { mod: 'LowMod' },
+            'meshes\\weapons\\iron\\longsword.nif': { mod: "the game's Data folder", archive: 'Skyrim - Meshes0.bsa' }
+        });
+    });
+
     it('refuses a build that read no record from the files, and leaves no plugin to deploy', async () => {
         // A file below its group's folder got a FormID but was not read: the build succeeded empty (round 10).
         const { backend, fixture, helperAnswers } = makeBackend();

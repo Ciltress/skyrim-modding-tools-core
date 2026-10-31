@@ -13,7 +13,7 @@ import type {
     NewProjectRequest, NexusDownload, NexusMod, NexusModSummary,
     NexusSearchQuery, NexusSearchResult, ProjectInfo, PullResult, RecordQuery, RecordRequest, RecordSearchResult,
     RecordSummary, RecordVersions, ListedMod, ModList, ModListQuery, GameVersionCheck,
-    CrashLogSection, CrashReport, EditIniRequest, EditIniResult, EnableModRequest, EnableModResult, ReadCrashLogRequest
+    CrashLogSection, CrashReport, EditIniRequest, EditIniResult, EnableModRequest, EnableModResult, ReadCrashLogRequest, GameFile
 } from '../backend/skyrim/SkyrimBackend.js';
 import { CrashLogNotFoundError } from '../backend/skyrim/crash/crashLogFiles.js';
 import { CORE_GUIDES } from '../lib/guides.js';
@@ -289,6 +289,12 @@ export class InMemorySkyrimBackend implements AppBackend {
         };
     }
 
+    /** The game's Iron Sword mesh, in its archive; nothing else. */
+    async findGameFiles(files: string[]): Promise<Record<string, GameFile>> {
+        return Object.fromEntries(files.filter(file => /^(meshes\\)?weapons\\iron\\longsword\.nif$/i.test(file))
+            .map(file => [file, { mod: "the game's Data folder", archive: 'Skyrim - Meshes0.bsa' }]));
+    }
+
     /** Every setting changed, from nothing. */
     async editIni(request: EditIniRequest): Promise<EditIniResult> {
         return {
@@ -376,7 +382,7 @@ export interface FakeBackendOptions {
 const DOMAIN_METHODS = [
     'findRecords', 'readRecord', 'newProject', 'addPatch', 'editRecord', 'buildProject', 'deployProject', 'pullProject',
     'searchNexus', 'readNexusMod', 'downloadNexusFile', 'installMod', 'disableMod', 'enableMod', 'listMods', 'checkGameVersion',
-    'readCrashLog', 'editIni'
+    'readCrashLog', 'editIni', 'findGameFiles'
 ] as const;
 
 /**

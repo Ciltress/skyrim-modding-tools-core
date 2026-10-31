@@ -50,6 +50,13 @@ export interface SkyrimBackend extends Backend {
     /** A Crash Logger SSE log of this setup read: the crash, ranked diagnoses and suspect mods — or one raw section. */
     readCrashLog(request: ReadCrashLogRequest): Promise<CrashReport | CrashLogSection>;
 
+    /**
+     * Where the game finds each file, by its path under Data (`meshes\weapons\iron\longsword.nif`; a .nif without its top
+     * folder is a mesh's): the mod that has it loose, or the archive that holds it. A file the game does not have is left out.
+     * No tool serves it: the build's model check reads it, and so does the eval.
+     */
+    findGameFiles(files: string[]): Promise<Record<string, GameFile>>;
+
     /** Settings of the game's Skyrim.ini, SkyrimPrefs.ini or SkyrimCustom.ini set or removed — those the game reads for this profile. */
     editIni(request: EditIniRequest): Promise<EditIniResult>;
 }
@@ -58,6 +65,9 @@ export type { GameProblem, GameVersionCheck } from './sksePlugins.js';
 import type { GameVersionCheck } from './sksePlugins.js';
 export type { CrashLogSection, CrashReport, ReportedDiagnosis, ReportedRecord, Suspect } from './crash/crashReport.js';
 import type { CrashLogSection, CrashReport } from './crash/crashReport.js';
+/** Where the game finds a file: the mod that has it loose, or the archive that holds it and the mod the archive is in. */
+export type { Owner as GameFile } from './crash/attribution.js';
+import type { Owner as GameFile } from './crash/attribution.js';
 import type { SectionName } from './crash/crashLog.js';
 
 export interface ReadCrashLogRequest {

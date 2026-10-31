@@ -8,10 +8,13 @@ namespace SkyrimHelper;
 /// Which of the game's archives — BSAs — hold some files, for a crash log that names a mesh or a texture
 /// no mod has loose. The archives come in the order the game loads them; a file several hold is the
 /// last one's, as the game takes it. Which archives there are, and their order, is the server's
-/// (src/backend/skyrim/crash/attribution.ts); this only reads their file lists, through Mutagen.
+/// (src/backend/skyrim/crash/attribution.ts); this only reads their file lists, through Mutagen. A build looks up a model
+/// no record of the load order is on too (ModelFiles), so the lists are kept while an archive's size and time stay.
 /// </summary>
 public static class BsaFiles
 {
+    private static readonly Dictionary<string, (long Length, DateTime Written, HashSet<string> Files)> Read = new(StringComparer.OrdinalIgnoreCase);
+
     public static JsonNode Find(JsonObject p)
     {
         var archives = p["archives"]?.AsArray().Select(a => a!.GetValue<string>()).ToList()
@@ -27,10 +30,9 @@ public static class BsaFiles
         {
             try
             {
-                var reader = Archive.CreateReader(release, archive);
-                foreach (var file in reader.Files)
+                foreach (var file in FilesOf(release, archive))
                 {
-                    if (wanted.TryGetValue(Key(file.Path), out var asked)) found[asked] = archive;
+                    if (wanted.TryGetValue(file, out var asked)) found[asked] = archive;
                 }
             }
             catch (Exception e) when (e is IOException or InvalidDataException or ArgumentException or NotImplementedException or UnauthorizedAccessException or EndOfStreamException)
@@ -39,6 +41,20 @@ public static class BsaFiles
             }
         }
         return new JsonObject { ["found"] = found, ["errors"] = errors };
+    }
+
+    /// <summary>An archive's files as <see cref="Key"/> gives them, read again only once the archive changed.</summary>
+    private static HashSet<string> FilesOf(GameRelease release, string archive)
+    {
+        var info = new FileInfo(archive);
+        if (!info.Exists) throw new IOException($"No archive at '{archive}'.");
+        lock (Read)
+        {
+            if (Read.TryGetValue(archive, out var kept) && kept.Length == info.Length && kept.Written == info.LastWriteTimeUtc) return kept.Files;
+        }
+        var files = Archive.CreateReader(release, archive).Files.Select(f => Key(f.Path)).ToHashSet();
+        lock (Read) Read[archive] = (info.Length, info.LastWriteTimeUtc, files);
+        return files;
     }
 
     /// <summary>A path as the game compares it: any case, backslashes, no leading separator.</summary>

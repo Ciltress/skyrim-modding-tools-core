@@ -13,7 +13,7 @@ import {
 import type { Instance } from './modManager.js';
 import { ModError, findMod, listedMods, nexusRecord, ownerOf, pluginFiles } from './modList.js';
 import { checkGameVersion, myGamesDir } from './gameVersion.js';
-import { Attributor } from './crash/attribution.js';
+import { Attributor, dataPath } from './crash/attribution.js';
 import { CrashLogNotFoundError, chooseCrashLog } from './crash/crashLogFiles.js';
 import { buildCrashReport, crashLogSection, type CrashLogSection, type CrashReport } from './crash/crashReport.js';
 import { CRASH_RULES } from './crash/rules/index.js';
@@ -23,18 +23,29 @@ import {
     ProjectError, assignFormIds, belongsAt, correctCopiedEscapes, createProject, type CopiedEscape, deleteCall, deleteRecordFile, editCall, editedRecord, fencedRecordFiles, fileHash,
     keepRecordTexts, misnamedRecordFiles, looseRecordFiles, moveCall, moveRecordFile, newestSourceTime, outsideRecordCalls, placeCall,
     projectExists, projectInfo, projectPaths, readDeployState, readProjectHeader, recordFileList, recordFiles, strayRecordFiles, syncFolder, syncYaml,
-    whereRecordsGo, writeDeployState
+    whereRecordsGo, writeDeployState, type ProjectPaths
 } from './projects.js';
 import type { SkyrimEngine } from './engine.js';
 import { NexusCatalogue, markDownloadInstalled, readDownloadMeta } from './nexus.js';
 import type {
     AddPatchRequest, AddPatchResult, BuildResult, DeleteRecordRequest, DeleteRecordResult, DeployResult, DisableModRequest, DisableModResult,
-    EditIniRequest, EditIniResult, EditRecordRequest, EditRecordResult, EnableModRequest, EnableModResult, InstallModQuestions, InstallModRequest, ReadCrashLogRequest,
+    EditIniRequest, EditIniResult, EditRecordRequest, GameFile, EditRecordResult, EnableModRequest, EnableModResult, InstallModQuestions, InstallModRequest, ReadCrashLogRequest,
     InstallModResult, GameVersionCheck, ModList, ModListQuery, MoveRecordRequest, MoveRecordResult,
     NewProjectRequest, NexusAccount, NexusDownload, NexusMod, NexusSearchQuery, NexusSearchResult, ProjectFile, ProjectInfo,
     PullResult, RecordQuery, RecordRequest, RecordSearchResult, RecordVersion, RecordVersions, SkyrimBackend
 } from './SkyrimBackend.js';
 import { CORE_INFO } from '../../lib/product.js';
+
+/**
+ * What the helper's build answers of a record on a model no record of its type in the load order is on (ModelFiles.cs): its file
+ * in the plugin folder, the model below Meshes, and the models of the load order's records most like it, the most like first.
+ */
+interface UnknownModel {
+    file: string;
+    editorId: string;
+    model: string;
+    like: { editorId: string; model: string }[];
+}
 
 /** What the helper's addOverrides answers: files relative to the project's plugin folder. */
 interface CopiedRecords {
@@ -431,6 +442,7 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
         const giveBack = keepRecordTexts(paths.plugin);
         let built: {
             records: number; masters: string[]; headerVersion: number; resolvedLinks: BuildResult['resolvedLinks']; built?: string[]; notes?: string[];
+            models?: UnknownModel[];
         };
         try {
             built = await afterLocalWrites(this.engine.helper.call<typeof built>('build', {
@@ -452,6 +464,7 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
         }
         // An override that changes nothing, said once the plugin is written: told apart only from the record itself.
         warnings.push(...built.notes ?? []);
+        warnings.push(...await this.missingModels(paths, built.models ?? []));
 
         // A file keeps the name its author gave it, the build's FormID written in: renamed the way Spriggit names
         // a file, Hilda's went on being edited under its old name, then written anew — a second Hilda (eval probe
@@ -908,13 +921,45 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
         });
         if (request.section) return crashLogSection(chosen, request.section);
 
+        return buildCrashReport(chosen, CRASH_RULES, this.attributor(instance), mod => nexusRecord(path.join(instance.modsDir, mod))?.modId);
+    }
+
+    async findGameFiles(files: string[]): Promise<Record<string, GameFile>> {
+        return Object.fromEntries(await this.attributor(this.engine.modManager.readInstance()).files(files));
+    }
+
+    /** Where the game finds files: loose as the mod manager layers the mods, then in the load order's archives (docs/adr/0012). */
+    private attributor(instance: Instance): Attributor {
+        const { modManager } = this.engine;
         const mods = modManager.readModList(instance);
         const loadOrder = modManager.readLoadOrder(instance).filter(plugin => plugin.active).map(plugin => plugin.name);
-        const attributor = new Attributor(modManager, instance, mods, loadOrder, async files => {
+        return new Attributor(modManager, instance, mods, loadOrder, async files => {
             await this.engine.ensureFresh();
             return this.engine.helper.call('bsaFiles', files, BUILD_TIMEOUT_MS);
         });
-        return buildCrashReport(chosen, CRASH_RULES, attributor, mod => nexusRecord(path.join(instance.modsDir, mod))?.modId);
+    }
+
+    /**
+     * The project's records on a mesh the game does not have — in no archive it loads, no mod and not the project's assets — each
+     * as a warning with the one call that gives it the model of the record most like it the game has. The helper names only the
+     * models no record of their type in the load order is on (ModelFiles.cs): eval round 105's sword #1, #3 and #5 built a Flame
+     * Blade on a mesh path of their own making, which the game draws nothing for, and each build answered success.
+     */
+    private async missingModels(paths: ProjectPaths, models: UnknownModel[]): Promise<string[]> {
+        if (models.length === 0) return [];
+        const found = await this.findGameFiles([...new Set(models.flatMap(m => [m.model, ...m.like.map(l => l.model)]))]);
+        const has = (model: string) => !!found[model] || !!findCaseInsensitive(paths.assets, dataPath(model));
+        return models.filter(m => !has(m.model)).map(m => {
+            const like = m.like.find(l => has(l.model));
+            return `${m.file}: ${m.editorId}'s model, ${m.model}, is a mesh the game does not have — in no archive it loads, no mod ` +
+                `and not this project's assets folder — so the game draws nothing for ${m.editorId}: not in the world, in a hand or ` +
+                'in the inventory. ' +
+                (like
+                    ? `${like.editorId} is the record of the load order most like it: one call gives it ${like.editorId}'s model, ` +
+                      `${like.model}, and builds again: ${editCall(paths, { record: m.file, set: { 'Model.File': like.model } })}`
+                    : 'Give it the Model lines of a record of the load order like it, as readRecord shows them, and build again') +
+                `; a mesh of its own goes into the project's assets folder, as ${path.join(paths.assets, dataPath(m.model))}.`;
+        });
     }
 
     /**
