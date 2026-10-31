@@ -200,7 +200,7 @@ public static class RecordLinks
                     levelGiven = true;
                 }
                 problems.Add($"{relative}: {problem}");
-            });
+            }, deleting: field => ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, "", ToolCalls.Quoted(field), build: true));
             // A new record nothing else names can be deleted, said first, after the file's name (RecordFiles.Droppable).
             if (problems.Count > before)
                 problems[before] = problems[before].Insert(relative.Length + 2, RecordFiles.Droppable(type, relative, text,
@@ -367,6 +367,11 @@ public static class RecordLinks
         return null;
     }
 
+    /// <summary>Whether a mapping's part holds a field by that name: an NPC's Configuration with LevelMult in its Level.</summary>
+    private static bool Holds(YamlMappingNode mapping, string part, string key) =>
+        mapping.Children.TryGetValue(new YamlScalarNode(part), out var node) && node is YamlMappingNode inner
+        && inner.Children.ContainsKey(new YamlScalarNode(key));
+
     /// <summary>
     /// Follows a mapping through the record class's properties, calling <paramref name="link"/> on each
     /// link value, and <paramref name="problem"/> on what the reader would refuse or skip below the top
@@ -376,8 +381,11 @@ public static class RecordLinks
     /// mapping this one is a field of, where a field written a level too deep belongs; <paramref name="record"/>
     /// the record's, where one written in the wrong part does.
     /// </summary>
+    /// <param name="deleting">The editRecord call that deletes a field of the file, by its path, and builds: told "BasicStats has no
+    /// field VendorValue (delete it)", a model turned it into a second Value (eval round 101's sword+detailed #4); told an NPC's
+    /// level is three lines, one whose Level held its LevelMult left the LevelMult beside it, two builds (round 103's npc+detailed #3).</param>
     private static void Walk(YamlMappingNode mapping, Type type, string path, Action<YamlScalarNode, Type, string> link,
-        Action<string> problem, Type? parent = null, Type? record = null)
+        Action<string> problem, Type? parent = null, Type? record = null, Func<string, string>? deleting = null)
     {
         record ??= type;
         // A field of several kinds names its kind, as a group of several does.
@@ -423,11 +431,13 @@ public static class RecordLinks
                     // A magic effect's Data, below one of its parts: found by name, the Data was a condition's, and the model
                     // moved Storm Bolt's magnitude into its Conditions (eval round 39's spell+detailed #4), as at the
                     // margin in round 24.
-                    problem($"{path} has no field {key}" + (RecordFiles.LevelHint(type, key) is { } level ? $" ({level})"
+                    var deleted = deleting is null ? "" : $"; one call deletes it and builds again: {deleting(field)}";
+                    problem($"{path} has no field {key}" + (RecordFiles.LevelHint(type, key) is { } level
+                            ? (deleting is not null && Holds(mapping, "Level", key) ? $" (its Level holds {key} already: delete this one{deleted})" : $" ({level})")
                         : record.Name == "MagicEffect" && key == "Data" ? $" ({RecordFiles.EffectStrength})"
                         : RecordFiles.HintFor(type, key) is { Length: > 0 } hint ? hint
                         : record != type && RecordFiles.WhereIn(record, key) is { } at ? $" (move it: {RecordFiles.Article(record.Name)}'s {key} is {at})"
-                        : " (delete it)"));
+                        : $" (delete it{deleted})"));
                 }
                 continue;
             }
@@ -468,7 +478,7 @@ public static class RecordLinks
                     }
                     else if (item is YamlMappingNode inner)
                     {
-                        Walk(inner, element, at, link, problem, record: record);
+                        Walk(inner, element, at, link, problem, record: record, deleting: deleting);
                     }
                 }
             }
@@ -500,7 +510,7 @@ public static class RecordLinks
             }
             else if (propertyType != typeof(string) && !typeof(System.Collections.IEnumerable).IsAssignableFrom(propertyType))
             {
-                if (value is YamlMappingNode nested) Walk(nested, propertyType, field, link, problem, type, record);
+                if (value is YamlMappingNode nested) Walk(nested, propertyType, field, link, problem, type, record, deleting);
                 else if (value is YamlSequenceNode) problem($"{field} takes fields of its own, indented below it — not a list");
                 // A part of the record, not a file path or a struct written as one value, as Model's File and a bound's corner are.
                 else if (value is YamlScalarNode { Value: { Length: > 0 } one } && one is not ("~" or "null" or "Null" or "NULL")
