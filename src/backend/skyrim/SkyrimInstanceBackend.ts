@@ -958,7 +958,8 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
                     ? `${like.editorId} is the record of the load order most like it: one call gives it ${like.editorId}'s model, ` +
                       `${like.model}, and builds again: ${editCall(paths, { record: m.file, set: { 'Model.File': like.model } })}`
                     : 'Give it the Model lines of a record of the load order like it, as readRecord shows them, and build again') +
-                `; a mesh of its own goes into the project's assets folder, as ${path.join(paths.assets, dataPath(m.model))}.`;
+                // Split here: Linux's path functions keep a backslash as part of a name.
+                `; a mesh of its own goes into the project's assets folder, as ${path.join(paths.assets, ...dataPath(m.model).split('\\'))}.`;
         });
     }
 
