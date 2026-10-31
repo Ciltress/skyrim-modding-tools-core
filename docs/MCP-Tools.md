@@ -118,7 +118,9 @@ arguments, see [`Tool-Reference.md`](./Tool-Reference.md), which is generated fr
      damage, weight, value, enchantment and charge, an enchantment's or spell's effects, an NPC's race,
      sex and level — the first 20, then how many more. Its nextStep says to tell the user from those
      lines, and to fix and build again where one differs from what was asked, since eval round 87,
-     whose miss answered with a name and a value its files did not hold.
+     whose miss answered with a name and a value its files did not hold. A build of up to three records
+     says them in the nextStep itself, since eval round 102, whose miss answered the value a model had
+     meant to write while `built` listed the one it had written.
    - **Change other mods through a patch** (`addPatch`), never in their plugins: an override copied
      from the winning version keeps every other mod's changes, and survives their updates.
    - **Build, deploy and pull are explicit steps.** Deploy refuses a stale build and refuses to

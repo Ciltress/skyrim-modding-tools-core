@@ -435,8 +435,15 @@ export class ProjectsHandlers extends BaseHandler {
             : undefined;
         // The model's answer named an enchantment and a value its files did not hold: it had written another name, and the call
         // that set the value had failed (eval round 87's sword+detailed #4). The plugin read back says what the game gets.
-        const told = 'The plugin holds what `built` lists: tell the user what you made with its names and numbers. Where one ' +
-            'differs from what the user asked, fix the file and build again.';
+        // Told to answer from `built`, a model answered the value it had meant to write, 150, where `built` listed the 12 it
+        // had written (eval round 102's sword+detailed #5): a mod of a few records — a sword and its enchantment — is said
+        // in the nextStep itself, beside what to do with it.
+        const lines = built.built ?? [];
+        const told = lines.length > 0 && lines.length <= 3
+            ? `The plugin holds: ${lines.join('. ')}. Tell the user what you made with these names and numbers; where one ` +
+                'differs from what the user asked, fix the file and build again.'
+            : 'The plugin holds what `built` lists: tell the user what you made with its names and numbers. Where one ' +
+                'differs from what the user asked, fix the file and build again.';
         if (!warnings?.length) return { nextStep: done ? `Built. ${done} ${told}` : `Built. ${told}`, ...built };
         // A warning at the end of an answer that said success was passed by: five of the eight misses
         // in eval round 21 end on one, each a build that did what was not asked. Its exception, written

@@ -1023,23 +1023,37 @@ describe('the Skyrim backend', () => {
                 'that answers success writes the plugin\\.$'));
     });
 
-    it('answers a build with each record the plugin holds, and says to tell the user from those lines', async () => {
-        // The model's answer named an enchantment and a value its files did not hold (eval round 87's sword+detailed #4).
+    it('answers a build with each record the plugin holds, a few of them said in its nextStep, to tell the user from', async () => {
+        // The model's answer named an enchantment and a value its files did not hold (eval round 87's sword+detailed #4); told
+        // to answer from `built`, a model answered the value it had meant to write (eval round 102's sword+detailed #5).
         const { backend, fixture, helperAnswers } = makeBackend();
         await newProjectWithRecord(backend, fixture.projects, 'FlameBlade');
-        const lines = [
-            'Weapon FlameBlade "Flame Blade" (new): damage 12, weight 10, value 25; enchantment EnchFlameDamageBurn, no charge',
+        let lines = [
+            'Weapon FlameBlade "Flame Blade" (new): damage 12, weight 10, value 12; enchantment EnchFlameDamageBurn, charge 500',
             'ObjectEffect EnchFlameDamageBurn "Flame Damage Burn" (new): EnchFireDamageFFContact magnitude 10'
         ];
         helperAnswers.build = params => {
             write(params.outputPath, 'plugin');
-            return { records: 2, masters: ['Skyrim.esm'], headerVersion: params.headerVersion, resolvedLinks: [], built: lines };
+            return { records: lines.length, masters: ['Skyrim.esm'], headerVersion: params.headerVersion, resolvedLinks: [], built: lines };
         };
         const handler = createHandlers(backend as unknown as AppBackend, CORE_PRODUCT).find(h => h.getTools().some(t => t.name === 'buildProject'))!;
+        const build = async () => JSON.parse((await handler.handle('buildProject', { project: 'FlameBlade' })).content[0].text);
 
-        const built = JSON.parse((await handler.handle('buildProject', { project: 'FlameBlade' })).content[0].text);
+        expect(await build()).toMatchObject({
+            status: 'success',
+            nextStep: 'Built. The plugin holds: Weapon FlameBlade "Flame Blade" (new): damage 12, weight 10, value 12; enchantment ' +
+                'EnchFlameDamageBurn, charge 500. ObjectEffect EnchFlameDamageBurn "Flame Damage Burn" (new): EnchFireDamageFFContact ' +
+                'magnitude 10. Tell the user what you made with these names and numbers; where one differs from what the user ' +
+                'asked, fix the file and build again.',
+            built: lines
+        });
 
-        expect(built).toMatchObject({ status: 'success', nextStep: `Built. ${TOLD}`, built: lines });
+        // A patch of many records is told by `built` alone.
+        lines = ['Weapon IronSword "Iron Sword" (override of Skyrim.esm): damage 7, weight 9, value 25',
+            'Weapon SteelSword "Steel Sword" (override of Skyrim.esm): damage 8, weight 10, value 45',
+            'Weapon OrcishSword "Orcish Sword" (override of Skyrim.esm): damage 9, weight 11, value 75',
+            'Weapon DwarvenSword "Dwarven Sword" (override of Skyrim.esm): damage 10, weight 12, value 135'];
+        expect(await build()).toMatchObject({ status: 'success', nextStep: `Built. ${TOLD}`, built: lines });
     });
 
     it('passes on what the helper notes once the plugin is written — an override that changes nothing — as a warning', async () => {
