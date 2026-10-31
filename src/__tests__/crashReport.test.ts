@@ -130,6 +130,21 @@ describe('choosing a crash log', () => {
         expect(chooseCrashLog(fixture.logs, '2026-10-01 09:00', isGame).instead).toBeUndefined();
     });
 
+    it('reads a time as a chat\'s message stamp writes it: its brackets, weekday and time zone aside', () => {
+        // A model sent its prompt's stamp, `Sat 2026-10-31 09:26`, and was refused (eval round 100's crash-mesh #3).
+        const fixture = makeInstance();
+        write(path.join(fixture.logs, 'crash-2026-10-01-09-00-00.log'), meshCrash(fixture.game));
+        const isGame = (seen: string) => seen.toLowerCase() === asGameSees(fixture.game).toLowerCase();
+
+        for (const stamp of ['Sat 2026-10-01 09:00', '[Sat 2026-10-01 09:00 GMT+1]', 'Saturday, 2026-10-01 09:00 UTC', '2026-10-01T09:00:00+01:00', '2026-10-01T09:00Z']) {
+            const chosen = chooseCrashLog(fixture.logs, stamp, isGame);
+            expect(path.basename(chosen.file), stamp).toBe('crash-2026-10-01-09-00-00.log');
+            expect(chosen.instead, stamp).toBeUndefined();
+        }
+        expect(path.basename(chooseCrashLog(fixture.logs, '[Sat 2026-10-01 12:42 GMT+1]', isGame).file)).toBe('crash-2026-10-01-09-00-00.log');
+        expect(() => chooseCrashLog(fixture.logs, 'Sat 2026-10-01 08:59', isGame)).toThrow(/named or dated 'Sat 2026-10-01 08:59'/);
+    });
+
     it('says why when there is no log of this setup\'s, or none at all', () => {
         const fixture = makeInstance();
         expect(() => chooseCrashLog(fixture.logs, undefined, () => false)).toThrow(CrashLogNotFoundError);

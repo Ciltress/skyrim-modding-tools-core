@@ -49,6 +49,18 @@ export function gameFolderOf(log: CrashLog): string | undefined {
 }
 
 /**
+ * A time as a chat's message stamp writes it, `[Sat 2026-10-31 09:26 GMT+1]`, without its brackets, its weekday and its
+ * time zone: a model sent its prompt's stamp, weekday first, and was refused (eval round 100's crash-mesh #3). The zone is
+ * left out, not counted: a log is named in the game's local time, and so is the stamp.
+ */
+function bareTime(given: string): string {
+    return given.replace(/^\[|\]$/g, '').trim()
+        .replace(/^(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*,?\s+/i, '')
+        .replace(/\s*(?:gmt|utc)(?:[+-]\d{1,2}(?::?\d{2})?)?$/i, '')
+        .replace(/(?<=\d:\d{2}(?::\d{2})?)(?:z|[+-]\d{2}:?\d{2})$/i, '');
+}
+
+/**
  * Picks the log to read: the one `wanted` names — its file name, or a time it starts with, `2026-10-30`
  * or `2026-10-30 14:02` — else the newest of this setup's. Among several a time matches, this setup's
  * newest wins. A time down to the hour that no log has reads the newest before it that day: asked about a crash
@@ -88,7 +100,7 @@ export function chooseCrashLog(folder: string, wanted: string | undefined, isThi
         if (byName) {
             chosen = byName;
         } else {
-            const time = `crash-${given.replace(/^crash-/i, '').replace(/\.log$/i, '').replace(/[\sT:_.]+/g, '-').toLowerCase()}`;
+            const time = `crash-${bareTime(given).replace(/^crash-/i, '').replace(/\.log$/i, '').replace(/[\sT:_.]+/g, '-').toLowerCase()}`;
             const matching = files.filter(file => file.name.toLowerCase().startsWith(time));
             chosen = matching.find(file => setupOf(file) === true) ?? matching[0];
             const day = /^crash-\d{4}-\d{2}-\d{2}(?=-\d{2})/.exec(time)?.[0];

@@ -444,7 +444,8 @@ installed, an outdated Crash Logger, .NET Script Framework beside it, an Intel C
 no diagnosis: it comes in `setup`, up to 3, so it never ranks above the crash's cause. `section` answers one part of
 the log as written; its names are in the description, not an enum, since OpenClaw's argument check turns a null into
 `""`, which an enum refuses before the tool. A `log` down to the hour that no log has — the time of asking, for a
-crash "just now" — reads the newest log before it that day, and the nextStep says so first. A fix is made
+crash "just now" — reads the newest log before it that day, and the nextStep says so first. A time as a chat's message
+stamp writes it, `[Sat 2026-10-31 09:26 GMT+1]`, is read without its brackets, weekday and zone (since eval round 100). A fix is made
 with the mod tools, on the user's word: `disableMod` and `enableMod`, `installMod`, `editIni`.
 
 ### 4.7 Find out what you are connected to
