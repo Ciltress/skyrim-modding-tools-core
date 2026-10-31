@@ -353,7 +353,9 @@ export function projectsFile(projectsDir: string, paths: ProjectPaths, given: st
  * the helper takes; any other as given. Refused for it, the model sent the path in the plugin folder next (eval round 83's
  * npc+detailed #1, round 80's sword+detailed #1); moveRecord and deleteRecord take it so too (projectsFile). A path in the
  * plugin folder without its `.yaml`, `Npcs/Hilda`, is that file where it is there: it was refused, though `Npcs/Hilda.yaml`
- * was the only file it could name (eval round 91's npc+detailed #4).
+ * was the only file it could name (eval round 91's npc+detailed #4). So is a path in the plugin folder after the project's
+ * name, `FlameBlade/Weapons/FlameBlade.yaml`: refused for it, the model sent `Weapons/FlameBlade.yaml` next (eval round 98's
+ * sword+detailed #3).
  */
 export function editedRecord(projectsDir: string, paths: ProjectPaths, given: string): string {
     const name = given.trim();
@@ -363,10 +365,14 @@ export function editedRecord(projectsDir: string, paths: ProjectPaths, given: st
     if (parts.length < 2 || path.isAbsolute(name)) return given;
     const inPlugin = path.resolve(paths.plugin, ...parts);
     if (isFile(inPlugin)) return given;
-    if (!/\.ya?ml$/i.test(name) && isFile(`${inPlugin}.yaml`)) return `${inPlugin}.yaml`;
+    const bare = !/\.ya?ml$/i.test(name);
+    if (bare && isFile(`${inPlugin}.yaml`)) return `${inPlugin}.yaml`;
     const fromProjects = path.resolve(projectsDir, ...parts);
     const relative = path.relative(paths.plugin, fromProjects);
-    return relative && !relative.startsWith('..') && !path.isAbsolute(relative) && isFile(fromProjects) ? fromProjects : given;
+    if (relative && !relative.startsWith('..') && !path.isAbsolute(relative) && isFile(fromProjects)) return fromProjects;
+    if (parts.length < 3 || parts[0].toLowerCase() !== path.basename(paths.root).toLowerCase()) return given;
+    const afterName = path.resolve(paths.plugin, ...parts.slice(1));
+    return isFile(afterName) ? afterName : bare && isFile(`${afterName}.yaml`) ? `${afterName}.yaml` : given;
 }
 
 export function recordFileList(paths: ProjectPaths): string {

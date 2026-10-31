@@ -768,13 +768,18 @@ describe('the Skyrim backend', () => {
         // A path in the plugin folder without its .yaml is that file where it is there (eval round 91's npc+detailed #4).
         await edit('Npcs/Hilda');
         await edit('Npcs\\Hilda');
+        // A path in the plugin folder after the project's name is that file too (eval round 98's sword+detailed #3).
+        await edit('HildaTheNord/Npcs/Hilda.yaml');
+        await edit('hildathenord\\Npcs\\Hilda');
         // The plugin folder's own paths, an EditorID, and a path to no file pass as given: the helper names what is there.
         await edit('Npcs/Hilda.yaml');
         await edit('Hilda');
         await edit('HildaTheNord/plugin/Npcs/Helga.yaml');
         await edit('Npcs/Helga');
+        await edit('HildaTheNord/Npcs/Helga.yaml');
         const hilda = path.join(plugin, 'Npcs', 'Hilda.yaml');
-        expect(sent).toEqual([hilda, hilda, hilda, hilda, 'Npcs/Hilda.yaml', 'Hilda', 'HildaTheNord/plugin/Npcs/Helga.yaml', 'Npcs/Helga']);
+        expect(sent).toEqual([hilda, hilda, hilda, hilda, hilda, hilda, 'Npcs/Hilda.yaml', 'Hilda', 'HildaTheNord/plugin/Npcs/Helga.yaml',
+            'Npcs/Helga', 'HildaTheNord/Npcs/Helga.yaml']);
     });
 
     it('takes a file of a projects folder reached through a link: one not there is missing, not outside', () => {
