@@ -330,6 +330,18 @@ public static class RecordLinks
                         : $"keep the one meant, `{lines[first].Trim()}` or `{lines[at - 1].Trim()}`, and delete the other");
         }
         static int Depth(string line) => line.Length - line.TrimStart(' ').Length;
+        // A quote mark alone, where taking it out did not make the file read (RecordFiles.DropLoneQuotes): the parser's words
+        // and the general advice sent the model to edit other lines (eval round 107's sword #1).
+        if (at >= 1 && at <= lines.Length && RecordFiles.LoneQuote.IsMatch(lines[at - 1]))
+            return $"the YAML breaks at {where}: a quote mark alone on a line opens a quoted text that runs on to the end of the file, " +
+                "and writes no field — delete the line";
+        // Deeper than an item of a list of names: YAML reads the line as more words of the item, and the value on it was blamed —
+        // a level's `{MutagenObjectType: …}` told to be quoted (eval round 107's npc+detailed #3). Its fields are moved where that
+        // makes the file read (MisplacedFields.OutFromUnderItems).
+        if (at >= 2 && at <= lines.Length && MisplacedFields.UnderItem(lines, at - 1) is { } under)
+            return $"the YAML breaks at {where}: it is {Depth(lines[at - 1])} spaces deep below line {under.Item + 1}, `{lines[under.Item].Trim()}`, " +
+                $"an item of `{under.Key}:` (line {under.List + 1}) — an item of a list of names holds no lines below it, so YAML reads this " +
+                $"line as more words of it. A field beside `{under.Key}:` is written as deep as it, with {Depth(lines[under.List])} spaces in front";
         // What the parser says of a value written in a way YAML reads otherwise, said as the value written right — each was
         // answered "indent a field's own fields", which fixes none of them (refusal probes of 2026-10-31, B10, B11, W31, G22).
         if (at >= 1 && at <= lines.Length && Written(lines[at - 1], reason) is { } written)
@@ -386,8 +398,9 @@ public static class RecordLinks
             if (value.StartsWith('"') && value.Count(c => c == '"') > 2 && !value.Contains("\\\""))
                 return $"the value after `{key}:` is in double quotes and holds double quotes of its own, which end it early — write it in single " +
                     $"quotes, {Single(value[1..^(value.EndsWith('"') ? 1 : 0)])}, an apostrophe in it written twice";
+            // A part written on one line in braces, or a list in brackets, holds `: ` that YAML reads as it should.
             if (reason.Contains("invalid mapping") || reason.Contains("mapping values are not allowed"))
-                if (!value.StartsWith('\'') && !value.StartsWith('"') && value.Contains(": "))
+                if (!value.StartsWith('\'') && !value.StartsWith('"') && !value.StartsWith('{') && !value.StartsWith('[') && value.Contains(": "))
                     return $"the value after `{key}:` holds `: `, which YAML reads as a field inside it — write the value in single quotes, " +
                         $"{Single(value)}, an apostrophe in it written twice, or write `{key}: >-` and the words on the lines below it, " +
                         "two spaces deeper";
@@ -967,7 +980,7 @@ public static class RecordLinks
         // `Level: 1` under Configuration: told only of the kinds and readRecord, the model moved the lines the build had moved
         // already, five edits refused (eval round 50's npc #5). The level's lines, its number in them.
         if (type.Name == "ANpcLevel")
-            return $"{field} is written as one value, {one} — " + (int.TryParse(one, out var level)
+            return $"{field} is written as one value, {one} — " + (short.TryParse(one, out var level)
                 ? RecordFiles.NpcLevel.Replace("NpcLevel, Level: 10}", $"NpcLevel, Level: {level}}}") : RecordFiles.NpcLevel);
         var shapes = type.IsAbstract
             ? type.Assembly.GetTypes().Where(t => !t.IsAbstract && !t.IsInterface && type.IsAssignableFrom(t)).OrderBy(t => t.Name, StringComparer.Ordinal).ToList()

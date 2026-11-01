@@ -1367,8 +1367,40 @@ public static class RecordFiles
         return changes;
     }
 
+    /// <summary>A line of quote marks alone.</summary>
+    internal static readonly Regex LoneQuote = new(@"^[ \t]*[""']+[ \t]*$");
+
+    /// <summary>
+    /// A line of a quote mark alone taken out, where the file then reads and did not before: the quote opens a text that runs on
+    /// to the file's end, and the refusal gave the parser's words — the model's sword ended in a line `"`, eight calls before it
+    /// was gone (eval round 107's sword #1). The one line whose going alone makes the file read, so that a quote written as a
+    /// line of a text stays; else all of them, where that makes it read.
+    /// </summary>
+    public static List<(string File, string Change)> DropLoneQuotes(string pluginDir)
+    {
+        var changes = new List<(string File, string Change)>();
+        foreach (var (file, relative, _) in FlatRecords(pluginDir))
+        {
+            var written = File.ReadAllText(file);
+            var text = written.Replace("\r\n", "\n");
+            var lines = text.Split('\n');
+            var quotes = Enumerable.Range(0, lines.Length).Where(i => LoneQuote.IsMatch(lines[i])).ToList();
+            if (quotes.Count == 0 || MisplacedFields.Root(text) is not null) continue;
+            string Without(List<int> gone) => string.Join('\n', lines.Where((_, i) => !gone.Contains(i)));
+            var alone = quotes.Where(i => MisplacedFields.Root(Without([i])) is not null).ToList();
+            var dropped = alone.Count == 1 ? alone : MisplacedFields.Root(Without(quotes)) is not null ? quotes : [];
+            if (dropped.Count == 0) continue;
+            var kept = Without(dropped);
+            File.WriteAllText(file, written.Contains("\r\n") ? kept.Replace("\n", "\r\n") : kept);
+            changes.Add((relative, $"removed line{(dropped.Count == 1 ? "" : "s")} {Numbers(dropped.Select(i => i + 1).ToList())}, " +
+                $"{string.Join(", ", dropped.Select(i => $"`{lines[i].Trim()}`").Distinct())} — a quote mark alone opens a quoted text that " +
+                "runs on to the end of the file, and writes no field"));
+        }
+        return changes;
+    }
+
     /// <summary>Line numbers as words: "4", "4 and 6", "29–31", "2, 5 and 9–11".</summary>
-    private static string Numbers(List<int> numbers)
+    internal static string Numbers(List<int> numbers)
     {
         var runs = new List<string>();
         for (var i = 0; i < numbers.Count;)
@@ -1842,6 +1874,36 @@ public static class RecordFiles
                 return (relative, $"wrote line {m.Line + 1}, AIData's `{m.Held.Name}: {m.Word}` as `{m.Held.Name}: {meant}` — {m.Held.Name} " +
                     $"takes {string.Join(", ", names[..^1])} or {names[^1]}, and {words[m.Word]}; {RecordLinks.MostOften(m.Held)}");
             }));
+        }
+        return changes;
+    }
+
+    /// <summary>
+    /// An NPC's level written as a whole number, `Level: 5`, written as the fixed level it says, `Level: {MutagenObjectType:
+    /// NpcLevel, Level: 5}`: a level is its kind and its number, and the reader refused the number alone — 11 NPC runs of eval
+    /// rounds 89–107, each 1–5 calls before it built. A level that follows the player's has no number of its own; where the file
+    /// has CalcMinLevel and CalcMaxLevel too, the build's warning for a fixed level beside its bounds gives the call for one.
+    /// </summary>
+    public static List<(string File, string Change)> MendLevel(string pluginDir)
+    {
+        var changes = new List<(string File, string Change)>();
+        foreach (var (file, relative, type) in FlatRecords(pluginDir))
+        {
+            if (type != typeof(Npc)) continue;
+            var lines = File.ReadAllText(file).Split('\n');
+            var mended = new List<string>();
+            foreach (var f in ValueFields(lines, type).Where(f => f.Key == "Level" && f.Held == typeof(ANpcLevel)))
+            {
+                if (!short.TryParse(f.Value, NumberStyles.None, CultureInfo.InvariantCulture, out var level)) continue;
+                var fixedLevel = $"{{MutagenObjectType: NpcLevel, Level: {level}}}";
+                lines[f.Line] = new Regex(@"(\bLevel[ \t]*:[ \t]*)\d+").Replace(lines[f.Line], m => m.Groups[1].Value + fixedLevel, 1);
+                mended.Add($"wrote line {f.Line + 1}, {(f.PartKey is { } part ? $"{part}'s " : "")}`Level: {f.Value}` as `Level: {fixedLevel}` — " +
+                    "a level written as a number is a fixed one, NpcLevel's; one that follows the player's is " +
+                    "`{MutagenObjectType: PcLevelMult, LevelMult: 1}`, between CalcMinLevel and CalcMaxLevel");
+            }
+            if (mended.Count == 0) continue;
+            File.WriteAllText(file, string.Join('\n', lines));
+            changes.AddRange(mended.Select(m => (relative, m)));
         }
         return changes;
     }

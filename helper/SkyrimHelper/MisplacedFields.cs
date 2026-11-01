@@ -202,6 +202,101 @@ public static class MisplacedFields
         return changes;
     }
 
+    /// <summary>An item of a list written as a name alone — `- AutoCalcStats`, `- 013F42:Skyrim.esm  # RightHand` — and its dash's column.</summary>
+    internal static readonly System.Text.RegularExpressions.Regex NameItem =
+        new(@"^(?<dash> *)-[ \t]+(?<name>[^\s'""{\[|>&*!#](?:(?!: )[^#])*?)[ \t]*(?:#.*)?$");
+
+    /// <summary>A part's line, its fields below it: `Configuration:`.</summary>
+    private static readonly System.Text.RegularExpressions.Regex PartLine = new(@"^ *(?<key>[A-Za-z][A-Za-z0-9_]*):[ \t]*(?:#.*)?$");
+
+    /// <summary>A field's line, with or without a value on it.</summary>
+    private static readonly System.Text.RegularExpressions.Regex FieldStart = new(@"^ +(?<key>[A-Za-z][A-Za-z0-9_]*):(?:[ \t]|$)");
+
+    /// <summary>
+    /// The item of a list of names a line is written below, deeper than its dash, where YAML reads the line as more words of
+    /// it: the item's line, the list's own line and its key, and the keys of the parts the list is in, from the margin; null
+    /// where the line is below no such item.
+    /// </summary>
+    internal static (int Item, int List, string Key, List<string> Path)? UnderItem(string[] lines, int line)
+    {
+        var depth = Indent(lines[line]);
+        var item = Array.FindLastIndex(lines, line - 1, l => l.Trim().Length > 0 && Indent(l) < depth);
+        if (item < 1 || NameItem.Match(lines[item]) is not { Success: true } named || named.Groups["name"].Value.EndsWith(':')) return null;
+        var dash = named.Groups["dash"].Length;
+        var list = Array.FindLastIndex(lines, item - 1, l => l.Trim().Length > 0 && Indent(l) <= dash && !l.TrimStart().StartsWith('-'));
+        if (list < 0 || PartLine.Match(lines[list]) is not { Success: true } key) return null;
+        var path = new List<string>();
+        var above = Indent(lines[list]);
+        for (var i = list - 1; i >= 0 && above > 0; i--)
+        {
+            if (lines[i].Trim().Length == 0 || Indent(lines[i]) >= above) continue;
+            if (PartLine.Match(lines[i]) is not { Success: true } part) return null;
+            path.Insert(0, part.Groups["key"].Value);
+            above = Indent(lines[i]);
+        }
+        return (item, list, key.Groups["key"].Value, path);
+    }
+
+    /// <summary>What a path of field names from the record leads to: the part, or a list's item; null where a name is no field.</summary>
+    private static Type? PartAt(Type type, IEnumerable<string> path)
+    {
+        foreach (var key in path)
+        {
+            if (type.GetProperties(Public).FirstOrDefault(p => p.Name == key) is not { } property) return null;
+            type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+            if (type != typeof(string) && type.IsGenericType && typeof(System.Collections.IEnumerable).IsAssignableFrom(type))
+                type = type.GetGenericArguments()[0];
+        }
+        return type;
+    }
+
+    /// <summary>
+    /// Fields of a part written deeper than an item of a list of names above them, where the YAML reader stops — written as
+    /// deep as the list's own line, beside it. The build moved an NPC's level lines under Configuration, and the model's edit
+    /// indented them again, four spaces deep below `- AutoCalcStats`, an item of Flags: YAML read them as more words of that
+    /// item, and the refusal blamed the level's value (eval round 107's npc+detailed #3). Lines that are no field of the part,
+    /// or a file that reads no better, are left to the refusal.
+    /// </summary>
+    public static List<(string File, string Change)> OutFromUnderItems(string pluginDir)
+    {
+        var changes = new List<(string File, string Change)>();
+        foreach (var (file, relative, type) in RecordFiles.FlatRecords(pluginDir))
+        {
+            var text = File.ReadAllText(file).Replace("\r\n", "\n");
+            if (Root(text) is not null) continue;
+            var lines = text.Split('\n');
+            var moved = new List<string>();
+            for (var at = 1; at < lines.Length; at++)
+            {
+                if (lines[at].Trim().Length == 0 || UnderItem(lines, at) is not { } under || under.Item != at - 1) continue;
+                var run = Enumerable.Range(at, lines.Length - at)
+                    .TakeWhile(i => lines[i].Trim().Length > 0 && Indent(lines[i]) > Indent(lines[under.Item])).ToList();
+                var top = run.Min(i => Indent(lines[i]));
+                var listDepth = Indent(lines[under.List]);
+                var fields = PartAt(type, under.Path) is { } owner ? RecordFiles.FieldsOf(owner) : null;
+                var heads = run.Where(i => Indent(lines[i]) == top).Select(i => (Line: i, Match: FieldStart.Match(lines[i]))).ToList();
+                if (fields is null || heads.Any(h => !h.Match.Success || !fields.Contains(h.Match.Groups["key"].Value) || h.Match.Groups["key"].Value == under.Key))
+                {
+                    at = run[^1];
+                    continue;
+                }
+                foreach (var i in run) lines[i] = lines[i][(top - listDepth)..];
+                var keys = heads.Select(h => h.Match.Groups["key"].Value).ToList();
+                var them = keys.Count == 1 ? "it" : "them";
+                moved.Add($"moved {Quoted(keys)} (line{(heads.Count == 1 ? "" : "s")} {RecordFiles.Numbers(heads.Select(h => h.Line + 1).ToList())}) " +
+                    $"from under `{lines[under.Item].Trim()}` to the depth of `{under.Key}:` — an item of a list of names holds no lines below it, " +
+                    $"and YAML read {them} as more words of it; {(under.Path.Count > 0 ? under.Path[^1] : RecordFiles.Article(type.Name))} " +
+                    $"has {them} beside its {under.Key}");
+                at = run[^1];
+            }
+            var mended = string.Join('\n', lines);
+            if (moved.Count == 0 || Root(mended) is null) continue;
+            Save(file, mended);
+            changes.AddRange(moved.Select(m => (relative, m)));
+        }
+        return changes;
+    }
+
     /// <summary>Whether two values written are the same: 40 and 40.0 are.</summary>
     internal static bool Same(string a, string b) =>
         a == b || double.TryParse(a, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var x)

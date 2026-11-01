@@ -410,6 +410,8 @@ public sealed class Session : IDisposable
         var corrected = RecordFiles.FolderCase(dir);
         // Then tabs, before any correction reads a file as YAML: the reader takes none in a line's indent.
         corrected.AddRange(RecordFiles.Untab(dir));
+        // And a quote mark alone on a line, which keeps the reader from the rest of the file.
+        corrected.AddRange(RecordFiles.DropLoneQuotes(dir));
         // An editor ID first: a copied FormKey is taken out by the EditorID beside it.
         corrected.AddRange(RecordFiles.CleanEditorIds(dir, Index));
         corrected.AddRange(RecordFiles.DropCopiedFormKeys(dir, Index));
@@ -421,6 +423,8 @@ public sealed class Session : IDisposable
         corrected.AddRange(MisplacedFields.IntoEmptyPart(dir));
         // So too a record's fields indented below one that has a value: the reader stops there.
         corrected.AddRange(MisplacedFields.Dedent(dir));
+        // And a part's fields indented below an item of a list of names, which holds none.
+        corrected.AddRange(MisplacedFields.OutFromUnderItems(dir));
         // Before the links are checked: a link may name the record by its file's name.
         corrected.AddRange(RecordFiles.NameFromFiles(dir, Index));
         corrected.AddRange(RecordFiles.RenameTakenEditorIds(dir, Index));
@@ -441,6 +445,8 @@ public sealed class Session : IDisposable
         corrected.AddRange(RecordFiles.MendNumbersAndBytes(dir));
         // And an NPC's aggression or responsibility written as none is, by the part it is in too.
         corrected.AddRange(RecordFiles.MendAIData(dir));
+        // And its level written as a number, once a level at the margin is under Configuration.
+        corrected.AddRange(RecordFiles.MendLevel(dir));
         // A spell's or enchantment's lines from its effects, read where each is: its cast, and an effect's flags in the spell's.
         corrected.AddRange(CasterLines.DropEffectFlags(dir, Index, Cache));
         corrected.AddRange(CasterLines.CastAsEffects(dir, Index, Cache));
