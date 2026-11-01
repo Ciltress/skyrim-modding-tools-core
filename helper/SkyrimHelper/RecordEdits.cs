@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Reflection;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using Mutagen.Bethesda.Plugins;
 using Mutagen.Bethesda.Strings;
 using YamlDotNet.Core;
 using YamlDotNet.RepresentationModel;
@@ -21,7 +22,10 @@ public static class RecordEdits
 
     private sealed record Step(string Key, int? Index);
 
-    public static JsonObject Edit(string pluginDir, string record, JsonObject? set, JsonArray? remove)
+    /// <summary>The call's project and record file, and the load order's records when one is set — what a refusal names.</summary>
+    private sealed record Context(string PluginDir, string Relative, RecordIndex? Index);
+
+    public static JsonObject Edit(string pluginDir, string record, JsonObject? set, JsonArray? remove, RecordIndex? index = null)
     {
         if ((set?.Count ?? 0) + (remove?.Count ?? 0) == 0)
             // A weapon's damage is BasicStats.Damage, and set a list of path and value: the example showed `Data.Damage`, which a weapon
@@ -33,8 +37,16 @@ public static class RecordEdits
         if (LevelBounds.BothCalls(pluginDir, relative, type.Name, set, remove) is { } both) throw new HelperException("badRequest", both);
         var written = File.ReadAllText(file);
         var text = written.Replace("\r\n", "\n");
+        // YAML that does not read, refused with its line and why, as the build says it. Sent to "the line buildProject names",
+        // the model sent the same call three more times: the build had read the file once its corrections were made, and
+        // refused it on a field, naming no line (eval round 111's npc #4; 5 runs since round 95).
+        if (Unread(text) is { } broken)
+            throw new HelperException("badRequest", $"{relative}'s YAML does not read, so no field can be found in it; nothing was written — " +
+                $"{RecordLinks.YamlBreak(text, broken, type, pluginDir, relative)}. Write that right in the file with your file tools, " +
+                "then call editRecord again.");
+        var context = new Context(pluginDir, relative, index);
         var changes = found is null ? new List<string>() : [found];
-        foreach (var (path, value) in set ?? []) text = SetPath(text, type, path, value, changes);
+        foreach (var (path, value) in set ?? []) text = SetPath(text, type, path, value, changes, context);
         var setting = (set ?? []).Select(f => Placed(type, f.Key).Steps).ToList();
         foreach (var path in (remove ?? []).Select(r => r?.GetValue<string>() ?? ""))
         {
@@ -203,8 +215,12 @@ public static class RecordEdits
         return false;
     }
 
-    /// <summary>The type each step of the path holds, checked against the record's type: a field it has not is refused.</summary>
-    private static List<Type> Types(Type record, List<Step> steps, string path)
+    /// <summary>
+    /// The type each step of the path holds, checked against the record's type: a field it has not is refused. A path below a
+    /// link is refused with what <paramref name="linked"/> says of the record linked there — given the step below the link
+    /// and the link's type — where it names one.
+    /// </summary>
+    private static List<Type> Types(Type record, List<Step> steps, string path, Func<int, Type, string?>? linked = null)
     {
         var types = new List<Type>();
         var current = record;
@@ -225,8 +241,10 @@ public static class RecordEdits
             if (i > 0 && !IsPart(current) && Property(current, step.Key) is null)
                 throw new HelperException("badRequest", Items(current) is not null && !current.IsEnum
                     ? $"{path}: {where} is a list — name one of its items by its number from 0, {where}[0].{step.Key}. Nothing was written."
-                    : $"{path}: {where} is {OneValue(current)} and has no fields — set {where} itself, " +
-                      $"{{\"path\": \"{where}\", \"value\": …}}. Nothing was written.");
+                    : RecordLinks.LinkTarget(current) is not null && linked?.Invoke(i, current) is { } named
+                        ? $"{path}: {where} is a link to a record and has no fields — {named} Nothing was written."
+                        : $"{path}: {where} is {OneValue(current)} and has no fields — set {where} itself, " +
+                          $"{{\"path\": \"{where}\", \"value\": …}}. Nothing was written.");
             // A magic effect's Data, found by name, was a condition's: "move it in each item of Conditions", as the build said
             // until round 24.
             var property = Property(current, step.Key)
@@ -321,10 +339,10 @@ public static class RecordEdits
     /// merge patch does: {"BasicStats": {"Damage": 12}}, written whole, took the Iron Sword's Value and Weight with it
     /// (eval round 49's patch #1). One naming another kind of the part is written whole. A text's Value is the text.
     /// </summary>
-    private static string SetPath(string text, Type type, string path, JsonNode? value, List<string> changes)
+    private static string SetPath(string text, Type type, string path, JsonNode? value, List<string> changes, Context context)
     {
         var (steps, label) = Placed(type, path);
-        var types = Types(type, steps, label);
+        var types = Types(type, steps, label, (below, link) => Linked(text, steps, below, link, context));
         if (value is JsonValue braced && braced.TryGetValue<string>(out var bracedText) && Fielded(bracedText, types[^1], out var unescaped) is { } parsed)
         {
             value = parsed;
@@ -344,7 +362,7 @@ public static class RecordEdits
             var rest = (JsonObject)sent.DeepClone();
             foreach (var key in outside)
             {
-                text = SetPath(text, type, $"{path}.{key}", sent[key]?.DeepClone(), changes);
+                text = SetPath(text, type, $"{path}.{key}", sent[key]?.DeepClone(), changes, context);
                 rest.Remove(key);
             }
             if (rest.Count == 0) return text;
@@ -353,7 +371,7 @@ public static class RecordEdits
         if (value is JsonObject { Count: > 0 } fields && At(text, steps) is YamlMappingNode there
             && (fields["MutagenObjectType"] is not JsonValue kind || kind.GetValue<object>().ToString() == Field(there, "MutagenObjectType")))
             return fields.Where(f => f.Key != "MutagenObjectType")
-                .Aggregate(text, (merged, f) => SetPath(merged, type, $"{path}.{f.Key}", f.Value?.DeepClone(), changes));
+                .Aggregate(text, (merged, f) => SetPath(merged, type, $"{path}.{f.Key}", f.Value?.DeepClone(), changes, context));
         if (steps.Count > 1 && steps[^1] is { Key: "Value", Index: null } && Translated(types[^2]) && value is JsonValue)
             return Set(text, steps.SkipLast(1).ToList(), types.SkipLast(1).ToList(), value, label, changes);
         // A link sent with the comment a file writes after it — `013F42:Skyrim.esm # RightHand` — is the link alone: written in
@@ -829,6 +847,63 @@ public static class RecordEdits
         try { yaml.Load(new StringReader(text)); }
         catch (YamlException) { return null; }
         return yaml.Documents.Count > 0 ? yaml.Documents[0].RootNode as YamlMappingNode : null;
+    }
+
+    /// <summary>Why the text's YAML does not read, or null where it does.</summary>
+    private static YamlException? Unread(string text)
+    {
+        try { new YamlStream().Load(new StringReader(text)); return null; }
+        catch (YamlException e) { return e; }
+    }
+
+    /// <summary>
+    /// The record a link of the file names, for a path sent below it, as words that say where the field sent is set: the
+    /// project's own record by its file, another plugin's to be copied first; null where the file names none the load order
+    /// or the project has. Told only "ObjectEffect is a link to a record and has no fields — set ObjectEffect itself", the
+    /// model went on to set a magnitude on an enchanted sword it had taken for the enchantment, and answered the sword built
+    /// (eval round 111's sword+detailed #4).
+    /// </summary>
+    private static string? Linked(string text, List<Step> steps, int below, Type link, Context context)
+    {
+        if (RecordLinks.LinkTarget(link) is not { } target || At(text, steps.Take(below).ToList()) is not YamlScalarNode { Value: { Length: > 0 } held })
+            return null;
+        var where = Upto(steps, below);
+        var rest = string.Join('.', steps.Skip(below).Select(s => s.Index is { } n ? $"{s.Key}[{n}]" : s.Key));
+        var kind = RecordLinks.Kind(target);
+        var record = target.Assembly.GetType($"{target.Namespace}.{kind}");
+        // The field sent as the linked record has it: the path where it is one of its fields, else where its kind keeps that field.
+        var field = record is null ? null : InRecord(record, rest);
+        var last = steps[^1].Key;
+        var there = field is not null ? $"{field} is that record's field"
+            : record is not null && RecordFiles.WhereIn(record, last) is { } place ? $"{RecordFiles.Article(kind)}'s {last} is {place}, in that record"
+            : "its fields are that record's";
+        var project = ToolCalls.ProjectOf(context.PluginDir);
+        var own = FormKey.TryFactory(held, out _) ? default
+            : RecordFiles.FlatRecords(context.PluginDir).FirstOrDefault(f => f.Relative != context.Relative
+                && string.Equals(RecordFiles.Identity(File.ReadAllText(f.File)).EditorId, held, StringComparison.OrdinalIgnoreCase));
+        if (own != default)
+            return $"here {held}, the project's own {kind}, in {own.Relative}: {there} — set it in that file, " +
+                ToolCalls.Edit(project, own.Relative, $"{{\"path\": \"{field ?? rest}\", \"value\": …}}") + $"; or set {where} itself to another {kind}.";
+        if (context.Index is not { } index) return null;
+        var entry = FormKey.TryFactory(held, out var key) ? index.ByFormKey.GetValueOrDefault(key)
+            : index.ByEditorId.TryGetValue(held, out var byName) ? index.ByFormKey.GetValueOrDefault(byName) : null;
+        if (entry is null) return null;
+        var id = entry.EditorId ?? Session.FormKeyText(entry.FormKey);
+        return $"here {id} ({Session.FormKeyText(entry.FormKey)}), {RecordFiles.Article(kind)} of {entry.FormKey.ModKey.FileName}: {there}. " +
+            $"To change it, copy that record into the project, addPatch {{\"project\": {ToolCalls.Quoted(project)}, \"records\": [{ToolCalls.Quoted(id)}]}}, " +
+            $"or write a new {kind} from it, and set it there — {where} then names the new one; or set {where} itself to another {kind}.";
+    }
+
+    /// <summary>A path as a record type has it, its label; null where the type has no such field.</summary>
+    private static string? InRecord(Type record, string path)
+    {
+        try
+        {
+            var (steps, label) = Placed(record, path);
+            Types(record, steps, label);
+            return label;
+        }
+        catch (HelperException) { return null; }
     }
 
     private static HelperException Unreadable() => new("badRequest",

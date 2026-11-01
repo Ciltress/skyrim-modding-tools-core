@@ -2,7 +2,7 @@ import { vi, type MockInstance } from 'vitest';
 import { ToolError } from '../handlers/errors';
 import { createHandlers } from '../handlers/index';
 import type { ToolDefinition, ToolProperty } from '../types/tools';
-import { CORE_PRODUCT, SAMPLE, recordingBackend } from '../testing/fakes';
+import { CORE_PRODUCT, InMemorySkyrimBackend, SAMPLE, recordingBackend } from '../testing/fakes';
 
 /**
  * The contract every handler owes its caller, checked for every tool in the
@@ -349,5 +349,38 @@ describe('every tool takes an argument sent as text for its declared type', () =
     ] as const)('%s refuses %j, naming the argument', async (toolName, args, name) => {
         const handler = handlersFrom(recordingBackend()).find(h => h.getTools().some(t => t.name === toolName))!;
         await expect(handler.handle(toolName, args)).rejects.toThrow(new RegExp(`'${name}'`));
+    });
+});
+
+/**
+ * addPatch's note says what each copy is. Asked for a fire enchantment, a model copied EnchIronSwordFire01 — the Iron
+ * Sword of Embers, a Weapon — took it for the enchantment and answered the sword built (eval rounds 97, 108 and 111).
+ */
+describe("addPatch's note says what each copy is", () => {
+    async function note(added: { formId: string; editorId: string | null; type: string; text?: string }[]) {
+        const backend = new InMemorySkyrimBackend();
+        vi.spyOn(backend, 'addPatch').mockResolvedValue({
+            project: { project: 'FlameBlade', plugin: 'FlameBlade.esp', light: true, path: 'p', pluginFolder: 'p/plugin', created: false },
+            added: added.map(a => ({ formId: a.formId, editorId: a.editorId, type: a.type, from: 'Skyrim.esm',
+                files: [{ path: `p/plugin/Weapons/${a.editorId}.yaml`, text: a.text }] })),
+            alreadyInProject: []
+        } as any);
+        const handler = createHandlers(backend, CORE_PRODUCT).find(h => h.getTools().some(t => t.name === 'addPatch'))!;
+        const result = await handler.handle('addPatch', { project: 'FlameBlade', records: added.map(a => a.editorId ?? a.formId) });
+        return JSON.parse(result.content[0].text).note as string;
+    }
+
+    it('names an enchanted weapon as a Weapon with its enchantment, and the enchantment as the record to copy', async () => {
+        const said = await note([{ formId: '049BB8:Skyrim.esm', editorId: 'EnchIronSwordFire01', type: 'Weapon',
+            text: 'FormKey: 049BB8:Skyrim.esm\nEditorID: EnchIronSwordFire01\nObjectEffect: 049BB7:Skyrim.esm  # EnchWeaponFireDamage01\n' }]);
+        expect(said).toMatch(/^EnchIronSwordFire01 \(049BB8:Skyrim\.esm, a Weapon enchanted with EnchWeaponFireDamage01 \(049BB7:Skyrim\.esm\)\) is copied/);
+        expect(said).toContain('addPatch {"project": "FlameBlade", "records": ["EnchWeaponFireDamage01"]}');
+    });
+
+    it('names a plain copy by its type alone, and an Armor with "an"', async () => {
+        const said = await note([{ formId: '012EB7:Skyrim.esm', editorId: 'IronSword', type: 'Weapon', text: 'EditorID: IronSword\n' }]);
+        expect(said).toMatch(/^IronSword \(012EB7:Skyrim\.esm, a Weapon\) is copied/);
+        expect(said).not.toContain('An enchantment is a record of its own');
+        expect(await note([{ formId: '012E49:Skyrim.esm', editorId: 'ArmorIronCuirass', type: 'Armor' }])).toMatch(/, an Armor\)/);
     });
 });

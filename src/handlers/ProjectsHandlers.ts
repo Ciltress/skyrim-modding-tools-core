@@ -21,6 +21,21 @@ const PROJECT = {
     description: 'The project\'s name: its folder under the projects folder, and its mod name in the mod manager, e.g. "IronSwordBuff".'
 };
 
+/** "a" or "an" before a type's name: an Armor, a Weapon. */
+const article = (type: string) => (/^[AEIOU]/i.test(type) ? 'an' : 'a');
+
+/**
+ * The enchantment a copied record's text carries — its `ObjectEffect:` line, `049BB7:Skyrim.esm  # EnchWeaponFireDamage01` —
+ * as its editor ID (from the comment) with its FormID, and the reference addPatch takes for it; null without one, or
+ * without the text.
+ */
+function enchantmentIn(text: string | undefined): { named: string; id: string } | null {
+    const line = text ? /^ObjectEffect:[ \t]*([^\s#]+)(?:[ \t]+#[ \t]*(\S+))?/m.exec(text) : null;
+    if (!line) return null;
+    const [, link, editorId] = line;
+    return editorId ? { named: `${editorId} (${link})`, id: editorId } : { named: link, id: link };
+}
+
 export class ProjectsHandlers extends BaseHandler {
     protected toolSpecs(): ToolSpec[] {
         return [
@@ -130,10 +145,17 @@ export class ProjectsHandlers extends BaseHandler {
                         // file's text, it left the model making its "new" sword or note this way in four of six misses
                         // (eval round 22): first now, naming the records, as a build's warnings went first (round 21).
                         // The copy was written empty while OpenClaw gave a model no tool to delete a file (round 26): deleteRecord now.
+                        // Each copy said as what it is, an enchanted weapon or armor with its enchantment: asked for a fire
+                        // enchantment, a model copied EnchIronSwordFire01 — the Iron Sword of Embers, a Weapon — renamed it for
+                        // the enchantment and set a magnitude on it, then answered the sword built (eval rounds 97, 108 and 111's
+                        // sword+detailed).
+                        const enchanted = result.added.map(record => enchantmentIn(record.files[0]?.text));
                         const copies = [
-                            ...result.added.map(record => record.editorId ? `${record.editorId} (${record.formId})` : record.formId),
+                            ...result.added.map((record, i) => `${record.editorId ?? record.formId} (${record.editorId ? `${record.formId}, ` : ''}` +
+                                `${article(record.type)} ${record.type}${enchanted[i] ? ` enchanted with ${enchanted[i]!.named}` : ''})`),
                             ...result.alreadyInProject.map(record => record.formId)
                         ];
+                        const carried = enchanted.find(e => e !== null);
                         const one = copies.length === 1;
                         // The copy's fields changed with the edit tool, its old text from memory: 32 of the 82 such edits in runs
                         // with addPatch of eval rounds 49–57 were refused, 3 of its 42 editRecord calls — and round 57's
@@ -159,7 +181,11 @@ export class ProjectsHandlers extends BaseHandler {
                                 `${one ? 'it changes that record' : 'each changes its record'} itself, everywhere the game uses ` +
                                 `${one ? 'it' : 'them'} — a new name renames ${one ? 'it' : 'them'} everywhere. If a new record ` +
                                 `like it was meant, one call makes ${one ? 'the copy' : 'the first copy'} a new record, keeping what it holds and ` +
-                                `what was changed in it, and builds: ${renew}, with an EditorID of its own in place of ${fresh}.`,
+                                `what was changed in it, and builds: ${renew}, with an EditorID of its own in place of ${fresh}.` +
+                                (carried ? ` An enchantment is a record of its own: ${carried.named} is the ObjectEffect ` +
+                                    `${one ? 'this copy carries' : 'a copy carries'} — to change it or make one like it, copy that record, ` +
+                                    `addPatch {"project": ${JSON.stringify(result.project.project)}, "records": [${JSON.stringify(carried.id)}]}, ` +
+                                    'or write a new ObjectEffect from it.' : ''),
                             nextStep: `Change a copy's fields with editRecord, which needs no old text to match — {"record": ` +
                                 `"${example}", "set": [${field}]} — then run buildProject.`,
                             ...result

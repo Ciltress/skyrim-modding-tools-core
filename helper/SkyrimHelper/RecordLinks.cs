@@ -276,7 +276,7 @@ public static class RecordLinks
     /// give every line a `Field: value`, the model rewrote a note five times with its paragraphs still at the
     /// margin, where they end the text and are read as fields (eval round 16).
     /// </summary>
-    private static string YamlBreak(string text, YamlException e, Type type, string pluginDir, string relative)
+    internal static string YamlBreak(string text, YamlException e, Type type, string pluginDir, string relative)
     {
         var lines = text.Replace("\r\n", "\n").Split('\n');
         var at = (int)e.Start.Line;
@@ -379,6 +379,18 @@ public static class RecordLinks
             return $"the YAML breaks at {where}: it is indented below line {above + 1}, `{lines[above].Trim()}`, which has a value of its " +
                 "own, so no line goes below it. A field beside it is written as deep as it is; a part's fields go below a line of the " +
                 "part's name alone, `Part:`";
+        // Indented below a part written whole in braces on its line, `Level: {MutagenObjectType: PcLevelMult, LevelMult: 1}`, the
+        // level's bounds below it: told to indent a field's own fields, which they were, the model sent editRecord the same call
+        // three times (eval round 111's npc #4).
+        if (at >= 2 && at <= lines.Length && Depth(lines[at - 1]) > 0
+            && Array.FindLastIndex(lines, at - 2, line => line.Trim().Length > 0 && Depth(line) < Depth(lines[at - 1])) is var braced and >= 0
+            && Regex.Match(lines[braced], @"^[ \t]*(?:- +)?(?<key>[A-Za-z0-9_]+):[ \t]*\{.*\}[ \t]*(?:#.*)?$") is { Success: true } whole)
+        {
+            var key = whole.Groups["key"].Value;
+            return $"the YAML breaks at {where}: it is indented below line {braced + 1}, `{lines[braced].Trim()}`, a part written whole in its " +
+                $"braces on that line, so no line goes below it. A field beside {key} is written as deep as `{key}:` is; a field of {key} goes " +
+                $"inside its braces, or `{key}:` is written alone with its fields below it, two spaces deeper";
+        }
         return $"the YAML breaks at {where}: {reason} Indent a field's own fields by two spaces below it, and give every other line a `Field: value`";
     }
 

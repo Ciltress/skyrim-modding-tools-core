@@ -59,8 +59,10 @@ public sealed class Session : IDisposable
         "readArchive" => Archives.Read(p),
         "extractArchive" => Archives.Extract(p),
         "pluginHeaders" => PluginHeaders(p),
-        "checkRecords" => CheckRecords(Required(p, "projectPluginDir")),
-        "editRecord" => RecordEdits.Edit(Required(p, "projectPluginDir"), Required(p, "record"), p["set"] as JsonObject, p["remove"] as JsonArray),
+        "checkRecords" => await CheckRecords(Required(p, "projectPluginDir")),
+        // With the load order's records where one is set: a path below a link is refused naming the record linked there.
+        "editRecord" => RecordEdits.Edit(Required(p, "projectPluginDir"), Required(p, "record"), p["set"] as JsonObject, p["remove"] as JsonArray,
+            indexing is null ? null : Index),
         "sksePlugins" => SksePlugins.Read(p),
         "bsaFiles" => BsaFiles.Find(p),
         _ => throw new HelperException("unknownMethod", $"No method '{method}'.")
@@ -397,7 +399,7 @@ public sealed class Session : IDisposable
     /// Everything a build would refuse in the record files, said before the server gives new records
     /// their FormIDs — so every file is still under the name its author wrote it under.
     /// </summary>
-    private JsonNode CheckRecords(string dir)
+    private async Task<JsonNode> CheckRecords(string dir)
     {
         // A fix with one right answer is written first, and named in a refusal that comes after it too: the model
         // knows the file as it wrote it, and an edit of the line taken out finds nothing.
@@ -415,6 +417,8 @@ public sealed class Session : IDisposable
         // An editor ID first: a copied FormKey is taken out by the EditorID beside it.
         corrected.AddRange(RecordFiles.CleanEditorIds(dir, Index));
         corrected.AddRange(RecordFiles.DropCopiedFormKeys(dir, Index));
+        // And an unchanged copy in a file named for none of it: the new record its file names.
+        corrected.AddRange(await UnchangedCopiesMadeNew(dir));
         corrected.AddRange(RecordFiles.DropSharedFormKeys(dir, release));
         corrected.AddRange(RecordFiles.DropEmptyStamps(dir));
         // A line written twice first: the YAML reader the moves use refuses the file until it is gone.
@@ -593,25 +597,15 @@ public sealed class Session : IDisposable
     private async Task<List<string>> OverrideNotes(string dir, ModKey own)
     {
         var records = RecordFiles.FlatRecords(dir).Select(f => (f.Relative, f.Type, Text: File.ReadAllText(f.File))).ToList();
-        var copies = records.Where(f => RecordFiles.Identity(f.Text).FormKey is { } key && key.ModKey != own).ToList();
         // The project's new records: told the three ways out, the model answered with its new sword and its new note built and
         // the copy each was made from left beside it (eval round 46's sword #4 and note+detailed #2) — named, the copy is left over.
         var made = records.Select(f => (f.Type, Identity: RecordFiles.Identity(f.Text)))
             .Where(f => f.Identity.EditorId is not null && (f.Identity.FormKey is not { } key || key.ModKey == own))
             .Select(f => (f.Type, Id: f.Identity.EditorId!)).ToList();
-        var contexts = copies.Select(c => Contexts(RecordFiles.Identity(c.Text).FormKey!.Value).FirstOrDefault(x => x.ModKey != own))
-            .OfType<IModContext<ISkyrimMod, ISkyrimModGetter, IMajorRecord, IMajorRecordGetter>>().ToList();
-        if (contexts.Count == 0) return [];
-        string Bare(string text) => string.Join('\n', LinkComment.Replace(Lf(text), "").Split('\n').Select(l => l.TrimEnd())).TrimEnd();
-        var asLoaded = (await Render(contexts, own))
-            .Where(r => RecordFiles.Identity(r.Text).FormKey is not null)
-            .ToDictionary(r => RecordFiles.Identity(r.Text).FormKey!.Value, r => Bare(r.Text));
         var notes = new List<string>();
-        foreach (var (relative, type, text) in copies)
+        foreach (var (relative, type, text, key, unchanged) in await Copies(records, own))
         {
-            var key = RecordFiles.Identity(text).FormKey!.Value;
-            if (!asLoaded.TryGetValue(key, out var loaded)) continue;
-            if (loaded != Bare(text))
+            if (!unchanged)
             {
                 if (type == typeof(ObjectEffect) && ProjectNotes.UnusedEnchantment(dir, records, relative, text, Index, own) is { } unused)
                     notes.Add(unused);
@@ -627,6 +621,70 @@ public sealed class Session : IDisposable
                     $"written into this file; a copy that is neither is deleted: {ToolCalls.Delete(dir, relative)}");
         }
         return notes;
+    }
+
+    /// <summary>A record file's text as addPatch's is compared with: line ends and link comments aside.</summary>
+    private static string Bare(string text) => string.Join('\n', LinkComment.Replace(Lf(text), "").Split('\n').Select(l => l.TrimEnd())).TrimEnd();
+
+    /// <summary>
+    /// The project's copies of another plugin's records — files whose FormKey is another plugin's — each with whether it reads,
+    /// its link comments aside, as addPatch writes the record from the load order without the project. A copy of a record the
+    /// load order has not is left out.
+    /// </summary>
+    private async Task<List<(string Relative, Type Type, string Text, FormKey Key, bool Unchanged)>> Copies(
+        IReadOnlyList<(string Relative, Type Type, string Text)> records, ModKey own)
+    {
+        var copies = records.Where(f => RecordFiles.Identity(f.Text).FormKey is { } key && key.ModKey != own).ToList();
+        var contexts = copies.Select(c => Contexts(RecordFiles.Identity(c.Text).FormKey!.Value).FirstOrDefault(x => x.ModKey != own))
+            .OfType<IModContext<ISkyrimMod, ISkyrimModGetter, IMajorRecord, IMajorRecordGetter>>().ToList();
+        if (contexts.Count == 0) return [];
+        var asLoaded = (await Render(contexts, own))
+            .Where(r => RecordFiles.Identity(r.Text).FormKey is not null)
+            .ToDictionary(r => RecordFiles.Identity(r.Text).FormKey!.Value, r => Bare(r.Text));
+        return copies.Select(c => (c.Relative, c.Type, c.Text, Key: RecordFiles.Identity(c.Text).FormKey!.Value))
+            .Where(c => asLoaded.ContainsKey(c.Key))
+            .Select(c => (c.Relative, c.Type, c.Text, c.Key, asLoaded[c.Key] == Bare(c.Text))).ToList();
+    }
+
+    /// <summary>
+    /// An unchanged copy of another plugin's record in a file named for none of it — neither its EditorID nor addPatch's
+    /// `EditorID - FormID_plugin.yaml` — made the new record its file names: the FormKey line out, the file's name its
+    /// EditorID. Maven's note, copied whole into Books/MavenWarning.yaml, was built as an override that changes nothing, and
+    /// the model answered that warning as "expected" (eval round 111's note #2; round 97's sword+detailed #2). An override
+    /// that changes nothing only undoes what mods loaded before it change, so such a file is never meant as one; a name
+    /// the load order or the project has already, or none to make of the file's, leaves it to the build's warning.
+    /// </summary>
+    private async Task<List<(string File, string Change)>> UnchangedCopiesMadeNew(string dir)
+    {
+        if (RecordFiles.OwnPlugin(dir) is not { } own) return [];
+        var records = RecordFiles.FlatRecords(dir).Select(f => (f.Relative, f.Type, Text: File.ReadAllText(f.File))).ToList();
+        var taken = records.Select(r => RecordFiles.Identity(r.Text).EditorId).OfType<string>().ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var changes = new List<(string File, string Change)>();
+        foreach (var (relative, _, _, key, unchanged) in await Copies(records, own))
+        {
+            if (!unchanged || Path.GetFileName(relative).EndsWith($"{key.ID:X6}_{key.ModKey.FileName}.yaml", StringComparison.OrdinalIgnoreCase)) continue;
+            var id = Regex.Replace(Path.GetFileNameWithoutExtension(relative), "[^A-Za-z0-9_]", "");
+            var theirs = Index.ByFormKey.TryGetValue(key, out var entry) && entry.EditorId is { } editorId ? editorId : FormKeyText(key);
+            if (id.Length == 0 || char.IsDigit(id[0]) || id.Equals(theirs, StringComparison.OrdinalIgnoreCase) || taken.Contains(id)
+                || Index.ByEditorId.ContainsKey(id)) continue;
+            var file = Path.Combine(dir, relative);
+            var written = File.ReadAllText(file);
+            var lines = Lf(written).Split('\n').ToList();
+            var formKeyAt = lines.FindIndex(l => l.StartsWith("FormKey:", StringComparison.Ordinal));
+            if (formKeyAt < 0) continue;
+            var formKeyLine = lines[formKeyAt].Trim();
+            lines.RemoveAt(formKeyAt);
+            var editorIdAt = lines.FindIndex(l => l.StartsWith("EditorID:", StringComparison.Ordinal));
+            if (editorIdAt >= 0) lines[editorIdAt] = $"EditorID: {id}";
+            else lines.Insert(formKeyAt, $"EditorID: {id}");
+            var text = string.Join('\n', lines);
+            File.WriteAllText(file, written.Contains("\r\n") ? text.Replace("\n", "\r\n") : text);
+            taken.Add(id);
+            changes.Add((relative, $"made a new record, {id}, of a copy of {theirs} of {key.ModKey.FileName} that changed nothing in it: removed " +
+                $"`{formKeyLine}` and wrote `EditorID: {id}`, its file's name — an override that changes nothing only undoes what mods " +
+                $"loaded before it change. A change to {theirs} itself is a copy with its FormKey line and the change written in"));
+        }
+        return changes;
     }
 
     private async Task<JsonNode> Serialize(JsonObject p)
