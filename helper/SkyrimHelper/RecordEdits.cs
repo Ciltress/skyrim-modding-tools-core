@@ -115,8 +115,14 @@ public static class RecordEdits
         {
             // `BasicStats/Damage`, `BasicStats > Damage`: the path its separators make, where they make one (refusal probes, E14).
             var dotted = Regex.Replace(path.Trim(), @"\s*(?:[/\\>:]+|\s)\s*", ".");
+            // A field's name in quotes, `\"MutagenObjectType\"`: a text's fields sent with their quotes escaped (eval round 110's npc #4).
+            var unquoted = Regex.Replace(path.Trim(), @"\\*[""']", "");
+            static bool IsPath(string p) => p.Split('.').All(s => Segment.IsMatch(s));
             throw new HelperException("badRequest", $"'{path}' is no field path: fields joined by dots, an item of a list by its " +
-                (dotted != path.Trim() && dotted.Split('.').All(s => Segment.IsMatch(s))
+                (unquoted != path.Trim() && IsPath(unquoted)
+                    ? $"number from 0, and a field's name has no quotes — this one is {unquoted}. A value's fields sent as a text with " +
+                      $"its quotes escaped, `\\\"`, keep them in their names: send them as a mapping, {{\"{unquoted.Split('.')[^1]}\": …}}, not a text."
+                    : dotted != path.Trim() && IsPath(dotted)
                     ? $"number from 0 — this one is {dotted}."
                     : "number from 0 — BasicStats.Damage, Name, Effects[0].Data.Magnitude."));
         }
@@ -319,10 +325,10 @@ public static class RecordEdits
     {
         var (steps, label) = Placed(type, path);
         var types = Types(type, steps, label);
-        if (value is JsonValue braced && braced.TryGetValue<string>(out var bracedText) && Fielded(bracedText, types[^1]) is { } parsed)
+        if (value is JsonValue braced && braced.TryGetValue<string>(out var bracedText) && Fielded(bracedText, types[^1], out var unescaped) is { } parsed)
         {
             value = parsed;
-            label += " (fields, sent as a text)";
+            label += unescaped ? " (fields, sent as a text with its quotes escaped, `\\\"`, read as quotes)" : " (fields, sent as a text)";
         }
         // A text takes words: sent the number 150 for Name.Value, meaning the sword's price, the tool wrote `Name: 150` over the
         // whole Name, the build refused it, and the model answered that a weapon has no field for its price (eval round 80's
@@ -476,10 +482,16 @@ public static class RecordEdits
     /// Those two fields count also as the lines a file writes them in, a line end sent as `\n`: the model sent a spell's Name
     /// as `TargetLanguage: English\nValue: Storm Bolt`, the spell was called that in game, and its build answered success
     /// (eval round 100's spell+detailed #2).
+    ///
+    /// A JSON text escaped once more, every quote written `\"`, is read with its quotes, <paramref name="unescaped"/>: sent so
+    /// for an NPC's level, `{\"MutagenObjectType\": \"PcLevelMult\", \"LevelMult\": 1}` was read as fields named with the
+    /// quotes, refused as no field path, and the model lost four calls (eval round 110's npc #4).
     /// </summary>
-    private static JsonObject? Fielded(string said, Type type)
+    private static JsonObject? Fielded(string said, Type type, out bool unescaped)
     {
         var written = said.Trim();
+        unescaped = written.StartsWith('{') && written.Contains("\\\"") && !Regex.IsMatch(written, @"(?<!\\)""");
+        if (unescaped) written = Regex.Replace(written, @"\\([""\\])", "$1");
         var lines = Translated(type) && Regex.IsMatch(written, @"^(?:TargetLanguage|Value):");
         if (lines) written = Regex.Replace(written, @"\\r\\n|\\n", "\n");
         // A text lists its languages, so it is read as a text before anything else.

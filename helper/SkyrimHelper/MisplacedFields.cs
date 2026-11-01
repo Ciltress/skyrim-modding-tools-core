@@ -297,6 +297,97 @@ public static class MisplacedFields
         return changes;
     }
 
+    /// <summary>
+    /// A part's `MutagenObjectType:` written below its other fields, moved up as its first: the reader takes a part of several
+    /// kinds by its first field. An NPC's level written with `LevelMult: 1` above its kind was refused "cannot be read as a
+    /// record: Object reference not set to an instance of an object", which names nothing, and the model wrote the file four
+    /// times before it built (eval round 110's npc #5); editRecord writes the kind first since round 109. A kind on a line of
+    /// its own, or in braces on one line; any other is left to the refusal.
+    /// </summary>
+    public static List<(string File, string Change)> KindFirst(string pluginDir)
+    {
+        var changes = new List<(string File, string Change)>();
+        foreach (var (file, relative, _) in RecordFiles.FlatRecords(pluginDir))
+        {
+            var written = File.ReadAllText(file);
+            var text = written.Replace("\r\n", "\n");
+            for (var moves = 0; moves < 16 && Root(text) is { } root && KindLast(root, "", text.Split('\n')) is { } move; moves++)
+            {
+                text = move.Text;
+                changes.Add((relative, move.Change));
+            }
+            if (text != written.Replace("\r\n", "\n")) Save(file, text);
+        }
+        return changes;
+    }
+
+    /// <summary>The first part at or below <paramref name="node"/> whose kind is not its first field, written with it first; or null.</summary>
+    private static Moved? KindLast(YamlNode node, string path, string[] lines)
+    {
+        switch (node)
+        {
+            case YamlMappingNode mapping:
+                var keys = mapping.Children.Keys.ToList();
+                if (keys.FindIndex(k => k is YamlScalarNode { Value: "MutagenObjectType" }) is var at and > 0
+                    && KindFirstIn(mapping, keys[0], keys[at], path, lines) is { } moved)
+                    return moved;
+                foreach (var (key, value) in mapping.Children)
+                    if (key is YamlScalarNode { Value: { } name } && KindLast(value, path.Length == 0 ? name : $"{path}.{name}", lines) is { } inner)
+                        return inner;
+                return null;
+            case YamlSequenceNode list:
+                for (var i = 0; i < list.Children.Count; i++)
+                    if (KindLast(list.Children[i], $"{path}[{i}]", lines) is { } inner) return inner;
+                return null;
+            default:
+                return null;
+        }
+    }
+
+    /// <summary><paramref name="mapping"/>'s kind written as its first field, above <paramref name="first"/>; null where it cannot be moved so.</summary>
+    private static Moved? KindFirstIn(YamlMappingNode mapping, YamlNode first, YamlNode kindKey, string path, string[] lines)
+    {
+        if (mapping.Children[kindKey] is not YamlScalarNode { Value: { Length: > 0 } kind } value || value.End.Line != kindKey.Start.Line) return null;
+        var part = path.Length == 0 ? "the record's" : $"{path}'s";
+        string? mended;
+        string change;
+        if (mapping.Style == MappingStyle.Flow)
+        {
+            // Fields of one line, each a plain value: the closing brace is the first after the last value.
+            if (mapping.Start.Line != mapping.End.Line || mapping.Children.Values.Any(v => v is not YamlScalarNode)) return null;
+            var row = (int)mapping.Start.Line - 1;
+            var line = lines[row];
+            var from = (int)mapping.Start.Column - 1;
+            var close = line.IndexOf('}', (int)mapping.Children.Values.Last().End.Column - 1);
+            if (line[from] != '{' || close < 0) return null;
+            var to = close + 1;
+            var braced = line[from..to];
+            var pairs = mapping.Children.Keys.OrderBy(k => k == kindKey ? 0 : 1)
+                .Select(k => line[((int)k.Start.Column - 1)..((int)mapping.Children[k].End.Column - 1)]);
+            var reordered = "{" + string.Join(", ", pairs) + "}";
+            var all = (string[])lines.Clone();
+            all[row] = line[..from] + reordered + line[to..];
+            mended = string.Join('\n', all);
+            change = $"wrote line {row + 1}, {part} `{braced}`, as `{reordered}`";
+        }
+        else
+        {
+            var (kindRow, firstRow, column) = ((int)kindKey.Start.Line - 1, (int)first.Start.Line - 1, (int)first.Start.Column - 1);
+            if ((int)kindKey.Start.Column - 1 != column || lines[kindRow][..column].Trim().Length > 0) return null;
+            var all = lines.ToList();
+            var kindLine = all[kindRow][column..];
+            var firstLine = all[firstRow];
+            all.RemoveAt(kindRow);
+            all[firstRow] = new string(' ', column) + firstLine[column..];
+            all.Insert(firstRow, firstLine[..column] + kindLine);
+            mended = string.Join('\n', all);
+            change = $"moved `MutagenObjectType: {kind}` (line {kindRow + 1}) up to line {firstRow + 1}, as {part} first field, " +
+                $"above `{firstLine[column..].Trim()}`";
+        }
+        return Root(mended) is null ? null
+            : new Moved(mended, $"{change} — a part of several kinds is read by its first field, MutagenObjectType, which names its kind");
+    }
+
     /// <summary>Whether two values written are the same: 40 and 40.0 are.</summary>
     internal static bool Same(string a, string b) =>
         a == b || double.TryParse(a, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var x)
