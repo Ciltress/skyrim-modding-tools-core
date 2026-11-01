@@ -411,10 +411,38 @@ public static class RecordEdits
         var said = one.TryGetValue<string>(out var text) ? text : one.ToJsonString();
         if (field.IsEnum || field.IsPrimitive && field != typeof(char))
             return RecordLinks.Unfit(field, said) is { } unfit ? $"{said} — {unfit}" : null;
-        if (typeof(Loqui.ILoquiObject).IsAssignableFrom(field) && !Translated(field) && !one.TryGetValue<string>(out _))
-            return $"{path} is a part with fields of its own, and {said} is one value — set the field meant below it, as " +
-                $"{path}.{Fields(field).FirstOrDefault() ?? "…"}";
-        return null;
+        if (!typeof(Loqui.ILoquiObject).IsAssignableFrom(field) || Translated(field)) return null;
+        // A text, the fields as a file writes them: set as `"LevelMult: 1"`, an NPC's level was written as that text, and the
+        // build after it refused it (eval round 109's npc+detailed #4). A text in braces is read as the fields before this.
+        if (text is not null)
+            return $"{path} is a part with fields of its own, and \"{said}\" is a text — send its fields as a mapping" +
+                (MappingOf(said, field) is { } meant ? $", {{\"path\": \"{path}\", \"value\": {meant}}}"
+                    : field.Name == "ANpcLevel" ? $"; {NpcLevel}"
+                    : $", {{\"path\": \"{path}\", \"value\": {{\"{Fields(field).FirstOrDefault() ?? "…"}\": …}}}}");
+        return $"{path} is a part with fields of its own, and {said} is one value — set the field meant below it, as " +
+            $"{path}.{Fields(field).FirstOrDefault() ?? "…"}";
+    }
+
+    /// <summary>
+    /// A text that reads as fields of a part, a line end written or sent as `\n`, as the JSON mapping to send — its kind first, named
+    /// where one kind alone has them; null for a text that reads as no mapping, or names a field the part has not.
+    /// </summary>
+    private static string? MappingOf(string said, Type part)
+    {
+        var yaml = new YamlStream();
+        try
+        {
+            yaml.Load(new StringReader(Regex.Replace(said.Trim(), @"\\r\\n|\\n", "\n")));
+            if (yaml.Documents.Count == 0 || yaml.Documents[0].RootNode is not YamlMappingNode mapping) return null;
+            var fields = (JsonObject)FromYaml(mapping)!;
+            var keys = fields.Select(f => f.Key).Where(k => k != "MutagenObjectType").ToList();
+            if (keys.Count == 0 || keys.Any(k => Property(part, k) is null)) return null;
+            if (part.IsAbstract && !fields.ContainsKey("MutagenObjectType")
+                && Kinds(part).Where(k => keys.All(key => k.GetProperty(key, Public) is not null)).ToList() is [var kind])
+                fields["MutagenObjectType"] = kind.Name;
+            return new JsonObject(KindFirst(fields).Select(f => KeyValuePair.Create(f.Key, f.Value?.DeepClone()))).ToJsonString();
+        }
+        catch (Exception e) when (e is YamlException or ArgumentException or InvalidCastException) { return null; }
     }
 
     /// <summary>
@@ -570,6 +598,14 @@ public static class RecordEdits
                 indent = Column(item) + 2;
                 continue;
             }
+            // A part written empty — `Level:`, nothing below it — takes the fields set below it, written there whole: refused as
+            // "written as one value", the model set the level whole with its kind last, which the reader could not read (eval
+            // round 109's npc+detailed #1).
+            if (!last && child is YamlScalarNode hollow && Empty(hollow) && !steps.Skip(i + 1).Any(s => s.Index is not null))
+            {
+                changes.Add($"set {path}: {Shown(value)}, below {Upto(steps, i + 1)}, which was empty");
+                return ReplaceField(text, key, child, Render(step.Key, Nest(steps.Skip(i).ToList(), types.Skip(i).ToList(), value), Column(key)));
+            }
             if (!last) { node = child; continue; }
             // A text — Name, Description — takes its words: written into its Value.
             if (Translated(types[i]) && value is JsonValue words && words.TryGetValue<string>(out var said))
@@ -716,7 +752,12 @@ public static class RecordEdits
         return string.Join('\n', all);
     }
 
-    /// <summary>A field written as Spriggit writes one: a value on its line, fields two spaces in, a list's items at the key's column.</summary>
+    /// <summary>
+    /// A field written as Spriggit writes one: a value on its line, fields two spaces in, a list's items at the key's column. A
+    /// part's `MutagenObjectType:` is its first line, in whatever order its fields were sent: the reader takes the kind from the
+    /// first line, and a level sent as {"LevelMult": 1, "MutagenObjectType": "PcLevelMult"}, written so, could not be read —
+    /// "Object reference not set to an instance of an object" (eval round 109's npc+detailed #1).
+    /// </summary>
     private static List<string> Render(string key, JsonNode? value, int column)
     {
         var pad = new string(' ', column);
@@ -726,7 +767,7 @@ public static class RecordEdits
             case JsonObject fields when fields.Count == 0:
                 return [$"{head} {{}}"];
             case JsonObject fields:
-                return [head, .. fields.SelectMany(f => Render(f.Key, f.Value, column + 2))];
+                return [head, .. KindFirst(fields).SelectMany(f => Render(f.Key, f.Value, column + 2))];
             case JsonArray items when items.Count == 0:
                 return [$"{head} []"];
             case JsonArray items:
@@ -735,7 +776,7 @@ public static class RecordEdits
                 {
                     if (item is JsonObject fields && fields.Count > 0)
                     {
-                        var inner = fields.SelectMany(f => Render(f.Key, f.Value, column + 2)).ToList();
+                        var inner = KindFirst(fields).SelectMany(f => Render(f.Key, f.Value, column + 2)).ToList();
                         inner[0] = pad + "- " + inner[0].TrimStart();
                         lines.AddRange(inner);
                     }
@@ -746,6 +787,9 @@ public static class RecordEdits
                 return [$"{head} {Scalar(value, column + 2)}"];
         }
     }
+
+    private static IEnumerable<KeyValuePair<string, JsonNode?>> KindFirst(JsonObject fields) =>
+        fields.OrderBy(f => f.Key == "MutagenObjectType" ? 0 : 1);
 
     /// <summary>A value on its line: plain where YAML reads it as written, quoted where it would not, a text of several lines as a block.</summary>
     private static string Scalar(JsonNode? value, int column)

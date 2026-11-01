@@ -1965,6 +1965,10 @@ public static class RecordFiles
     /// fixed at 0, which bounds do not bound. 25 NPC files of eval rounds 87–108 were first written so; warned of the fixed level,
     /// two runs made both of the warning's calls, the level and the bounds removed (rounds 106's and 108's npc+detailed #2). A
     /// level written beside the bounds keeps the warning (LevelBounds); an NPC with a template, which may give its level, is left.
+    ///
+    /// An empty `Level:` beside the bounds, nothing below it, is no level either, and the level is written in its place: the
+    /// model wrote the bounds below `Level:`, the build moved them out beside it, and refused the empty Level; it took seven
+    /// calls on the level to build (eval round 109's npc+detailed #1, round 104's #3).
     /// </summary>
     public static List<(string File, string Change)> LevelForBounds(string pluginDir)
     {
@@ -1975,21 +1979,35 @@ public static class RecordFiles
             if (type != typeof(Npc)) continue;
             var text = File.ReadAllText(file);
             if (Identity(text).FormKey is { } key && key.ModKey != own) continue;
-            if (AnyLevelLine.IsMatch(text) || TemplateLink.IsMatch(text)) continue;
+            if (TemplateLink.IsMatch(text)) continue;
             var lines = text.Split('\n').ToList();
             var bounds = ValueFields(lines.ToArray(), type)
                 .Where(f => f.PartKey == "Configuration" && f.Key is "CalcMinLevel" or "CalcMaxLevel").ToList();
             if (bounds.Count == 0 || bounds.All(f => short.TryParse(f.Value, NumberStyles.None, CultureInfo.InvariantCulture, out var n) && n == 0)) continue;
             var first = bounds.MinBy(f => f.Line);
             var indent = lines[first.Line][..(lines[first.Line].Length - lines[first.Line].TrimStart(' ', '\t').Length)];
-            var eol = lines[first.Line].EndsWith('\r') ? "\r" : "";
             const string follows = "{MutagenObjectType: PcLevelMult, LevelMult: 1}";
-            lines.Insert(first.Line, $"{indent}Level: {follows}{eol}");
+            var levels = lines.Select((line, at) => (Line: line, At: at)).Where(l => AnyLevelLine.IsMatch(l.Line)).ToList();
+            string where;
+            if (levels.Count == 0)
+            {
+                lines.Insert(first.Line, $"{indent}Level: {follows}{(lines[first.Line].EndsWith('\r') ? "\r" : "")}");
+                where = $"as line {first.Line + 1}, above Configuration's `{first.Key}: {first.Value}` — {Identity(text).EditorId ?? "the NPC"} " +
+                    "had level bounds and no Level, a level fixed at 0 that they do not bound";
+            }
+            else if (levels is [var level] && EmptyLevelLine.Match(level.Line) is { Success: true } empty && empty.Groups["indent"].Value == indent
+                && lines.Skip(level.At + 1).FirstOrDefault(l => l.Trim().Length > 0) is var next
+                && (next is null || next.Length - next.TrimStart(' ', '\t').Length <= indent.Length))
+            {
+                lines[level.At] = $"{indent}Level: {follows}{(level.Line.EndsWith('\r') ? "\r" : "")}";
+                where = $"in line {level.At + 1}, `Level:` with nothing below it — {Identity(text).EditorId ?? "the NPC"} had level bounds, " +
+                    $"Configuration's `{first.Key}: {first.Value}`, and an empty Level, which is no level";
+            }
+            else continue;
             File.WriteAllText(file, string.Join('\n', lines));
-            changes.Add((relative, $"wrote `Level: {follows}` as line {first.Line + 1}, above Configuration's `{first.Key}: {first.Value}` — " +
-                $"{Identity(text).EditorId ?? "the NPC"} had level bounds and no Level, a level fixed at 0 that they do not bound; they " +
-                "bound a level that follows the player's, as this one does between them. A fixed level is " +
-                "`Level: {MutagenObjectType: NpcLevel, Level: 10}`, with no bounds"));
+            changes.Add((relative, $"wrote `Level: {follows}` {where}; they bound a level that " +
+                "follows the player's, as this one does between them. A fixed level is `Level: {MutagenObjectType: NpcLevel, Level: 10}`, " +
+                "with no bounds"));
         }
         return changes;
     }
