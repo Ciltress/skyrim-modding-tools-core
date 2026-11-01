@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Mutagen.Bethesda.Plugins;
+using Mutagen.Bethesda.Plugins.Cache;
 using Mutagen.Bethesda.Skyrim;
 using Mutagen.Bethesda.Strings;
 using YamlDotNet.Core;
@@ -40,10 +41,11 @@ public static class RecordLinks
     /// holds each file with them written in, for the reader's copy. The project's files keep the editor IDs: written
     /// into them as FormIDs, the model's next edits of those lines found nothing, 12 times in eval rounds 40–47 — Storm Bolt's
     /// `MenuDisplayObject: MAGINVShockSpellArt` in seven. A link to the load order keeps to its pin (LinkPins).
-    /// Throws when a link names no record of a type its field takes.
+    /// Throws when a link names no record of a type its field takes. <paramref name="lookup"/> reads the load order's records
+    /// a refusal names the lines of (LikeWeapon).
     /// </summary>
     public static JsonArray Resolve(string pluginDir, RecordIndex index, IReadOnlyDictionary<string, FormKey> pins,
-        out List<(string Relative, string Text)> rewrites)
+        out List<(string Relative, string Text)> rewrites, ILinkCache? lookup = null)
     {
         var (own, unnamed) = OwnRecords(pluginDir);
         var ownPlugin = RecordFiles.OwnPlugin(pluginDir);
@@ -77,6 +79,9 @@ public static class RecordLinks
                 if (RecordFiles.Uncarried(type, text, index) is { } uncarried) problems.Add($"{relative}: {uncarried}");
 
             var replacements = new List<Replacement>();
+            // The weapon most like this file's, looked for once a file, and its keywords' call given once.
+            (string EditorId, List<string> Keywords)? like = null;
+            var (likeLooked, likeGiven) = (false, false);
             // An enchantment's base named as the magic effect it casts, the line beside its Effects: offered another enchantment
             // to name, the model's went round its files until the turns ran out, naming the game's base on the last (eval round
             // 95's sword #1). A new enchantment does without one. Named by its FormID, it was told only to write the one meant,
@@ -179,6 +184,24 @@ public static class RecordLinks
                 }
                 if (found is null)
                 {
+                    // A weapon's keyword: the keywords of the weapon most like it, whole. Offered the closest names, the model
+                    // took MagicFortifyOneHanded, a magic effect's keyword, for its sword's `OneHanded` (eval round 106's sword #4).
+                    if (type == typeof(Weapon) && wanted == "Keyword" && field.StartsWith("Keywords[", StringComparison.Ordinal) && lookup is not null)
+                    {
+                        if (!likeLooked) (like, likeLooked) = (LikeWeapon(root, own, index, lookup, ownPlugin), true);
+                        if (like is { } weapon)
+                        {
+                            var keywords = weapon.Keywords.Concat(KnownKeywords(root, own, index)).Distinct(StringComparer.OrdinalIgnoreCase);
+                            problems.Add($"{relative}: {field} names {editorId}, and no record has that editor ID — " + (likeGiven
+                                ? "the call above writes the weapon's keywords"
+                                : $"a weapon carries the keywords of its kind: {weapon.EditorId}, the load order's weapon most like this " +
+                                  $"one, carries {string.Join(", ", weapon.Keywords)}. One call writes them, with this weapon's own the load " +
+                                  "order has, and builds again: " + ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative,
+                                      $"{{\"path\": \"Keywords\", \"value\": [{string.Join(", ", keywords.Select(ToolCalls.Quoted))}]}}", build: true)));
+                            likeGiven = true;
+                            return;
+                        }
+                    }
                     var near = Near(editorId, takes, own, index);
                     // A record of the project written without an EditorID line has no name a link can use (eval round 11).
                     var nameless = unnamed.Where(u => takes.IsAssignableFrom(u.Type)).Select(u => u.Relative).ToList();
@@ -858,6 +881,51 @@ public static class RecordLinks
         }
         return (own, unnamed);
     }
+
+    /// <summary>
+    /// The load order's weapon most like a weapon file, and its keywords' editor IDs: a plain one — no template, no enchantment —
+    /// of the file's kind, its AnimationType, then the one sharing the most links with the file — the sounds, impact sets and
+    /// keywords a copy keeps — then load order, as ModelFiles finds a model. Null where no weapon of the load order has keywords.
+    /// </summary>
+    private static (string EditorId, List<string> Keywords)? LikeWeapon(YamlMappingNode root, Dictionary<string, Target> own,
+        RecordIndex index, ILinkCache lookup, ModKey? ownPlugin)
+    {
+        var kind = root.Children.TryGetValue(new YamlScalarNode("Data"), out var data) && data is YamlMappingNode fields
+            && fields.Children.TryGetValue(new YamlScalarNode("AnimationType"), out var animation) ? (animation as YamlScalarNode)?.Value?.Trim() : null;
+        var links = Scalars(root).Select(s => s.Value?.Trim() ?? "")
+            .Select(v => FormKey.TryFactory(v, out var key) ? key : index.ByEditorId.TryGetValue(v, out var byId) ? byId : (FormKey?)null)
+            .OfType<FormKey>().ToHashSet();
+        var weapons = new List<(int At, IWeaponGetter Weapon)>();
+        foreach (var entry in index.ByFormKey.Values.Where(e => e.Signature == "WEAP" && !e.Unplayable && e.FormKey.ModKey != ownPlugin))
+            if (lookup.TryResolve(entry.FormKey, entry.GetterType, out var record) && record is IWeaponGetter { Keywords.Count: > 0 } weapon)
+                weapons.Add((weapons.Count, weapon));
+        var plain = weapons.Where(w => w.Weapon.Template.IsNull && w.Weapon.ObjectEffect.IsNull).ToList();
+        var best = (plain.Count > 0 ? plain : weapons)
+            .OrderByDescending(w => kind is not null && string.Equals(w.Weapon.Data?.AnimationType.ToString(), kind, StringComparison.OrdinalIgnoreCase))
+            .ThenByDescending(w => w.Weapon.EnumerateFormLinks().Select(l => l.FormKey).Distinct().Count(links.Contains))
+            .ThenBy(w => w.At)
+            .Select(w => w.Weapon).FirstOrDefault();
+        if (best is null) return null;
+        var name = best.EditorID ?? Session.FormKeyText(best.FormKey);
+        return (name, best.Keywords!.Select(k => index.ByFormKey.TryGetValue(k.FormKey, out var e) && e.EditorId is { } id
+            ? id : Session.FormKeyText(k.FormKey)).ToList());
+    }
+
+    /// <summary>The keywords a weapon file lists that a record has — of the project or the load order — as written.</summary>
+    private static IEnumerable<string> KnownKeywords(YamlMappingNode root, Dictionary<string, Target> own, RecordIndex index) =>
+        root.Children.TryGetValue(new YamlScalarNode("Keywords"), out var listed) && listed is YamlSequenceNode items
+            ? items.Children.OfType<YamlScalarNode>().Select(s => s.Value?.Trim() ?? "").Where(v =>
+                own.ContainsKey(v) || index.ByEditorId.ContainsKey(v) || FormKey.TryFactory(v, out var key) && index.ByFormKey.ContainsKey(key))
+            : [];
+
+    /// <summary>Every scalar of a YAML node, its mappings' keys aside.</summary>
+    private static IEnumerable<YamlScalarNode> Scalars(YamlNode node) => node switch
+    {
+        YamlScalarNode scalar => [scalar],
+        YamlMappingNode mapping => mapping.Children.Values.SelectMany(Scalars),
+        YamlSequenceNode sequence => sequence.Children.SelectMany(Scalars),
+        _ => []
+    };
 
     /// <summary>Up to five records a link may have meant: of a type the field takes, with an editor ID close to the one written.</summary>
     private static List<string> Near(string editorId, Type takes, Dictionary<string, Target> own, RecordIndex index)

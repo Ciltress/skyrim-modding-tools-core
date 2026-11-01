@@ -1116,10 +1116,12 @@ public static class RecordFiles
     }
 
     /// <summary>
-    /// Takes out a top-level line written again the same, which the reader refuses as a field written twice: the line
+    /// Takes out a top-level field written again the same, which the reader refuses as a field written twice: the one
     /// above says it already. The model's note+detailed #5 (eval round 36) wrote VersionControl's line over the FormKey line
-    /// above it, was refused, and ran out of turns; five runs of rounds 23–33 were refused one and built again. Two
-    /// values, or a field with lines below it, are left to the refusal (Twice).
+    /// above it, was refused, and ran out of turns; five runs of rounds 23–33 were refused one and built again. So too a
+    /// field with the same lines below it: told to delete one of two `Name:` blocks, the same three lines, the model sent an
+    /// edit of those lines three times, each refused as not unique, and OpenClaw ended its turn (eval round 106's
+    /// sword+detailed #5, which failed). Two values, or two blocks that differ, are left to the refusal (Twice).
     /// </summary>
     public static List<(string File, string Change)> DropRepeatedLines(string pluginDir)
     {
@@ -1133,16 +1135,39 @@ public static class RecordFiles
             for (var i = 0; i < lines.Count; i++)
             {
                 if (TopLevelKey.Match(lines[i]) is not { Success: true } key || !known.Contains(key.Groups[1].Value)) continue;
-                var (name, line) = (key.Groups[1].Value, lines[i].Trim());
+                var name = key.Groups[1].Value;
+                var count = BlockLength(lines, i);
+                var block = string.Join('\n', lines.Skip(i).Take(count).Select(l => l.TrimEnd()));
                 // Numbered as the file was written: the model knows it so.
-                if (seen.TryAdd(name, (i + dropped + 1, line)) || line.EndsWith(':') || seen[name].Text != line) continue;
-                changes.Add((relative, $"removed line {i + dropped + 1}, `{line}` — line {seen[name].Line} says the same, and a record has each field once"));
-                lines.RemoveAt(i--);
-                dropped++;
+                if (seen.TryAdd(name, (i + dropped + 1, block)) || seen[name].Text != block) continue;
+                var (at, first) = (i + dropped + 1, seen[name].Line);
+                changes.Add((relative, count == 1
+                    ? $"removed line {at}, `{lines[i].Trim()}` — line {first} says the same, and a record has each field once"
+                    : $"removed lines {at}–{at + count - 1}, `{name}:` and the {count - 1} line{(count == 2 ? "" : "s")} below it — lines " +
+                      $"{first}–{first + count - 1} say the same, and a record has each field once"));
+                lines.RemoveRange(i--, count);
+                dropped += count;
             }
             if (dropped > 0) File.WriteAllText(file, string.Join('\n', lines));
         }
         return changes;
+    }
+
+    /// <summary>
+    /// How many lines the top-level field at <paramref name="at"/> has: its own, and those below it that are indented, listed
+    /// at the margin or comments, as YAML reads them into it — blank lines between them too, but none after the last.
+    /// </summary>
+    private static int BlockLength(List<string> lines, int at)
+    {
+        var count = 1;
+        for (var i = at + 1; i < lines.Count; i++)
+        {
+            var line = lines[i].TrimEnd('\r');
+            if (line.Trim().Length == 0) continue;
+            if (line[0] is not (' ' or '\t' or '-' or '#')) break;
+            count = i - at + 1;
+        }
+        return count;
     }
 
     /// <summary>
@@ -1596,14 +1621,30 @@ public static class RecordFiles
         return changes;
     }
 
-    /// <summary>An NPC's AIData written in braces on one line, with Aggression Average in it.</summary>
-    private static readonly Regex AverageInBraces = new(@"^(AIData:[ \t]*\{[^}#]*\bAggression:[ \t]*)Average\b", RegexOptions.IgnoreCase);
+    /// <summary>
+    /// Words written for an NPC's Aggression that mean Unaggressive, each with what it is instead: the eval's NPC runs of
+    /// rounds 87–106 wrote Average 376 times, Neutral 23 and Passive twice.
+    /// </summary>
+    private static readonly Dictionary<string, string> NotAggressive = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Average"] = "Average is a Confidence",
+        ["Neutral"] = "Neutral is a Mood",
+        ["Passive"] = "no Aggression is named Passive",
+        ["Peaceful"] = "no Aggression is named Peaceful"
+    };
+    private static readonly string NotAggressiveWords = string.Join("|", NotAggressive.Keys);
+
+    /// <summary>An NPC's AIData written in braces on one line, with one of those words for its Aggression.</summary>
+    private static readonly Regex NotAggressiveInBraces = new(
+        $@"^(AIData:[ \t]*\{{[^}}#]*\bAggression:[ \t]*)({NotAggressiveWords})\b", RegexOptions.IgnoreCase);
 
     /// <summary>
     /// Writes an NPC's `Aggression: Average` as Unaggressive: Aggression names no average — Unaggressive, Aggressive,
     /// VeryAggressive, Frenzied; Average is a Confidence. 30 of the 80 NPC runs of eval rounds 76–83 wrote it, each was refused,
     /// and each set Unaggressive in one more call — the value the official plugins' named NPCs have most often, which the
-    /// refusal names. Written in braces too, as the npcs skill's reference writes AIData.
+    /// refusal names. So too Neutral and the other words for it (NotAggressive): told Neutral is none of the four, a model
+    /// set Aggressive, which its task did not ask (eval round 106's npc+detailed #2, which failed). Written in braces too, as
+    /// the npcs skill's reference writes AIData.
     /// </summary>
     public static List<(string File, string Change)> MendAggression(string pluginDir)
     {
@@ -1613,22 +1654,23 @@ public static class RecordFiles
         {
             if (type != typeof(Npc)) continue;
             var lines = File.ReadAllText(file).Split('\n');
-            var mended = new List<int>();
-            foreach (var f in ValueFields(lines, type).Where(f => f.Held == typeof(Aggression) && f.Value.Equals("Average", StringComparison.OrdinalIgnoreCase)))
+            var mended = new List<(int Line, string Word)>();
+            foreach (var f in ValueFields(lines, type).Where(f => f.Held == typeof(Aggression) && NotAggressive.ContainsKey(f.Value)))
             {
-                lines[f.Line] = Regex.Replace(lines[f.Line], @"(\bAggression[ \t]*:[ \t]*)Average\b", "${1}Unaggressive", RegexOptions.IgnoreCase);
-                mended.Add(f.Line);
+                lines[f.Line] = Regex.Replace(lines[f.Line], $@"(\bAggression[ \t]*:[ \t]*)(?:{NotAggressiveWords})\b", "${1}Unaggressive",
+                    RegexOptions.IgnoreCase);
+                mended.Add((f.Line, f.Value));
             }
             for (var i = 0; i < lines.Length; i++)
-                if (AverageInBraces.IsMatch(lines[i]))
+                if (NotAggressiveInBraces.Match(lines[i]) is { Success: true } braced)
                 {
-                    lines[i] = AverageInBraces.Replace(lines[i], "${1}Unaggressive", 1);
-                    mended.Add(i);
+                    lines[i] = NotAggressiveInBraces.Replace(lines[i], "${1}Unaggressive", 1);
+                    mended.Add((i, braced.Groups[2].Value));
                 }
             if (mended.Count == 0) continue;
             File.WriteAllText(file, string.Join('\n', lines));
-            changes.AddRange(mended.Select(line => (relative, $"wrote line {line + 1}, AIData's `Aggression: Average` as `Aggression: Unaggressive` — " +
-                $"Aggression takes Unaggressive, Aggressive, VeryAggressive or Frenzied, and Average is a Confidence; {usual}")));
+            changes.AddRange(mended.Select(m => (relative, $"wrote line {m.Line + 1}, AIData's `Aggression: {m.Word}` as `Aggression: Unaggressive` — " +
+                $"Aggression takes Unaggressive, Aggressive, VeryAggressive or Frenzied, and {NotAggressive[m.Word]}; {usual}")));
         }
         return changes;
     }

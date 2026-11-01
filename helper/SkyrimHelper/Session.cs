@@ -433,7 +433,7 @@ public sealed class Session : IDisposable
         try
         {
             (records, leftOut) = RecordFiles.Require(dir, Index);
-            RecordLinks.Resolve(dir, Index, LinkPins.Read(dir), out _);
+            RecordLinks.Resolve(dir, Index, LinkPins.Read(dir), out _, Cache);
         }
         catch (HelperException e) when (corrected.Count > 0)
         {
@@ -461,7 +461,7 @@ public sealed class Session : IDisposable
         // links written by editor ID, made FormKeys the reader takes (RecordLinks) — in its copy alone.
         RecordFiles.Require(dir, Index);
         var pins = LinkPins.Read(dir);
-        var resolvedLinks = RecordLinks.Resolve(dir, Index, pins, out var rewrites);
+        var resolvedLinks = RecordLinks.Resolve(dir, Index, pins, out var rewrites, Cache);
         IModGetter deserialized;
         var readable = Readable(dir, rewrites);
         try

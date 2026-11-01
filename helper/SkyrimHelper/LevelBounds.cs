@@ -1,3 +1,5 @@
+using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using Mutagen.Bethesda.Skyrim;
 
 namespace SkyrimHelper;
@@ -36,5 +38,26 @@ internal static class LevelBounds
                 ToolCalls.Edit(project, relative, "", Bounds, build: true));
         }
         return notes;
+    }
+
+    /// <summary>
+    /// A call that makes an NPC's level follow the player's and removes its bounds in one: the note above gives the two as one
+    /// call or the other, and a model made both — Hilda's level then followed the player's from 1 to no limit, where the task
+    /// asked 5 to 30 (eval round 106's npc+detailed #2, which failed). Refused with each call alone; null for any other call.
+    /// </summary>
+    public static string? BothCalls(string pluginDir, string relative, string type, JsonObject? set, JsonArray? remove)
+    {
+        if (type != "Npc" || set is null || remove is null) return null;
+        var follows = set.Any(f => Regex.IsMatch(f.Key, @"^(?:Configuration\.)?Level$", RegexOptions.IgnoreCase)
+            && (f.Value?.ToJsonString() ?? "").Contains("PcLevelMult", StringComparison.OrdinalIgnoreCase));
+        var bounds = remove.Select(r => r?.GetValue<string>() ?? "")
+            .Where(p => Regex.IsMatch(p, @"^(?:Configuration\.)?Calc(?:Min|Max)Level$", RegexOptions.IgnoreCase)).ToList();
+        if (!follows || bounds.Count == 0) return null;
+        var project = ToolCalls.ProjectOf(pluginDir);
+        return $"This call makes the level follow the player's and removes {string.Join(" and ", bounds)}, the bounds that level keeps " +
+            "to — so it would go from 1 to no limit. The two are one call or the other: where the user asked for a level that follows " +
+            "the player's, set it alone and the bounds stay: " + ToolCalls.Edit(project, relative, FollowsPlayer, build: true) +
+            "; where the user asked for a fixed level, remove the bounds alone: " + ToolCalls.Edit(project, relative, "", Bounds, build: true) +
+            ". Nothing was written.";
     }
 }

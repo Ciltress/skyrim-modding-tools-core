@@ -27,6 +27,7 @@ public static class RecordEdits
             throw new HelperException("badRequest", "Nothing to change: give `set`, fields by path and their values — " +
                 "{\"Data.Damage\": 12, \"Name\": \"Flame Blade\"} — or `remove`, paths of fields to delete — [\"Critical\"].");
         var (file, relative, type) = Find(pluginDir, record);
+        if (LevelBounds.BothCalls(pluginDir, relative, type.Name, set, remove) is { } both) throw new HelperException("badRequest", both);
         var written = File.ReadAllText(file);
         var text = written.Replace("\r\n", "\n");
         var changes = new List<string>();
