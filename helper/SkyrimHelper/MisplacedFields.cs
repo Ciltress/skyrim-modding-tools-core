@@ -21,8 +21,12 @@ public static class MisplacedFields
 
     private static readonly HashSet<string> Strength = new(StringComparer.Ordinal) { "Magnitude", "Area", "Duration" };
 
-    /// <summary>Moves what has one place, in each record file of the plugin folder; answers each file and what was moved.</summary>
-    public static List<(string File, string Change)> Move(string pluginDir)
+    /// <summary>
+    /// Moves what has one place, in each record file of the plugin folder; answers each file and what was moved.
+    /// <paramref name="copiedFrom"/> names the load order's record a part's field keeps the value of — by the record's type, its
+    /// file's text, the part, the field and the value — where the field written at the margin is to take its place.
+    /// </summary>
+    public static List<(string File, string Change)> Move(string pluginDir, Func<Type, string, string, string, string, string?>? copiedFrom = null)
     {
         var changes = new List<(string File, string Change)>();
         foreach (var (file, relative, type) in RecordFiles.FlatRecords(pluginDir))
@@ -30,7 +34,7 @@ public static class MisplacedFields
             var written = File.ReadAllText(file);
             var text = written.Replace("\r\n", "\n");
             // One move at a time, each found in the text the last one left: the lines below it have shifted.
-            for (var moves = 0; moves < 16 && NextMove(text, type) is { } move; moves++)
+            for (var moves = 0; moves < 16 && NextMove(text, type, copiedFrom) is { } move; moves++)
             {
                 text = move.Text;
                 changes.Add((relative, move.Change));
@@ -198,19 +202,19 @@ public static class MisplacedFields
     }
 
     /// <summary>Whether two values written are the same: 40 and 40.0 are.</summary>
-    private static bool Same(string a, string b) =>
+    internal static bool Same(string a, string b) =>
         a == b || double.TryParse(a, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var x)
             && double.TryParse(b, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var y) && x == y;
 
     /// <summary>Writes <paramref name="text"/>, of \n line ends, with the line ends the file has.</summary>
-    private static void Save(string file, string text) =>
+    internal static void Save(string file, string text) =>
         File.WriteAllText(file, File.ReadAllText(file).Contains("\r\n") ? text.Replace("\n", "\r\n") : text);
 
     private static YamlNode? At(YamlMappingNode mapping, string key) =>
         mapping.Children.TryGetValue(new YamlScalarNode(key), out var value) ? value : null;
 
     /// <summary>The file's fields, or null where it reads as none — RecordLinks names a break.</summary>
-    private static YamlMappingNode? Root(string text)
+    internal static YamlMappingNode? Root(string text)
     {
         var yaml = new YamlStream();
         try
@@ -227,7 +231,7 @@ public static class MisplacedFields
     private sealed record Moved(string Text, string Change);
 
     /// <summary>The first move the file needs — fields at the margin first, then those a level too deep — or null.</summary>
-    private static Moved? NextMove(string text, Type type)
+    private static Moved? NextMove(string text, Type type, Func<Type, string, string, string, string, string?>? copiedFrom)
     {
         if (Root(text) is not { } root) return null;
         var lines = text.Split('\n').ToList();
@@ -237,7 +241,7 @@ public static class MisplacedFields
             if (key.Value is { } name && !known.Contains(name) && RecordFiles.PartFor(type, name, text) is { } part)
                 (parts.TryGetValue(part, out var keys) ? keys : parts[part] = []).Add(key);
         foreach (var (part, keys) in parts)
-            if (Under(lines, root, type, part, keys) is { } under) return under;
+            if (Under(lines, root, type, part, keys, copiedFrom) is { } under) return under;
         return Up(lines, text, root, type, "", null, null, null) ?? Wrap(lines, root, type, "");
     }
 
@@ -307,7 +311,8 @@ public static class MisplacedFields
     /// where the record has no such part, under one written in their place. Told to move them, the model put them inside the
     /// field above, or wrote them back at the margin (eval rounds 22 and 32).
     /// </summary>
-    private static Moved? Under(List<string> lines, YamlMappingNode root, Type type, string part, List<YamlScalarNode> keys)
+    private static Moved? Under(List<string> lines, YamlMappingNode root, Type type, string part, List<YamlScalarNode> keys,
+        Func<Type, string, string, string, string, string?>? copiedFrom = null)
     {
         if (type.GetProperties(Public).FirstOrDefault(p => p.Name == part) is not { } property) return null;
         var names = keys.Select(k => k.Value!).ToList();
@@ -324,10 +329,26 @@ public static class MisplacedFields
                 if (mapping.Children.FirstOrDefault(c => c.Key is YamlScalarNode { Value: { } n } && names.Contains(n)) is { Key: YamlScalarNode inPart } had)
                 {
                     var atMargin = keys.First(k => k.Value == inPart.Value);
-                    if (had.Value is not YamlScalarNode { Value: { } kept } || root.Children[atMargin] is not YamlScalarNode { Value: { } written }
-                        || kept != written) return null;
+                    if (had.Value is not YamlScalarNode { Value: { } kept } keptNode || root.Children[atMargin] is not YamlScalarNode { Value: { } written })
+                        return null;
                     var start = (int)atMargin.Start.Line - 1;
                     var dropped = lines[start].TrimEnd('\r').Trim();
+                    // The part's one kept from the record the file was written after, the margin's the one written for it: the
+                    // margin's in its place. Told to write the value meant under BasicStats, where the Iron Sword's 25 was, and
+                    // delete the margin's 150, 2 of 7 runs of eval rounds 87–101 were refused again.
+                    if (kept != written)
+                    {
+                        if (keptNode.Start.Line != keptNode.End.Line
+                            || copiedFrom?.Invoke(type, string.Join('\n', lines), part, inPart.Value!, kept) is not { } source)
+                            return null;
+                        var keptLine = (int)keptNode.Start.Line - 1;
+                        var column = (int)keptNode.Start.Column - 1;
+                        if (lines[keptLine].Length < column + kept.Length || lines[keptLine].Substring(column, kept.Length) != kept) return null;
+                        lines[keptLine] = lines[keptLine][..column] + written + lines[keptLine][(column + kept.Length)..];
+                        lines.RemoveRange(start, BlockEnd(lines, start, 0) - start);
+                        return new Moved(string.Join('\n', lines), $"set `{part}`'s `{inPart.Value}: {kept}` to {written}, and removed `{dropped}` at the " +
+                            $"margin — {kept} is {source}'s, the record this one was written after, and {written} the one written for it");
+                    }
                     lines.RemoveRange(start, BlockEnd(lines, start, 0) - start);
                     return new Moved(string.Join('\n', lines), $"removed `{dropped}` at the margin — `{part}` has it already, the same");
                 }
@@ -469,7 +490,7 @@ public static class MisplacedFields
     }
 
     /// <summary>Whether a part has the field — one of its kinds, where the part is of several and names none.</summary>
-    private static bool Has(Type type, string key) =>
+    internal static bool Has(Type type, string key) =>
         type.GetProperties(Public).Any(p => p.Name == key)
         || type.IsAbstract && type.Assembly.GetTypes().Any(t => !t.IsAbstract && type.IsAssignableFrom(t) && t.GetProperties(Public).Any(p => p.Name == key));
 
@@ -478,7 +499,7 @@ public static class MisplacedFields
     /// below it that are deeper than <paramref name="column"/>, blank, or a list's items at its depth — trailing blank
     /// lines left where they are.
     /// </summary>
-    private static int BlockEnd(List<string> lines, int start, int column)
+    internal static int BlockEnd(List<string> lines, int start, int column)
     {
         var end = start + 1;
         while (end < lines.Count && (lines[end].Trim().Length == 0 || Indent(lines[end]) > column
@@ -488,7 +509,7 @@ public static class MisplacedFields
         return end;
     }
 
-    private static int Indent(string line) => line.Length - line.TrimStart(' ').Length;
+    internal static int Indent(string line) => line.Length - line.TrimStart(' ').Length;
 
     private static string Raw(string text, YamlNode node) => text[(int)node.Start.Index..(int)node.End.Index];
 

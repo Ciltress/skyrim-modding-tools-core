@@ -29,11 +29,11 @@ public static class RecordEdits
             throw new HelperException("badRequest", "Nothing to change: give `set`, a list of fields by path with their values — " +
                 "[{\"path\": \"BasicStats.Damage\", \"value\": 12}, {\"path\": \"Name\", \"value\": \"Flame Blade\"}] — or `remove`, " +
                 "paths of fields to delete — [\"Critical\"].");
-        var (file, relative, type) = Find(pluginDir, record);
+        var (file, relative, type) = Find(pluginDir, record, out var found);
         if (LevelBounds.BothCalls(pluginDir, relative, type.Name, set, remove) is { } both) throw new HelperException("badRequest", both);
         var written = File.ReadAllText(file);
         var text = written.Replace("\r\n", "\n");
-        var changes = new List<string>();
+        var changes = found is null ? new List<string>() : [found];
         foreach (var (path, value) in set ?? []) text = SetPath(text, type, path, value, changes);
         var setting = (set ?? []).Select(f => Placed(type, f.Key).Steps).ToList();
         foreach (var path in (remove ?? []).Select(r => r?.GetValue<string>() ?? ""))
@@ -79,8 +79,9 @@ public static class RecordEdits
     }
 
     /// <summary>The record file named by its path in the plugin folder, its file name, or the record's EditorID.</summary>
-    private static (string File, string Relative, Type Type) Find(string pluginDir, string record)
+    private static (string File, string Relative, Type Type) Find(string pluginDir, string record, out string? found)
     {
+        found = null;
         var flat = RecordFiles.FlatRecords(pluginDir).ToList();
         var wanted = (Path.IsPathRooted(record) ? Path.GetRelativePath(pluginDir, record) : record).Replace('\\', '/').Trim();
         var hit = flat.FirstOrDefault(f => f.Relative.Equals(wanted, StringComparison.OrdinalIgnoreCase));
@@ -88,6 +89,20 @@ public static class RecordEdits
             || Path.GetFileNameWithoutExtension(f.Relative).Equals(wanted, StringComparison.OrdinalIgnoreCase));
         if (hit == default) hit = flat.FirstOrDefault(f => string.Equals(RecordFiles.Identity(File.ReadAllText(f.File)).EditorId, wanted, StringComparison.OrdinalIgnoreCase));
         if (hit != default) return hit;
+        // The editor ID an addPatch copy's file is named by — `IronSword - 012EB7_Skyrim.esm.yaml` — once its record has another:
+        // told the project's record files, a model named the Iron Sword's copy, its EditorID made FlameBlade, IronSword (eval
+        // round 104's sword+detailed #5). One file alone; a folder sent must be the file's.
+        var (folder, name) = wanted.LastIndexOf('/') is var slash and >= 0 ? (wanted[..slash], wanted[(slash + 1)..]) : ("", wanted);
+        name = Regex.Replace(name, @"\.ya?ml$", "", RegexOptions.IgnoreCase);
+        if (flat.Where(f => Path.GetFileNameWithoutExtension(f.Relative) is var stem && stem.IndexOf(" - ", StringComparison.Ordinal) is var cut and > 0
+                && stem[..cut].Equals(name, StringComparison.OrdinalIgnoreCase)
+                && (folder.Length == 0 || (Path.GetDirectoryName(f.Relative) ?? "").Replace('\\', '/').Equals(folder, StringComparison.OrdinalIgnoreCase)))
+            .ToList() is [var copy])
+        {
+            found = $"found {copy.Relative} by its file's name, {name} — its record's EditorID is " +
+                $"{RecordFiles.Identity(File.ReadAllText(copy.File)).EditorId ?? "none"}, by which later calls name it";
+            return copy;
+        }
         throw new HelperException("notFound", $"No record file '{record}' in the project — its record files: " +
             (flat.Count == 0 ? "none yet; write one first" : string.Join(", ", flat.Take(20).Select(f => f.Relative)) + (flat.Count > 20 ? ", …" : "")) +
             ". Give the file as its path in the plugin folder, like Weapons/FlameBlade.yaml, or the record's EditorID.");
@@ -335,6 +350,14 @@ public static class RecordEdits
                 .Aggregate(text, (merged, f) => SetPath(merged, type, $"{path}.{f.Key}", f.Value?.DeepClone(), changes));
         if (steps.Count > 1 && steps[^1] is { Key: "Value", Index: null } && Translated(types[^2]) && value is JsonValue)
             return Set(text, steps.SkipLast(1).ToList(), types.SkipLast(1).ToList(), value, label, changes);
+        // A link sent with the comment a file writes after it — `013F42:Skyrim.esm # RightHand` — is the link alone: written in
+        // quotes, comment and all, it was no FormID, and the build refused EquipmentType and three keywords so (eval round 92's
+        // sword #2).
+        if (RecordLinks.LinkTarget(Items(types[^1]) ?? types[^1]) is not null && Uncommented(value) is { } bare)
+        {
+            value = bare;
+            label += " (sent with a `# comment` after the link, left out)";
+        }
         // A list of names sent as a text: "- AutoCalcStats\n- Unique\n- Female", its line ends written `\n`, was set as one
         // text, which the build refused, then "AutoCalcStats\nUnique\nFemale", and the model answered as built (eval round 61's
         // npc+detailed #5).
@@ -350,6 +373,32 @@ public static class RecordEdits
             throw new HelperException("badRequest", $"{label}: {unwritable}. Nothing was written.");
         text = Set(text, steps, types, value, label, changes);
         return steps.Count > 1 && steps[^1] is { Key: "MutagenObjectType", Index: null } ? Rekinded(text, steps.SkipLast(1).ToList(), types[^2], changes) : text;
+    }
+
+    /// <summary>A link with a comment after it: `013F42:Skyrim.esm # RightHand`.</summary>
+    private static readonly Regex Commented = new(@"^[ \t]*(?<link>[^\s#'""]+)[ \t]+#.*$");
+
+    /// <summary>
+    /// A link, or a list of links, sent with a `# comment` after each, as the links alone — a list sent as a text, line by line;
+    /// null where no comment is.
+    /// </summary>
+    private static JsonNode? Uncommented(JsonNode? value)
+    {
+        string? Bare(string said) => Commented.Match(said) is { Success: true } m ? m.Groups["link"].Value : null;
+        switch (value)
+        {
+            case JsonValue one when one.TryGetValue<string>(out var said):
+                var lines = Regex.Split(said, @"\\n|\r?\n");
+                if (lines.Length == 1) return Bare(said) is { } link ? JsonValue.Create(link) : null;
+                if (!lines.Any(l => Bare(l.TrimStart().TrimStart('-')) is not null)) return null;
+                return JsonValue.Create(string.Join("\n", lines.Select(l =>
+                    Regex.Match(l, @"^(?<dash>[ \t]*-?[ \t]*)(?<rest>.*)$") is var m && Bare(m.Groups["rest"].Value) is { } bare ? m.Groups["dash"].Value + bare : l)));
+            case JsonArray items when items.Any(i => i is JsonValue v && v.TryGetValue<string>(out var s) && Bare(s) is not null):
+                return new JsonArray(items.Select(i => i is JsonValue v && v.TryGetValue<string>(out var s) && Bare(s) is { } b
+                    ? JsonValue.Create(b) : i?.DeepClone()).ToArray());
+            default:
+                return null;
+        }
     }
 
     /// <summary>What is wrong with a value for a field of a type, as words, or null where it can hold it.</summary>
@@ -493,6 +542,18 @@ public static class RecordEdits
             indent = Column(key) + 2;
             if (step.Index is int n)
             {
+                // The item after the last, one value: added. Told Flags has 2 items, so [2] is none, the model set Flags whole
+                // without the flags it had listed (eval round 89's npc+detailed #2).
+                if (last && child is YamlSequenceNode { Style: not YamlDotNet.Core.Events.SequenceStyle.Flow, Children.Count: > 0 } growing
+                    && n == growing.Children.Count && value is JsonValue && growing.Children.All(c => c is YamlScalarNode))
+                {
+                    var after = growing.Children[^1];
+                    var dash = DashColumn(text, after);
+                    changes.Add($"added {path}: {Shown(value)}, after the {n} item{(n == 1 ? "" : "s")} {step.Key} had");
+                    var all = text.Split('\n').ToList();
+                    all.Insert(LastLine(text, after) + 1, new string(' ', dash) + "- " + Scalar(value, dash + 2));
+                    return string.Join('\n', all);
+                }
                 if (child is not YamlSequenceNode list || n >= list.Children.Count)
                     throw new HelperException("badRequest", $"{path}: {step.Key} has {(child as YamlSequenceNode)?.Children.Count ?? 0} item(s), so [{n}] is none — " +
                         $"set {step.Key} whole, as a list. Nothing was written.");

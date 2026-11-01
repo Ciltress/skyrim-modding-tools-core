@@ -122,12 +122,29 @@ describe('choosing a crash log', () => {
         expect(path.basename(chosen.file)).toBe('crash-2026-10-01-09-00-00.log');
         expect(chosen.instead).toBe('No crash log is dated \'2026-10-01 12:42\'; this is the newest before it that day, crash-2026-10-01-09-00-00.log.');
         expect(path.basename(chooseCrashLog(fixture.logs, '2026-10-01 08:00', isGame).file)).toBe('crash-2026-10-01-07-30-00.log');
-        // Never one from after it, nor from another day, nor for a day alone.
+        // Never one from after it, nor from a day before every log's.
         expect(() => chooseCrashLog(fixture.logs, '2026-10-01 07:00', isGame)).toThrow(/named or dated '2026-10-01 07:00'/);
-        expect(() => chooseCrashLog(fixture.logs, '2026-10-02 12:00', isGame)).toThrow(CrashLogNotFoundError);
         expect(() => chooseCrashLog(fixture.logs, '2026-09-30', isGame)).toThrow(CrashLogNotFoundError);
         // The minute a log has is that log, with nothing to say.
         expect(chooseCrashLog(fixture.logs, '2026-10-01 09:00', isGame).instead).toBeUndefined();
+    });
+
+    it('reads the newest log for a day after every log\'s, and says so', () => {
+        // Sent the time of asking a day after the crash, ten calls of eval rounds 98 and 99 were refused.
+        const fixture = makeInstance();
+        write(path.join(fixture.logs, 'crash-2026-10-01-09-00-00.log'), meshCrash(fixture.game));
+        write(path.join(fixture.logs, 'crash-2026-10-01-07-30-00.log'), meshCrash(fixture.game));
+        const isGame = (seen: string) => seen.toLowerCase() === asGameSees(fixture.game).toLowerCase();
+
+        for (const given of ['2026-10-02 12:00', '2026-10-02', 'Sat 2026-10-03 02:10 GMT+1']) {
+            const chosen = chooseCrashLog(fixture.logs, given, isGame);
+            expect(path.basename(chosen.file)).toBe('crash-2026-10-01-09-00-00.log');
+            expect(chosen.instead).toBe(`No crash log is dated '${given}', and every log is from before that day; this is the newest, ` +
+                'crash-2026-10-01-09-00-00.log.');
+        }
+        // A day between two logs' is no day after every log's.
+        write(path.join(fixture.logs, 'crash-2026-10-05-10-00-00.log'), meshCrash(fixture.game));
+        expect(() => chooseCrashLog(fixture.logs, '2026-10-03', isGame)).toThrow(CrashLogNotFoundError);
     });
 
     it('reads a time as a chat\'s message stamp writes it: its brackets, weekday and time zone aside', () => {

@@ -244,8 +244,9 @@ public static class RecordFiles
     /// forth — nine builds for one NPC (eval round 12).
     /// </summary>
     // "Beside it" left a model nesting CalcMinLevel inside Level, or moving it to the top (eval probe 17): the
-    // three lines, each indented as Configuration's Flags line is.
-    public const string NpcLevel = "an NPC's level is three lines under Configuration, each indented as its Flags line is: " +
+    // three lines, each as deep as Configuration's `Flags:` line. "Indented as its Flags line is" read as its items' lines
+    // to 9 NPC runs of eval rounds 94–106, which wrote `- Level: {…}` among the flags.
+    public const string NpcLevel = "an NPC's level is three lines under Configuration, each as deep as its `Flags:` line, with no dash: " +
         "`Level: {MutagenObjectType: PcLevelMult, LevelMult: 1}`, `CalcMinLevel: 1`, `CalcMaxLevel: 25` — the level follows " +
         "the player's between those two; or, for a fixed level, the one line `Level: {MutagenObjectType: NpcLevel, Level: 10}`";
 
@@ -287,17 +288,33 @@ public static class RecordFiles
     /// record's Flags, or those of one of its parts. An NPC's `Unique: 1` was "delete it: a Npc has it nowhere", and the
     /// NPC lost its flag (eval round 69's npc+detailed #3). Null for a name no Flags of the record has.
     /// </summary>
-    private static string? FlagHint(Type type, string key)
+    private static string? FlagHint(Type type, string key) => FlagPlace(type, key) switch
     {
-        static Type? FlagsOf(Type part) => part.GetProperty("Flags", BindingFlags.Public | BindingFlags.Instance)?.PropertyType is { } flags
-            && (Nullable.GetUnderlyingType(flags) ?? flags) is { IsEnum: true } named && named.IsDefined(typeof(FlagsAttribute), false) ? named : null;
-        static string? Named(Type? flags, string key) => flags is null ? null : Enum.GetNames(flags).FirstOrDefault(n => n.Equals(key, StringComparison.OrdinalIgnoreCase));
-        if (Named(FlagsOf(type), key) is { } own) return $"it is one of the Flags: delete it here and list {own} there";
+        (null, { } own) => $"it is one of the Flags: delete it here and list {own} there",
+        ({ } part, { } flag) => $"it is one of the Flags under {part}: delete it here and list {flag} there",
+        _ => null
+    };
+
+    /// <summary>
+    /// Where a name is a flag: the part whose Flags it is one of — null for the type's own Flags — and the flag as its Flags
+    /// spell it; no flag where no Flags of the type, or of one part of it alone, has that name.
+    /// </summary>
+    internal static (string? Part, string? Flag) FlagPlace(Type type, string key)
+    {
+        if (FlagNamed(FlagsOf(type), key) is { } own) return (null, own);
         var parts = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Select(p => (p.Name, Flag: Named(FlagsOf(Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType), key)))
+            .Select(p => (p.Name, Flag: FlagNamed(FlagsOf(Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType), key)))
             .Where(p => p.Flag is not null).ToList();
-        return parts is [var (part, flag)] ? $"it is one of the Flags under {part}: delete it here and list {flag} there" : null;
+        return parts is [var (part, flag)] ? (part, flag) : (null, null);
     }
+
+    /// <summary>The flags a part's Flags field lists, where it has one of flags; else null.</summary>
+    internal static Type? FlagsOf(Type part) => part.GetProperty("Flags", BindingFlags.Public | BindingFlags.Instance)?.PropertyType is { } flags
+        && (Nullable.GetUnderlyingType(flags) ?? flags) is { IsEnum: true } named && named.IsDefined(typeof(FlagsAttribute), false) ? named : null;
+
+    /// <summary>The flag of <paramref name="flags"/> that <paramref name="key"/> names, in any case; null for none.</summary>
+    internal static string? FlagNamed(Type? flags, string key) =>
+        flags is null ? null : Enum.GetNames(flags).FirstOrDefault(n => n.Equals(key, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Whether two names differ, case aside, by one letter added, left out, changed, or two swapped.</summary>
     private static bool OneEditApart(string a, string b)
@@ -1291,12 +1308,6 @@ public static class RecordFiles
     }
 
     /// <summary>
-    /// An EditorID written with characters no editor ID has — `Maven's Warning`, `MavenNote:MavenWarning` — written with
-    /// its letters, digits and underscores alone, where no other record has that name. Read as none, `Maven's Warning`
-    /// was answered "has no EditorID" three builds long, and the copied FormKey beside it kept the note an override of
-    /// Maven's (eval round 39's note #5); 7 runs of rounds 23–39 wrote one. A name taken is left to the note.
-    /// </summary>
-    /// <summary>
     /// A group folder written in other letters — `weapons/` — renamed to its own, through a name of its own first: on a drive
     /// that ignores letter case, the build refused "the folder is spelled Weapons", moveRecord answered success and changed
     /// nothing, and a file written anew landed in the same folder (refusal probes of 2026-10-31). Left alone where the folder
@@ -1320,6 +1331,89 @@ public static class RecordFiles
         return corrected;
     }
 
+    /// <summary>A tab among a line's leading blanks.</summary>
+    private static readonly Regex LeadingTab = new(@"^[ ]*\t[ \t]*");
+
+    /// <summary>
+    /// Lines indented with tabs, indented with spaces — each tab as many as the file's other lines indent by, two where none
+    /// are — where the file then reads as YAML, and did not before: YAML indents with spaces alone, and the reader stopped at
+    /// the first tab, named by the line above it (refusal probes of 2026-10-31, G01, G16, F19). Where it reads no better, the
+    /// refusal names each tabbed line.
+    /// </summary>
+    public static List<(string File, string Change)> Untab(string pluginDir)
+    {
+        var changes = new List<(string File, string Change)>();
+        foreach (var (file, relative, _) in FlatRecords(pluginDir))
+        {
+            var written = File.ReadAllText(file);
+            var text = written.Replace("\r\n", "\n");
+            var lines = text.Split('\n');
+            var tabbed = Enumerable.Range(0, lines.Length).Where(i => LeadingTab.IsMatch(lines[i])).ToList();
+            if (tabbed.Count == 0 || MisplacedFields.Root(text) is not null) continue;
+            var step = lines.Where(l => l.Length > 0 && l[0] == ' ' && !LeadingTab.IsMatch(l) && l.Trim().Length > 0)
+                .Select(MisplacedFields.Indent).DefaultIfEmpty(2).Min();
+            foreach (var i in tabbed)
+            {
+                var lead = LeadingTab.Match(lines[i]).Value;
+                lines[i] = lead.Replace("\t", new string(' ', step)) + lines[i][lead.Length..];
+            }
+            var spaced = string.Join('\n', lines);
+            if (MisplacedFields.Root(spaced) is null) continue;
+            File.WriteAllText(file, written.Contains("\r\n") ? spaced.Replace("\n", "\r\n") : spaced);
+            var numbers = tabbed.Select(i => i + 1).ToList();
+            changes.Add((relative, $"indented line{(numbers.Count == 1 ? "" : "s")} {Numbers(numbers)} with spaces, {step} for each tab — " +
+                "YAML indents with spaces alone"));
+        }
+        return changes;
+    }
+
+    /// <summary>Line numbers as words: "4", "4 and 6", "29–31", "2, 5 and 9–11".</summary>
+    private static string Numbers(List<int> numbers)
+    {
+        var runs = new List<string>();
+        for (var i = 0; i < numbers.Count;)
+        {
+            var j = i;
+            while (j + 1 < numbers.Count && numbers[j + 1] == numbers[j] + 1) j++;
+            runs.Add(j > i ? $"{numbers[i]}–{numbers[j]}" : $"{numbers[i]}");
+            i = j + 1;
+        }
+        return runs.Count == 1 ? runs[0] : $"{string.Join(", ", runs[..^1])} and {runs[^1]}";
+    }
+
+    /// <summary>A record's own stamp written with no value: the reader takes a number or a truth there, and the build writes them.</summary>
+    private static readonly Regex EmptyStamp = new(@"^(?<key>VersionControl|FormVersion|Version2|MajorRecordFlagsRaw|IsCompressed)[ \t]*:[ \t]*(?:#.*)?$");
+
+    /// <summary>
+    /// A record's stamp written empty — `VersionControl:` — taken out: the reader refused the file, "VersionControl was null", and
+    /// the build writes a new record's stamps itself. 5 note and spell runs of eval rounds 95–101 wrote one, each refused.
+    /// </summary>
+    public static List<(string File, string Change)> DropEmptyStamps(string pluginDir)
+    {
+        var changes = new List<(string File, string Change)>();
+        foreach (var (file, relative, _) in FlatRecords(pluginDir))
+        {
+            var written = File.ReadAllText(file);
+            var lines = written.Replace("\r\n", "\n").Split('\n').ToList();
+            var empty = Enumerable.Range(0, lines.Count).Where(i => EmptyStamp.IsMatch(lines[i])
+                && (i + 1 >= lines.Count || lines[i + 1].Length == 0 || lines[i + 1][0] is not (' ' or '\t' or '-'))).ToList();
+            if (empty.Count == 0) continue;
+            foreach (var i in empty)
+                changes.Add((relative, $"removed line {i + 1}, `{lines[i].Trim()}` — written with no value, which the reader refuses; " +
+                    "the build writes a record's stamps itself"));
+            foreach (var i in empty.OrderByDescending(i => i)) lines.RemoveAt(i);
+            var text = string.Join('\n', lines);
+            File.WriteAllText(file, written.Contains("\r\n") ? text.Replace("\n", "\r\n") : text);
+        }
+        return changes;
+    }
+
+    /// <summary>
+    /// An EditorID written with characters no editor ID has — `Maven's Warning`, `MavenNote:MavenWarning` — written with
+    /// its letters, digits and underscores alone, where no other record has that name. Read as none, `Maven's Warning`
+    /// was answered "has no EditorID" three builds long, and the copied FormKey beside it kept the note an override of
+    /// Maven's (eval round 39's note #5); 7 runs of rounds 23–39 wrote one. A name taken is left to the note.
+    /// </summary>
     public static List<(string File, string Change)> CleanEditorIds(string pluginDir, RecordIndex index)
     {
         var changes = new List<(string File, string Change)>();
@@ -1687,55 +1781,67 @@ public static class RecordFiles
     }
 
     /// <summary>
-    /// Words written for an NPC's Aggression that mean Unaggressive, each with what it is instead: the eval's NPC runs of
-    /// rounds 87–106 wrote Average 376 times, Neutral 23 and Passive twice.
+    /// Words written for a field of an NPC's AIData that it has no value of, each with the value meant and what the word is
+    /// instead: the eval's NPC runs of rounds 87–106 wrote Aggression Average 376 times, Neutral 23 and Passive twice, and
+    /// Responsibility Average once, beside NoCrime 227 times.
     /// </summary>
-    private static readonly Dictionary<string, string> NotAggressive = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["Average"] = "Average is a Confidence",
-        ["Neutral"] = "Neutral is a Mood",
-        ["Passive"] = "no Aggression is named Passive",
-        ["Peaceful"] = "no Aggression is named Peaceful"
-    };
-    private static readonly string NotAggressiveWords = string.Join("|", NotAggressive.Keys);
+    private static readonly (Type Held, string Meant, Dictionary<string, string> Words)[] AIWords =
+    [
+        (typeof(Aggression), "Unaggressive", new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Average"] = "Average is a Confidence",
+            ["Neutral"] = "Neutral is a Mood",
+            ["Passive"] = "no Aggression is named Passive",
+            ["Peaceful"] = "no Aggression is named Peaceful"
+        }),
+        (typeof(Responsibility), "NoCrime", new(StringComparer.OrdinalIgnoreCase) { ["Average"] = "Average is a Confidence" })
+    ];
 
-    /// <summary>An NPC's AIData written in braces on one line, with one of those words for its Aggression.</summary>
-    private static readonly Regex NotAggressiveInBraces = new(
-        $@"^(AIData:[ \t]*\{{[^}}#]*\bAggression:[ \t]*)({NotAggressiveWords})\b", RegexOptions.IgnoreCase);
+    /// <summary>An NPC's AIData written in braces on one line, with one of a field's words.</summary>
+    private static Regex InBraces(Type held, Dictionary<string, string> words) =>
+        new($@"^(AIData:[ \t]*\{{[^}}#]*\b{held.Name}:[ \t]*)({string.Join("|", words.Keys)})\b", RegexOptions.IgnoreCase);
 
     /// <summary>
     /// Writes an NPC's `Aggression: Average` as Unaggressive: Aggression names no average — Unaggressive, Aggressive,
     /// VeryAggressive, Frenzied; Average is a Confidence. 30 of the 80 NPC runs of eval rounds 76–83 wrote it, each was refused,
     /// and each set Unaggressive in one more call — the value the official plugins' named NPCs have most often, which the
-    /// refusal names. So too Neutral and the other words for it (NotAggressive): told Neutral is none of the four, a model
-    /// set Aggressive, which its task did not ask (eval round 106's npc+detailed #2, which failed). Written in braces too, as
-    /// the npcs skill's reference writes AIData.
+    /// refusal names. So too Neutral and the other words for it (AIWords): told Neutral is none of the four, a model
+    /// set Aggressive, which its task did not ask (eval round 106's npc+detailed #2, which failed); and Responsibility's Average,
+    /// NoCrime, the value nearly every run wrote. Written in braces too, as the npcs skill's reference writes AIData.
     /// </summary>
-    public static List<(string File, string Change)> MendAggression(string pluginDir)
+    public static List<(string File, string Change)> MendAIData(string pluginDir)
     {
         var changes = new List<(string File, string Change)>();
-        var usual = RecordLinks.MostOften(typeof(Aggression));
         foreach (var (file, relative, type) in FlatRecords(pluginDir))
         {
             if (type != typeof(Npc)) continue;
             var lines = File.ReadAllText(file).Split('\n');
-            var mended = new List<(int Line, string Word)>();
-            foreach (var f in ValueFields(lines, type).Where(f => f.Held == typeof(Aggression) && NotAggressive.ContainsKey(f.Value)))
+            var mended = new List<(int Line, Type Held, string Word)>();
+            foreach (var (held, meant, words) in AIWords)
             {
-                lines[f.Line] = Regex.Replace(lines[f.Line], $@"(\bAggression[ \t]*:[ \t]*)(?:{NotAggressiveWords})\b", "${1}Unaggressive",
-                    RegexOptions.IgnoreCase);
-                mended.Add((f.Line, f.Value));
-            }
-            for (var i = 0; i < lines.Length; i++)
-                if (NotAggressiveInBraces.Match(lines[i]) is { Success: true } braced)
+                var named = string.Join("|", words.Keys);
+                foreach (var f in ValueFields(lines, type).Where(f => f.Held == held && words.ContainsKey(f.Value)))
                 {
-                    lines[i] = NotAggressiveInBraces.Replace(lines[i], "${1}Unaggressive", 1);
-                    mended.Add((i, braced.Groups[2].Value));
+                    lines[f.Line] = Regex.Replace(lines[f.Line], $@"(\b{held.Name}[ \t]*:[ \t]*)(?:{named})\b", $"${{1}}{meant}", RegexOptions.IgnoreCase);
+                    mended.Add((f.Line, held, f.Value));
                 }
+                var braces = InBraces(held, words);
+                for (var i = 0; i < lines.Length; i++)
+                    if (braces.Match(lines[i]) is { Success: true } braced)
+                    {
+                        lines[i] = braces.Replace(lines[i], $"${{1}}{meant}", 1);
+                        mended.Add((i, held, braced.Groups[2].Value));
+                    }
+            }
             if (mended.Count == 0) continue;
             File.WriteAllText(file, string.Join('\n', lines));
-            changes.AddRange(mended.Select(m => (relative, $"wrote line {m.Line + 1}, AIData's `Aggression: {m.Word}` as `Aggression: Unaggressive` — " +
-                $"Aggression takes Unaggressive, Aggressive, VeryAggressive or Frenzied, and {NotAggressive[m.Word]}; {usual}")));
+            changes.AddRange(mended.OrderBy(m => m.Line).Select(m =>
+            {
+                var (_, meant, words) = AIWords.First(w => w.Held == m.Held);
+                var names = Enum.GetNames(m.Held);
+                return (relative, $"wrote line {m.Line + 1}, AIData's `{m.Held.Name}: {m.Word}` as `{m.Held.Name}: {meant}` — {m.Held.Name} " +
+                    $"takes {string.Join(", ", names[..^1])} or {names[^1]}, and {words[m.Word]}; {RecordLinks.MostOften(m.Held)}");
+            }));
         }
         return changes;
     }
@@ -1814,6 +1920,9 @@ public static class RecordFiles
             ": its field takes a list, one `- ` item per line below it",
         { Success: true } m when m.Groups[1].Value == "Scalar" =>
             ": its field takes one value on its own line, not fields or a list below it",
+        // A field written as an item of a list of names: `- CalcMinLevel: 6` among an NPC's Flags (refusal probes of 2026-11-01).
+        { Success: true } m when m.Groups[1].Value == "SequenceEnd" && m.Groups[2].Value == "MappingStart" =>
+            ": it is a field written as an item of a list of names — write it without its dash, below the list, as deep as the list's own line",
         // Below a field of one value, or indented deeper than the fields beside it (eval probe 10 after round 11).
         { Success: true } m when m.Groups[1].Value == "MappingEnd" =>
             ": it is indented below a field that takes one value on its own line, or deeper than the fields beside it",

@@ -999,6 +999,14 @@ describe('the Skyrim backend', () => {
         const unchanged = await edit({ build: true });
         expect(unchanged.nextStep).toBe(`Nothing changed: no ObjectEffect to remove — the file is as it was. Built. ${TOLD}`);
         expect((await edit({})).nextStep).toBe('Nothing changed: no ObjectEffect to remove — the file is as it was.');
+        // A copy found by its file's name, not its EditorID, is said where the model reads first (eval round 104's sword+detailed #5).
+        const found = 'found Weapons/IronSword - 012EB7_Skyrim.esm.yaml by its file\'s name, IronSword — its record\'s EditorID is FlameBlade, ' +
+            'by which later calls name it';
+        helperAnswers.editRecord = () => ({ file, changed: [found, 'set BasicStats.Damage: 7 → 12'], text: 'EditorID: FlameBlade\n' });
+        expect((await edit({})).nextStep).toBe('Run buildProject next — the plugin has this change only once a build answers success. ' +
+            `F${found.slice(1)}.`);
+        helperAnswers.editRecord = () => ({ file, changed: [found, 'no ObjectEffect to remove'], text: 'EditorID: FlameBlade\n' });
+        expect((await edit({})).nextStep).toBe(`Nothing changed: no ObjectEffect to remove — the file is as it was. F${found.slice(1)}.`);
         helperAnswers.editRecord = () => ({ file, changed, text: 'EditorID: FlameBlade\n' });
 
         helperAnswers.checkRecords = () => ({ records: 1, leftOut: [], notes: ['a note'] });

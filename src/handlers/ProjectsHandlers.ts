@@ -244,11 +244,15 @@ export class ProjectsHandlers extends BaseHandler {
                     }));
                     // A path placed elsewhere than sent is said where the model reads first, not only among the changes.
                     const placed = edited.changed.filter(change => change.includes('(sent as '));
-                    const placedNote = placed.length > 0 ? ` Set where the record has it, not where it was sent: ${placed.join('; ')}.` : '';
+                    // So is a record found by the name its copy's file has, not its EditorID: "found Weapons/IronSword - 012EB7_Skyrim.esm.yaml …".
+                    const copy = edited.changed.find(change => change.startsWith('found '));
+                    const copyNote = copy ? ` F${copy.slice(1)}.` : '';
+                    const placedNote = (placed.length > 0 ? ` Set where the record has it, not where it was sent: ${placed.join('; ')}.` : '') + copyNote;
                     // A remove of a field the file has not: "Changed and built" beside "no ObjectEffect to remove" (refusal probes of
                     // 2026-10-31, E09).
-                    if (edited.changed.length > 0 && edited.changed.every(change => /^no .+ to remove$/.test(change))) {
-                        const nothing = `Nothing changed: ${edited.changed.join('; ')} — the file is as it was.`;
+                    const made = edited.changed.filter(change => change !== copy);
+                    if (made.length > 0 && made.every(change => /^no .+ to remove$/.test(change))) {
+                        const nothing = `Nothing changed: ${made.join('; ')} — the file is as it was.${copyNote}`;
                         if (!build) return { nextStep: nothing, ...edited };
                         const { text: _unchanged, ...unchanged } = edited;
                         const built = await this.build(project);

@@ -150,7 +150,7 @@ public sealed class Session : IDisposable
             var found = new List<RecordIndex.Entry>();
             foreach (var raw in wanted.Select(r => r!.GetValue<string>()))
             {
-                var key = FormIdShape.IsMatch(raw) ? ParseFormKey(raw)
+                var key = FormIdShape.IsMatch(raw) ? Named(raw) ?? ParseFormKey(raw)
                     : idx.ByEditorId.TryGetValue(raw.Trim(), out var byId) ? byId
                     : EditorIdWithPlugin(raw, idx) ?? (raw.Contains(':') ? ParseFormKey(raw) : (FormKey?)null);
                 if (key is { } k && idx.ByFormKey.TryGetValue(k, out var entry)) found.Add(entry);
@@ -408,10 +408,13 @@ public sealed class Session : IDisposable
             throw new HelperException("badRecord", $"{unfit.Count} record file(s) cannot be built as written: {string.Join("; ", unfit)}");
         // A group folder in other letters before all: no file in it is read until it has its name.
         var corrected = RecordFiles.FolderCase(dir);
+        // Then tabs, before any correction reads a file as YAML: the reader takes none in a line's indent.
+        corrected.AddRange(RecordFiles.Untab(dir));
         // An editor ID first: a copied FormKey is taken out by the EditorID beside it.
         corrected.AddRange(RecordFiles.CleanEditorIds(dir, Index));
         corrected.AddRange(RecordFiles.DropCopiedFormKeys(dir, Index));
         corrected.AddRange(RecordFiles.DropSharedFormKeys(dir, release));
+        corrected.AddRange(RecordFiles.DropEmptyStamps(dir));
         // A line written twice first: the YAML reader the moves use refuses the file until it is gone.
         corrected.AddRange(RecordFiles.DropRepeatedLines(dir));
         // A part's field at the margin below the part's empty line goes back under it, before Dedent reads it as the record's.
@@ -425,14 +428,21 @@ public sealed class Session : IDisposable
         corrected.AddRange(RecordFiles.RenameSharedEditorIds(dir, Index));
         // Before the moves: what is left of another record type may break the reader they use.
         corrected.AddRange(RecordFiles.DropOtherTypesFields(dir));
-        corrected.AddRange(MisplacedFields.Move(dir));
+        // A part's field written among its Flags, and a flag written as a field, before the moves read the part's fields.
+        corrected.AddRange(FlagLines.OutOfFlags(dir));
+        corrected.AddRange(FlagLines.IntoFlags(dir));
+        // A weapon's field at the margin takes the place of its part's, where that one is the weapon's it was written after.
+        corrected.AddRange(MisplacedFields.Move(dir, (type, text, part, key, value) => KeptFromSource.CopiedFrom(Cache, Index, type, text, part, key, value)));
         corrected.AddRange(MisplacedFields.MoveEffectData(dir));
         // Once each field is in its part: a model's texture hashes are found by the part they are under.
         corrected.AddRange(RecordFiles.DropBrokenModelData(dir));
         // And a number written in hex, or bytes written as 0, by the type of the part each is in.
         corrected.AddRange(RecordFiles.MendNumbersAndBytes(dir));
-        // And an NPC's aggression written as no aggression is, by the part it is in too.
-        corrected.AddRange(RecordFiles.MendAggression(dir));
+        // And an NPC's aggression or responsibility written as none is, by the part it is in too.
+        corrected.AddRange(RecordFiles.MendAIData(dir));
+        // A spell's or enchantment's lines from its effects, read where each is: its cast, and an effect's flags in the spell's.
+        corrected.AddRange(CasterLines.DropEffectFlags(dir, Index, Cache));
+        corrected.AddRange(CasterLines.CastAsEffects(dir, Index, Cache));
         int records;
         List<(string File, string Copy)> leftOut;
         try
@@ -694,7 +704,7 @@ public sealed class Session : IDisposable
     private FormKey Resolve(string raw, bool byName = false)
     {
         // A FormID is hex digits before its colon; "Spell Tome: Flames" is a name.
-        if (FormIdShape.IsMatch(raw)) return ParseFormKey(raw);
+        if (FormIdShape.IsMatch(raw)) return Named(raw) ?? ParseFormKey(raw);
         if (Index.ByEditorId.TryGetValue(raw.Trim(), out var key)) return key;
         if (EditorIdWithPlugin(raw, Index) is { } withPlugin) return withPlugin;
         // An in-game name, sent as an editor ID: "Lydia", whose editor ID is HousecarlWhiterun (eval probe 15).
@@ -731,6 +741,27 @@ public sealed class Session : IDisposable
     // The FormID inside what was sent, as `013989:Skyrim.esm#SteelSword` holds one: told to write it as 012EB7:Skyrim.esm, the
     // Iron Sword's, whatever was asked, a model sent the next call by hand five times in eval rounds 87–105.
     private static readonly Regex FormIdIn = new(@"\b[0-9A-Fa-f]{6,8}:[^\s#:,;'""]+?\.es[mpl]\b", RegexOptions.IgnoreCase);
+
+    /// <summary>A FormID with the record's name after it: `013989:Skyrim.esm#SteelSword`, `013989:Skyrim.esm:SteelSword`, `… # SteelSword`.</summary>
+    private static readonly Regex FormIdNamed = new(@"^\s*(?<id>[0-9A-Fa-f]{1,8}:[^\s#:]+?\.es[mpl])\s*(?:#|:)\s*(?<name>[A-Za-z_][\w]*)\s*$",
+        RegexOptions.IgnoreCase, TimeSpan.FromSeconds(5));
+
+    /// <summary>
+    /// The record a FormID with its editor ID after it names, where the two name one record: five calls of eval rounds 87–105
+    /// sent `013989:Skyrim.esm#SteelSword`, each refused and sent again by hand. Where the name is another record's, both are
+    /// named; where it is none, the refusal names the FormID inside.
+    /// </summary>
+    private FormKey? Named(string raw)
+    {
+        if (FormIdNamed.Match(raw) is not { Success: true } m || !FormKey.TryFactory(m.Groups["id"].Value, out var key)
+            || !Index.ByFormKey.TryGetValue(key, out var entry)) return null;
+        var name = m.Groups["name"].Value;
+        if (string.Equals(entry.EditorId, name, StringComparison.OrdinalIgnoreCase)) return key;
+        return Index.ByEditorId.TryGetValue(name, out var other)
+            ? throw new HelperException("badRequest", $"'{raw.Trim()}' names two records: {FormKeyText(key)} is {entry.EditorId ?? "a record with no editor ID"}, " +
+                $"and {name} is {FormKeyText(other)} — send the one meant alone, by its FormID or its editor ID.")
+            : null;
+    }
 
     private static FormKey ParseFormKey(string raw) =>
         FormKey.TryFactory(raw.Trim(), out var key)

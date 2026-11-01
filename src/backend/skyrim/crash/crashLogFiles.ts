@@ -64,7 +64,8 @@ function bareTime(given: string): string {
  * Picks the log to read: the one `wanted` names — its file name, or a time it starts with, `2026-10-30`
  * or `2026-10-30 14:02` — else the newest of this setup's. Among several a time matches, this setup's
  * newest wins. A time down to the hour that no log has reads the newest before it that day: asked about a crash
- * "just now", a model sends the time of asking (eval round 90: three of ten crash runs).
+ * "just now", a model sends the time of asking (eval round 90: three of ten crash runs); a day after every log's, or a time
+ * on one, reads the newest.
  *
  * @param isThisSetup  Whether a game folder a log names, as the game saw it, is this setup's.
  */
@@ -109,6 +110,13 @@ export function chooseCrashLog(folder: string, wanted: string | undefined, isThi
                 const before = files.filter(file => file.name.toLowerCase().startsWith(day) && file.name.toLowerCase() < time);
                 chosen = before.find(file => setupOf(file) === true) ?? before[0];
                 if (chosen) instead = `No crash log is dated '${given}'; this is the newest before it that day, ${chosen.name}.`;
+            }
+            // A day after every log's, or a time on one: the newest. Sent the time of asking, a day after the crash, ten calls of
+            // eval rounds 98 and 99 were refused and sent again with a log's name.
+            const dated = /^crash-\d{4}-\d{2}-\d{2}/.exec(time)?.[0];
+            if (!chosen && dated && files.length > 0 && files.every(file => file.name.toLowerCase().slice(0, dated.length) < dated)) {
+                chosen = files.find(file => setupOf(file) === true) ?? files[0];
+                instead = `No crash log is dated '${given}', and every log is from before that day; this is the newest, ${chosen.name}.`;
             }
         }
         if (!chosen) {

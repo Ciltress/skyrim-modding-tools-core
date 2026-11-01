@@ -125,6 +125,39 @@ internal static class KeptFromSource
 
     private static string? NameOf(IMajorRecordGetter record) => record is ITranslatedNamedGetter named ? named.Name?.String : null;
 
+    /// <summary>
+    /// The load order's weapon a new weapon's file was written after, where its part's field keeps that weapon's value: the
+    /// IronSword whose BasicStats.Value is the 25 a Flame Blade kept — of the weapons with the model the file names whose field is
+    /// that value — playable and plain, as Notes reads them — the one whose links the file names most, as Source ranks them; of a
+    /// tie, the first in load order. Null for none, or a file of another type or no model.
+    /// </summary>
+    internal static string? CopiedFrom(ILinkCache lookup, RecordIndex index, Type type, string text, string part, string key, string value)
+    {
+        if (type != typeof(Weapon) || MisplacedFields.Root(text) is not { } root
+            || !root.Children.TryGetValue(new YamlDotNet.RepresentationModel.YamlScalarNode("Model"), out var model)
+            || model is not YamlDotNet.RepresentationModel.YamlMappingNode modelFields
+            || !modelFields.Children.TryGetValue(new YamlDotNet.RepresentationModel.YamlScalarNode("File"), out var fileNode)
+            || ModelPath((fileNode as YamlDotNet.RepresentationModel.YamlScalarNode)?.Value) is not { } file) return null;
+        (string? Name, int Shared) best = (null, -1);
+        foreach (var entry in index.ByFormKey.Values.Where(e => e.Signature == "WEAP" && !e.Unplayable))
+        {
+            // Plain, as Notes reads the weapons a new one is written after: no template, no enchantment.
+            if (!lookup.TryResolve<IWeaponGetter>(entry.FormKey, out var weapon) || !weapon.Template.IsNull || !weapon.ObjectEffect.IsNull) continue;
+            if (!string.Equals(ModelPath(weapon.Model?.File), file, StringComparison.OrdinalIgnoreCase)) continue;
+            var held = weapon.GetType().GetProperty(part)?.GetValue(weapon) is { } partValue ? partValue.GetType().GetProperty(key)?.GetValue(partValue) : null;
+            if (held is null || Convert.ToString(held, CultureInfo.InvariantCulture) is not { } shown
+                || shown != value && !(double.TryParse(shown, NumberStyles.Float, CultureInfo.InvariantCulture, out var a)
+                    && double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var b) && a == b)) continue;
+            // Its links the file names, by FormID or by editor ID.
+            var shared = weapon.EnumerateFormLinks().Select(l => l.FormKey).Where(k => !k.IsNull).Distinct().Count(k =>
+                text.Contains(Session.FormKeyText(k), StringComparison.OrdinalIgnoreCase)
+                || index.ByFormKey.TryGetValue(k, out var linked) && linked.EditorId is { } id
+                    && System.Text.RegularExpressions.Regex.IsMatch(text, $@"(?<!\w){System.Text.RegularExpressions.Regex.Escape(id)}(?!\w)"));
+            if (shared > best.Shared) best = (weapon.EditorID ?? Session.FormKeyText(weapon.FormKey), shared);
+        }
+        return best.Name;
+    }
+
     /// <summary>A model's path as the game finds it: backslashes, below the Meshes folder, in any case.</summary>
     private static string? ModelPath(string? given)
     {
