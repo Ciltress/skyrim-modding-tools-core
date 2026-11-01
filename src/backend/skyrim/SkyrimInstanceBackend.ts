@@ -21,7 +21,7 @@ import { setIniValue } from './gameIni.js';
 import { findCaseInsensitive } from './paths.js';
 import {
     ProjectError, assignFormIds, belongsAt, correctCopiedEscapes, createProject, type CopiedEscape, deleteCall, deleteRecordFile, editCall, editedRecord, fencedRecordFiles, fileHash,
-    keepRecordTexts, misnamedRecordFiles, looseRecordFiles, moveCall, moveRecordFile, newestSourceTime, outsideRecordCalls, placeCall,
+    keepRecordTexts, misnamedRecordFiles, looseRecordFiles, moveCall, moveRecordFile, nearRecordFile, newestSourceTime, outsideRecordCalls, placeCall,
     projectExists, projectInfo, projectPaths, readDeployState, readProjectHeader, recordFileList, recordFiles, strayRecordFiles, syncFolder, syncYaml,
     whereRecordsGo, writeDeployState, type ProjectPaths
 } from './projects.js';
@@ -256,6 +256,12 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
             // their record so, "SteelSword" and "FlameBlade", before its file was written (eval round 91). In a project with
             // record files, a name that is no file — an EditorID mistyped — is only refused.
             if (!/\.ya?ml$/i.test(request.record.trim()) && recordFiles(paths.plugin).length > 0) throw error;
+            // A path a letter or two off the project's file: the same call to that file.
+            const near = nearRecordFile(paths, request.record);
+            if (near) {
+                throw new HelperError(error.code, `No record file '${request.record}' in the project — it has ${near}. Nothing was changed: ` +
+                    `the same call to ${near} — ${editCall(paths, { ...request, record: near })}`);
+            }
             throw new HelperError(error.code, `${error.message} Nothing was changed: once the file is written, send this ` +
                 `call again for its changes — ${editCall(paths, request)}`);
         });
@@ -453,6 +459,13 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
             // Whatever the files looked like, a plugin without records is never what was asked (eval round 10).
             if (built.records === 0) {
                 fs.rmSync(output, { force: true });
+                // Empty files alone: blamed on folder nesting, the one empty file was no fault named (refusal probes of 2026-10-31, G10).
+                const empty = recordFiles(paths.plugin).filter(file => fs.readFileSync(file, 'utf8').trim() === '');
+                if (empty.length > 0 && empty.length === recordFiles(paths.plugin).length) {
+                    throw new ProjectError(`${empty.map(file => path.relative(paths.plugin, file).split(path.sep).join('/')).join(', ')} ` +
+                        `${empty.length === 1 ? 'is' : 'are'} empty, and the build read no record and wrote no plugin — write the record ` +
+                        'into it, the way readRecord shows a record of its type.');
+                }
                 throw new ProjectError(
                     `The build read no record from ${project}'s ${files} record file(s), and wrote no plugin. A record file sits ` +
                     `directly in its group's folder — ${path.join(paths.plugin, 'Weapons', 'MyWeapon.yaml')}, not in a folder ` +
@@ -943,23 +956,26 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
      * The project's records on a mesh the game does not have — in no archive it loads, no mod and not the project's assets — each
      * as a warning with the one call that gives it the model of the record most like it the game has. The helper names only the
      * models no record of their type in the load order is on (ModelFiles.cs): eval round 105's sword #1, #3 and #5 built a Flame
-     * Blade on a mesh path of their own making, which the game draws nothing for, and each build answered success.
+     * Blade on a mesh path of their own making, which the game draws nothing for, and each build answered success. A model of
+     * "" is a record with none at all (round 93's note #1, round 94's sword #5).
      */
     private async missingModels(paths: ProjectPaths, models: UnknownModel[]): Promise<string[]> {
         if (models.length === 0) return [];
-        const found = await this.findGameFiles([...new Set(models.flatMap(m => [m.model, ...m.like.map(l => l.model)]))]);
-        const has = (model: string) => !!found[model] || !!findCaseInsensitive(paths.assets, dataPath(model));
+        const found = await this.findGameFiles([...new Set(models.flatMap(m => [m.model, ...m.like.map(l => l.model)]).filter(Boolean))]);
+        const has = (model: string) => model !== '' && (!!found[model] || !!findCaseInsensitive(paths.assets, dataPath(model)));
         return models.filter(m => !has(m.model)).map(m => {
             const like = m.like.find(l => has(l.model));
-            return `${m.file}: ${m.editorId}'s model, ${m.model}, is a mesh the game does not have — in no archive it loads, no mod ` +
-                `and not this project's assets folder — so the game draws nothing for ${m.editorId}: not in the world, in a hand or ` +
-                'in the inventory. ' +
+            return (m.model
+                ? `${m.file}: ${m.editorId}'s model, ${m.model}, is a mesh the game does not have — in no archive it loads, no mod ` +
+                  `and not this project's assets folder — so the game draws nothing for ${m.editorId}`
+                : `${m.file}: ${m.editorId} has no Model, so the game draws nothing for it`) +
+                ': not in the world, in a hand or in the inventory. ' +
                 (like
                     ? `${like.editorId} is the record of the load order most like it: one call gives it ${like.editorId}'s model, ` +
                       `${like.model}, and builds again: ${editCall(paths, { record: m.file, set: { 'Model.File': like.model } })}`
                     : 'Give it the Model lines of a record of the load order like it, as readRecord shows them, and build again') +
                 // Split here: Linux's path functions keep a backslash as part of a name.
-                `; a mesh of its own goes into the project's assets folder, as ${path.join(paths.assets, ...dataPath(m.model).split('\\'))}.`;
+                (m.model ? `; a mesh of its own goes into the project's assets folder, as ${path.join(paths.assets, ...dataPath(m.model).split('\\'))}.` : '.');
         });
     }
 

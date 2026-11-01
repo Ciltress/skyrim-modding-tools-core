@@ -14,6 +14,8 @@ namespace SkyrimHelper;
 /// build answering success; 21 sword runs of rounds 87–105 passed so. A model the load order's records of its type are on is
 /// the game's, and not looked up; an override on the model of the record it overrides is left alone.
 /// Each comes with the models of the records of its type most like it, for the server to offer the first the game has.
+/// So too a new record with no model at all, of a type whose records the game draws — 9 in 10 of the load order's have a
+/// model — given as the model "": round 93's note #1 and round 94's sword #5 built with none and passed.
 /// </summary>
 internal static class ModelFiles
 {
@@ -23,11 +25,12 @@ internal static class ModelFiles
     public static JsonArray Unknown(ISkyrimModGetter mod, ILinkCache lookup, RecordIndex index, string pluginDir)
     {
         var unknown = new JsonArray();
-        var modeled = mod.EnumerateMajorRecords()
-            .Select(record => (Record: record, Model: Path((record as IModeledGetter)?.Model?.File.GivenPath)))
-            .Where(r => r.Model is not null)
+        var drawn = mod.EnumerateMajorRecords().Where(r => r is IModeledGetter)
+            .Select(record => (Record: record, Model: Path(((IModeledGetter)record).Model?.File.GivenPath)))
             .ToList();
-        if (modeled.Count == 0) return unknown;
+        var modeled = drawn.Where(r => r.Model is not null).ToList();
+        var bare = drawn.Where(r => r.Model is null && r.Record.FormKey.ModKey == mod.ModKey).Select(r => r.Record).ToList();
+        if (drawn.Count == 0) return unknown;
         var files = EffectCasting.Files(pluginDir);
         var loaded = new Dictionary<string, List<(IMajorRecordGetter Record, string Model)>>();
 
@@ -41,7 +44,20 @@ internal static class ModelFiles
             var ofType = loaded.TryGetValue(type, out var list) ? list : loaded[type] = OfType(type);
             if (ofType.Any(r => string.Equals(r.Model, model, StringComparison.OrdinalIgnoreCase))) continue;
             if (files.GetValueOrDefault(record.FormKey) is not { } relative) continue;
+            unknown.Add(Entry(record, relative, model, ofType));
+        }
+        foreach (var record in bare)
+        {
+            var type = RecordIndex.TypeName(record);
+            var ofType = loaded.TryGetValue(type, out var list) ? list : loaded[type] = OfType(type);
+            var all = index.ByFormKey.Values.Count(e => e.Type == type && e.FormKey.ModKey != mod.ModKey && !e.Unplayable);
+            if (all < 5 || ofType.Count < 0.9 * all || files.GetValueOrDefault(record.FormKey) is not { } relative) continue;
+            unknown.Add(Entry(record, relative, "", ofType));
+        }
+        return unknown;
 
+        JsonObject Entry(IMajorRecordGetter record, string relative, string model, List<(IMajorRecordGetter Record, string Model)> ofType)
+        {
             // Most like it: of its kind — a one-handed sword's, not a staff's — then the most links shared — the keywords, sounds
             // and impact sets a copy keeps — then the model the most records are on, the kind's common one, then load order. Round
             // 105's sword #3 wrote no keyword, and the type's most common model was a staff's. Named by a plain record: the Iron
@@ -58,15 +74,14 @@ internal static class ModelFiles
                 .Take(Offered)
                 .Select(r => (JsonNode)new JsonObject { ["editorId"] = r.Record.EditorID ?? Session.FormKeyText(r.Record.FormKey), ["model"] = r.Model })
                 .ToArray();
-            unknown.Add(new JsonObject
+            return new JsonObject
             {
                 ["file"] = relative.Replace('\\', '/'),
                 ["editorId"] = record.EditorID ?? Session.FormKeyText(record.FormKey),
                 ["model"] = model,
                 ["like"] = new JsonArray(like)
-            });
+            };
         }
-        return unknown;
 
         // The load order's records of the type the player can have, on a model, in load order.
         List<(IMajorRecordGetter Record, string Model)> OfType(string type)
@@ -94,7 +109,7 @@ internal static class ModelFiles
     };
 
     /// <summary>A model's path as the record gives it, below the Meshes folder, with backslashes.</summary>
-    private static string? Path(string? given)
+    internal static string? Path(string? given)
     {
         if (string.IsNullOrWhiteSpace(given)) return null;
         var file = given.Trim().Replace('/', '\\');

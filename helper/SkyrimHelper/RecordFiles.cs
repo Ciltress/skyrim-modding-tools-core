@@ -481,7 +481,14 @@ public static class RecordFiles
     private static string Unknown(Type type, HashSet<string> known, IEnumerable<string> keys, string text, string pluginDir, string relative,
         IEnumerable<(string Relative, string Text)> others)
     {
-        var hinted = keys.Select(key => (Key: key, Hint: HintIn(type, known, key, text))).ToList();
+        // A block of the record's own fields: an armor's Value, Weight and ArmorRating written under a weapon's BasicStats, told
+        // only to delete it, built as 0, 0 and 0 (refusal probes of 2026-10-31, A05) — written at the margin with one call.
+        var hinted = keys.Select(key => (Key: key, Hint: Lifted(type, known, key, text, pluginDir, relative) ?? HintIn(type, known, key, text))).ToList();
+        // A file whose fields are all another type's: the move alone, not a hint for each field — "Model (move it in each item of
+        // Stages, under Destructible)" pointed a sword written in Armors/ the wrong way (refusal probes, G06).
+        var whole = TopLevelKey.Matches(text).Select(m => m.Groups[1].Value).Where(k => k != "MutagenObjectType").Distinct().ToList();
+        if (Groups.Values.OfType<Type>().Distinct().Count(other => !other.IsAbstract && other != type && whole.All(FieldsOf(other).Contains)) == 1)
+            hinted = hinted.Select(f => (f.Key, Hint: f.Hint?.StartsWith("its lines are") == true ? f.Hint : null)).ToList();
         // A text where a number goes is deleted with the call that does it (TextHint).
         string Removal(string key) => TextHint(type, key, text) is null ? ""
             : "; one call deletes it and builds again: " + ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, "", ToolCalls.Quoted(key), build: true);
@@ -521,6 +528,24 @@ public static class RecordFiles
                 ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, "", string.Join(", ", bare.Select(ToolCalls.Quoted)), build: true);
         return string.Join(", ", named.Append(bare.Count == 0 ? "" : $"{string.Join(", ", bare)} ({deleted})")
             .Where(s => s.Length > 0));
+    }
+
+    /// <summary>
+    /// A top-level block whose lines are all the record's own fields, written at the margin nowhere yet, as the hint that writes
+    /// them there and deletes the block with one call; null for any other.
+    /// </summary>
+    private static string? Lifted(Type type, HashSet<string> known, string key, string text, string pluginDir, string relative)
+    {
+        var lines = Regex.Match(text.Replace("\r\n", "\n"), $@"^{Regex.Escape(key)}:[ \t]*\n(?<block>(?:[ \t]+\S.*\n?)+)", RegexOptions.Multiline);
+        if (!lines.Success) return null;
+        var fields = Regex.Matches(lines.Groups["block"].Value, @"^[ \t]+(?<key>[A-Za-z][A-Za-z0-9_]*):[ \t]*(?<value>[^\n#]*?)[ \t]*$", RegexOptions.Multiline)
+            .Select(m => (Key: m.Groups["key"].Value, Value: m.Groups["value"].Value)).ToList();
+        var margin = TopLevelKey.Matches(text).Select(m => m.Groups[1].Value).ToHashSet();
+        if (fields.Count == 0 || fields.Any(f => !known.Contains(f.Key) || margin.Contains(f.Key) || f.Value.Length == 0)) return null;
+        var set = string.Join(", ", fields.Select(f => $"{{\"path\": \"{f.Key}\", \"value\": " +
+            (double.TryParse(f.Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out _) ? f.Value : ToolCalls.Quoted(f.Value.Trim('\'', '"'))) + "}"));
+        return $"its lines are {Article(type.Name)}'s own fields, written at the margin: one call writes {string.Join(", ", fields.Select(f => f.Key))} " +
+            $"there, deletes {key} and builds again — " + ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, set, ToolCalls.Quoted(key), build: true);
     }
 
     /// <summary>
@@ -566,6 +591,39 @@ public static class RecordFiles
             : $": delete {them} at the margin and write {them} again below `{part}:` (line {text[..at.Index].Count(c => c == '\n') + 1}), " +
                 "as deep as its other fields";
     }
+
+    /// <summary>The project's record files that are no one YAML record: one written as JSON, or holding records apart by `---`.</summary>
+    internal static List<string> NotOneRecord(string pluginDir)
+    {
+        var unfit = new List<string>();
+        foreach (var (file, relative, type) in FlatRecords(pluginDir))
+        {
+            var text = File.ReadAllText(file).Replace("\r\n", "\n");
+            var start = text.TrimStart();
+            if (start.StartsWith('{') || start.StartsWith('['))
+            {
+                unfit.Add($"{relative} is written as JSON — a record file is YAML, a `Field: value` line for each field and a part's fields " +
+                    $"indented below it, the way readRecord shows {Article(type.Name)}");
+                continue;
+            }
+            // A `---` at the very top starts the one record; one after a field starts another.
+            var lines = text.Split('\n');
+            var first = Array.FindIndex(lines, line => line.Trim().Length > 0 && !line.TrimStart().StartsWith('#'));
+            var apart = lines.Select((line, i) => (line, i)).Where(l => l.i > first && Regex.IsMatch(l.line, @"^---[ \t]*$")).Select(l => l.i).ToList();
+            if (apart.Count == 0) continue;
+            var ids = Regex.Matches(text, @"^EditorID:[ \t]*(\S+)", RegexOptions.Multiline).Select(m => m.Groups[1].Value).ToList();
+            unfit.Add($"{relative} holds {apart.Count + 1} records, apart by `---` (line {string.Join(", ", apart.Select(i => i + 1))}) — a record " +
+                $"file holds one: write {(ids.Count > 1 ? string.Join(", ", ids.Skip(1)) : "each after the first")} in a file of its own in " +
+                $"{Path.GetDirectoryName(relative)?.Replace('\\', '/')}/, and delete {(apart.Count == 1 ? "it" : "them")} and the `---` from this one");
+        }
+        return unfit;
+    }
+
+    /// <summary>A record's in-game name as its file writes it — `Value:` below `Name:`, or `Name:` as one value — or null.</summary>
+    internal static string? NameOf(string text) =>
+        Regex.Match(text.Replace("\r\n", "\n"), @"^Name:[ \t]*\n(?:[ \t]+\S.*\n)*?[ \t]+Value:[ \t]*(?<name>[^\n#]*?)[ \t]*$", RegexOptions.Multiline) is { Success: true } block
+            ? block.Groups["name"].Value.Trim('\'', '"')
+            : Regex.Match(text, @"^Name:[ \t]+(?<name>[^\r\n#]+?)[ \t]*\r?$", RegexOptions.Multiline) is { Success: true } one ? one.Groups["name"].Value.Trim('\'', '"') : null;
 
     /// <summary>
     /// The value written on a top-level field's own line — the FlameBladeEnch of <c>Enchantment: FlameBladeEnch</c> —
@@ -881,6 +939,13 @@ public static class RecordFiles
             // A field written twice breaks the reader a check later: told only of the fields the type lacks, the model moved
             // those, was then told of DefaultOutfit written twice, and wrote the file anew each time, ten builds (eval probe 23).
             if (Twice(text, known) is { } twice) problems.Add($"{relative}: {twice}");
+            // A record type named at the margin that is not the folder's: the reader answered "Malformed FormKey string:
+            // MiscItem" for a note's file (refusal probes of 2026-10-31, B14).
+            if (Regex.Match(text, @"^MutagenObjectType:[ \t]*(?<kind>\w+)", RegexOptions.Multiline) is { Success: true } named && kind is null
+                && named.Groups["kind"].Value is var said && !said.Equals(type.Name, StringComparison.OrdinalIgnoreCase))
+                problems.Add($"{relative}: `MutagenObjectType: {said}` is no line of {Article(type.Name)}'s file, whose type is its folder's — delete it" +
+                    (Groups.FirstOrDefault(g => g.Value?.Name.Equals(said, StringComparison.OrdinalIgnoreCase) == true).Key is { } folder
+                        ? $"; {Article(said)} is written in {folder}/" : ""));
             foreach (var key in BlockFields.Matches(text).Select(m => m.Groups[1].Value).Where(known.Contains).Distinct())
                 if (OneValue(kind ?? type, key)) problems.Add($"{relative}: {Blocked(kind ?? type, key, text)}");
             var unknown = TopLevelKey.Matches(text).Select(m => m.Groups[1].Value).Where(key => !known.Contains(key)).Distinct().ToList();

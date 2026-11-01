@@ -24,8 +24,11 @@ public static class RecordEdits
     public static JsonObject Edit(string pluginDir, string record, JsonObject? set, JsonArray? remove)
     {
         if ((set?.Count ?? 0) + (remove?.Count ?? 0) == 0)
-            throw new HelperException("badRequest", "Nothing to change: give `set`, fields by path and their values — " +
-                "{\"Data.Damage\": 12, \"Name\": \"Flame Blade\"} — or `remove`, paths of fields to delete — [\"Critical\"].");
+            // A weapon's damage is BasicStats.Damage, and set a list of path and value: the example showed `Data.Damage`, which a weapon
+            // has not, as a dotted key, the form a model's call lost in eval round 55 (refusal probes of 2026-10-31, E03, H01).
+            throw new HelperException("badRequest", "Nothing to change: give `set`, a list of fields by path with their values — " +
+                "[{\"path\": \"BasicStats.Damage\", \"value\": 12}, {\"path\": \"Name\", \"value\": \"Flame Blade\"}] — or `remove`, " +
+                "paths of fields to delete — [\"Critical\"].");
         var (file, relative, type) = Find(pluginDir, record);
         if (LevelBounds.BothCalls(pluginDir, relative, type.Name, set, remove) is { } both) throw new HelperException("badRequest", both);
         var written = File.ReadAllText(file);
@@ -94,8 +97,14 @@ public static class RecordEdits
     {
         var steps = path.Split('.').Select(s => Segment.Match(s.Trim())).ToList();
         if (path.Trim().Length == 0 || steps.Any(m => !m.Success))
+        {
+            // `BasicStats/Damage`, `BasicStats > Damage`: the path its separators make, where they make one (refusal probes, E14).
+            var dotted = Regex.Replace(path.Trim(), @"\s*(?:[/\\>:]+|\s)\s*", ".");
             throw new HelperException("badRequest", $"'{path}' is no field path: fields joined by dots, an item of a list by its " +
-                "number from 0 — Data.Damage, Name, Effects[0].Data.Magnitude.");
+                (dotted != path.Trim() && dotted.Split('.').All(s => Segment.IsMatch(s))
+                    ? $"number from 0 — this one is {dotted}."
+                    : "number from 0 — BasicStats.Damage, Name, Effects[0].Data.Magnitude."));
+        }
         return steps.Select(m => new Step(m.Groups["key"].Value, m.Groups["index"].Success ? int.Parse(m.Groups["index"].Value) : null)).ToList();
     }
 
@@ -202,7 +211,9 @@ public static class RecordEdits
             var property = Property(current, step.Key)
                 ?? throw new HelperException("badRequest", $"{path}: {where} has no field {step.Key}" +
                     (i == 0 && record.Name == "MagicEffect" && step.Key == "Data" ? $" ({RecordFiles.EffectStrength})"
-                        : RecordFiles.HintFor(current, step.Key) is { Length: > 0 } hint ? hint.Replace(RecordFiles.NpcLevel, NpcLevel) : "") +
+                        : RecordFiles.HintFor(current, step.Key) is { Length: > 0 } hint ? hint.Replace(RecordFiles.NpcLevel, NpcLevel)
+                        // Where the record has it: `Data.Damage`, editRecord's own example once, is a weapon's BasicStats.Damage (refusal probes, H01).
+                        : i > 0 && RecordFiles.WhereIn(record, step.Key) is { } there ? $" ({RecordFiles.Article(record.Name)}'s {step.Key} is {there})" : "") +
                     $" — its fields: {string.Join(", ", Fields(current).Take(40))}. Nothing was written.");
             var type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
             if (step.Index is not null)
@@ -333,8 +344,28 @@ public static class RecordEdits
             value = Listed(text, steps, label, said);
             label += " (a list, sent as a text)";
         }
+        // A value the field cannot hold, refused before it is written: "twelve" for a damage, 12 for BasicStats, null — each was
+        // written, and the build after it refused the file the tool had made (refusal probes of 2026-10-31, E06, E20, E23).
+        if (Unwritable(types[^1], value, path) is { } unwritable)
+            throw new HelperException("badRequest", $"{label}: {unwritable}. Nothing was written.");
         text = Set(text, steps, types, value, label, changes);
         return steps.Count > 1 && steps[^1] is { Key: "MutagenObjectType", Index: null } ? Rekinded(text, steps.SkipLast(1).ToList(), types[^2], changes) : text;
+    }
+
+    /// <summary>What is wrong with a value for a field of a type, as words, or null where it can hold it.</summary>
+    private static string? Unwritable(Type type, JsonNode? value, string path)
+    {
+        var field = Nullable.GetUnderlyingType(type) ?? type;
+        if (value is null)
+            return $"null writes no value — to delete the field, send it in `remove`: [\"{path}\"]";
+        if (value is not JsonValue one) return null;
+        var said = one.TryGetValue<string>(out var text) ? text : one.ToJsonString();
+        if (field.IsEnum || field.IsPrimitive && field != typeof(char))
+            return RecordLinks.Unfit(field, said) is { } unfit ? $"{said} — {unfit}" : null;
+        if (typeof(Loqui.ILoquiObject).IsAssignableFrom(field) && !Translated(field) && !one.TryGetValue<string>(out _))
+            return $"{path} is a part with fields of its own, and {said} is one value — set the field meant below it, as " +
+                $"{path}.{Fields(field).FirstOrDefault() ?? "…"}";
+        return null;
     }
 
     /// <summary>

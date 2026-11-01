@@ -163,7 +163,8 @@ public static class RecordLinks
                 }
                 if (ByEditorId.Match(raw) is not { Success: true } written)
                 {
-                    problems.Add($"{relative}: {field} is '{raw}' — a link is a FormID like 012EB7:Skyrim.esm, or the editor ID of {RecordFiles.Article(wanted)}");
+                    problems.Add($"{relative}: {field} is '{raw}' — " + (ByName(raw, takes, wanted, field, pluginDir, index, own)
+                        ?? $"a link is a FormID like 012EB7:Skyrim.esm, or the editor ID of {RecordFiles.Article(wanted)}"));
                     return;
                 }
                 var editorId = written.Groups["id"].Value;
@@ -280,6 +281,12 @@ public static class RecordLinks
         var lines = text.Replace("\r\n", "\n").Split('\n');
         var at = (int)e.Start.Line;
         var where = at >= 1 && at <= lines.Length ? $"line {at}, `{lines[at - 1].Trim()}`" : $"line {at}";
+        // A tab where YAML takes spaces: the parser named line 1, or the line before the tab, and the advice to indent by two
+        // spaces never said the tab was the fault (refusal probes of 2026-10-31, G01, G16, F19).
+        var tabbed = lines.Select((line, i) => (line, i)).Where(l => Regex.IsMatch(l.line, @"^ *\t")).Select(l => l.i + 1).ToList();
+        if (tabbed.Count > 0)
+            return $"the YAML breaks: {LineList(tabbed)} {(tabbed.Count == 1 ? "is" : "are")} indented with a tab, and YAML indents with " +
+                $"spaces alone — write two spaces for each tab in front of {(tabbed.Count == 1 ? "it" : "them")}";
         if (TextLeft(lines, at) is { } block)
         {
             // Told only to indent the text, the model indented the fields after it too, then put both back at the margin,
@@ -322,10 +329,38 @@ public static class RecordLinks
                         ? "delete one of the two lines, they are the same"
                         : $"keep the one meant, `{lines[first].Trim()}` or `{lines[at - 1].Trim()}`, and delete the other");
         }
+        static int Depth(string line) => line.Length - line.TrimStart(' ').Length;
+        // What the parser says of a value written in a way YAML reads otherwise, said as the value written right — each was
+        // answered "indent a field's own fields", which fixes none of them (refusal probes of 2026-10-31, B10, B11, W31, G22).
+        if (at >= 1 && at <= lines.Length && Written(lines[at - 1], reason) is { } written)
+            return $"the YAML breaks at {where}: {written}";
+        if (reason.Contains("did not find expected key") && at >= 2 && at <= lines.Length)
+        {
+            var blamed = lines[at - 1];
+            var before = Array.FindLastIndex(lines, at - 2, line => line.Trim().Length > 0);
+            // A field deeper than the fields beside it: `    Value: 25` among BasicStats' two-space fields was blamed on the line
+            // after it, and indenting the lines named took three builds (refusal probes, W05, F06).
+            if (before >= 0 && Depth(lines[before]) > Depth(blamed) && ValueLine.IsMatch(lines[before])
+                && Array.FindLastIndex(lines, before - 1, line => line.Trim().Length > 0 && Depth(line) < Depth(lines[before])) is var part and >= 0
+                && Depth(lines[part]) < Depth(blamed))
+                return $"the YAML breaks at line {before + 1}, `{lines[before].Trim()}`: it is {Depth(lines[before])} spaces deep, and the fields " +
+                    $"of `{lines[part].Trim()}` after it {Depth(blamed)} — the fields of one part are written equally deep: write it with " +
+                    $"{Depth(blamed)} spaces in front, as `{lines[at - 1].Trim()}` is";
+            // An item of a list without its dash, blamed on the next item (refusal probes, S21).
+            if (Regex.Match(blamed, @"^(?<dash> *)- +(?<key>[A-Za-z0-9_]+):") is { Success: true } item)
+            {
+                var dash = item.Groups["dash"].Length;
+                var header = Array.FindLastIndex(lines, at - 2, line => line.Trim().Length > 0 && Depth(line) <= dash && !line.TrimStart().StartsWith('-'));
+                var undashed = header < 0 ? -1 : Array.FindIndex(lines, header + 1, at - 2 - header, line => Depth(line) == dash + 2
+                    && Regex.IsMatch(line, $@"^ *{Regex.Escape(item.Groups["key"].Value)}:"));
+                if (undashed >= 0)
+                    return $"the YAML breaks at line {undashed + 1}, `{lines[undashed].Trim()}`: it starts an item of `{lines[header].Trim()}` without its " +
+                        $"dash — write it `{new string(' ', dash)}- {lines[undashed].Trim()}`, the item's lines below it as they are";
+            }
+        }
         // Indented below a field that has a value of its own: a part's fields whose line was lost, under `EnchantmentAmount:
         // 500` (eval round 35's sword+detailed #3) — the line above, named; the record's own fields there are moved
         // (MisplacedFields.Dedent).
-        static int Depth(string line) => line.Length - line.TrimStart(' ').Length;
         if (at >= 2 && at <= lines.Length && Depth(lines[at - 1]) > 0
             && Array.FindLastIndex(lines, at - 2, line => line.Trim().Length > 0 && Depth(line) < Depth(lines[at - 1])) is var above and >= 0
             && ValueLine.IsMatch(lines[above]))
@@ -334,6 +369,40 @@ public static class RecordLinks
                 "part's name alone, `Part:`";
         return $"the YAML breaks at {where}: {reason} Indent a field's own fields by two spaces below it, and give every other line a `Field: value`";
     }
+
+    /// <summary>
+    /// A line whose value YAML reads otherwise than it was meant, as the words that say how to write it — a value holding
+    /// `: `, a path in double quotes, double quotes inside double quotes, no space after the colon — or null.
+    /// </summary>
+    private static string? Written(string line, string reason)
+    {
+        if (Regex.Match(line, @"^(?<indent> *(?:- +)?)(?<key>[A-Za-z][A-Za-z0-9_]*):[ \t]+(?<value>.*?)[ \t]*$") is { Success: true } field)
+        {
+            var (key, value) = (field.Groups["key"].Value, field.Groups["value"].Value);
+            string Single(string words) => $"`{key}: '{words.Replace("'", "''")}'`";
+            if (reason.Contains("unknown escape character") && value.StartsWith('"') && value.EndsWith('"') && value.Contains('\\'))
+                return $"the value after `{key}:` is in double quotes, where a backslash starts an escape — write it without the quotes: " +
+                    $"`{key}: {value[1..^1].Replace("\\\\", "\\")}`";
+            if (value.StartsWith('"') && value.Count(c => c == '"') > 2 && !value.Contains("\\\""))
+                return $"the value after `{key}:` is in double quotes and holds double quotes of its own, which end it early — write it in single " +
+                    $"quotes, {Single(value[1..^(value.EndsWith('"') ? 1 : 0)])}, an apostrophe in it written twice";
+            if (reason.Contains("invalid mapping") || reason.Contains("mapping values are not allowed"))
+                if (!value.StartsWith('\'') && !value.StartsWith('"') && value.Contains(": "))
+                    return $"the value after `{key}:` holds `: `, which YAML reads as a field inside it — write the value in single quotes, " +
+                        $"{Single(value)}, an apostrophe in it written twice, or write `{key}: >-` and the words on the lines below it, " +
+                        "two spaces deeper";
+        }
+        // `Damage:7`: no space after the colon, and YAML reads one word, no field. A FormID's colon is its own.
+        if (Regex.Match(line, @"^ *(?:- +)?(?<key>[A-Za-z][A-Za-z0-9_]*):(?<value>[^\s:][^:\s]*)[ \t]*$") is { Success: true } joined
+            && !Regex.IsMatch(joined.Groups["value"].Value, @"\.es[mpl]$", RegexOptions.IgnoreCase))
+            return $"`{line.Trim()}` has no space after its colon, so YAML reads one word there and no field — write " +
+                $"`{joined.Groups["key"].Value}: {joined.Groups["value"].Value}`";
+        return null;
+    }
+
+    /// <summary>Line numbers as words: "line 4", "lines 29, 30 and 31", the first eight of more.</summary>
+    private static string LineList(List<int> numbers) => numbers.Count == 1 ? $"line {numbers[0]}"
+        : $"lines {string.Join(", ", numbers.Take(Math.Min(numbers.Count, 8) - 1))} and {(numbers.Count > 8 ? $"{numbers[7]}, …" : numbers[^1].ToString())}";
 
     /// <summary>A field with a value of its own on its line, plain — no text block, quote or flow below it.</summary>
     private static readonly Regex ValueLine = new(@"^[ \t]*(?:- +)?[A-Za-z0-9_]+:[ \t]+[^\s'""|>\[{&*!#]", RegexOptions.None, TimeSpan.FromSeconds(5));
@@ -504,8 +573,11 @@ public static class RecordLinks
         foreach (var (keyNode, value) in mapping.Children)
         {
             if (keyNode is not YamlScalarNode { Value: { } key } || key == "MutagenObjectType") continue;
-            // The most derived one, where a class redeclares a property of its base.
-            var property = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            // The most derived one, where a class redeclares a property of its base; an interface's own and those it inherits —
+            // an armor's WorldModel is one, its Male and Female its getter's, and the lines below them went unread: `File:`
+            // written straight under `Male:` built an armor with no male model (refusal probes of 2026-10-31, A02).
+            var property = (type.IsInterface ? type.GetProperties().Concat(type.GetInterfaces().SelectMany(i => i.GetProperties()))
+                    : type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
                 .Where(p => p.Name == key).OrderBy(p => p.DeclaringType == type ? 0 : 1).FirstOrDefault();
             var field = path.Length == 0 ? key : $"{path}.{key}";
             if (property is null)
@@ -558,6 +630,37 @@ public static class RecordLinks
                                 : Priced(record, other!, words.Children[new YamlScalarNode(other!)], $"{field}.{other}", deleting) is { } priced ? priced
                                 : $"delete `{other}`" + (deleting is null ? "" : $"; one call deletes it and builds again: {deleting($"{field}.{other}", "")}")));
             }
+            else if (Gendered(propertyType) is { } sexed)
+            {
+                // A part for each sex, `Male:` and `Female:`, each walked as the part it holds: an armor's WorldModel is one, an
+                // enumerable the walk below passed over — `File:` written straight under `Male:` built an armor with no male
+                // model, and a field no model has built with no word (refusal probes of 2026-10-31, A02, F12).
+                if (value is not YamlMappingNode sexes) continue;
+                foreach (var (sexNode, part) in sexes.Children)
+                {
+                    if (sexNode is not YamlScalarNode { Value: { } sex }) continue;
+                    if (sex is not ("Male" or "Female"))
+                        problem($"{field} has no field {sex} — it holds `Male:` and `Female:`, each with its lines below it");
+                    else if (part is YamlMappingNode inner)
+                        Walk(inner, sexed, $"{field}.{sex}", link, problem, null, record, deleting);
+                }
+            }
+            else if (Pairs(propertyType) is { } pairs)
+            {
+                // A dictionary written as `- Key:` and `Value:` items, an NPC's skills: `Key: OneHand` was refused in the reader's
+                // words alone, "Requested value 'OneHand' was not found" (refusal probes of 2026-10-31, P19).
+                if (value is not YamlSequenceNode entries) continue;
+                var i = 0;
+                foreach (var entry in entries.Children)
+                {
+                    var at = $"{field}[{i++}]";
+                    if (entry is not YamlMappingNode written) continue;
+                    foreach (var (part, partType) in new[] { ("Key", pairs.Key), ("Value", pairs.Value) })
+                        if ((partType.IsEnum || partType.IsPrimitive) && written.Children.TryGetValue(new YamlScalarNode(part), out var node)
+                            && node is YamlScalarNode { Value: { Length: > 0 } said } && Unfit(partType, said) is { } unfit)
+                            problem($"{at}.{part} is {said} — {unfit}");
+                }
+            }
             else if (typeof(System.Collections.IList).IsAssignableFrom(propertyType) && ElementType(propertyType) is { } element)
             {
                 if (value is YamlMappingNode)
@@ -580,12 +683,31 @@ public static class RecordLinks
                     }
                 }
             }
+            else if (propertyType.Name == "Percent")
+            {
+                // A fraction from 0 to 1, as readRecord writes LItemGems75's `ChanceNone: 0.25`; written as the Creation Kit shows
+                // it, 50 or 50%, the reader answered "Could not parse string into Percent" or "Element out of range: 50", naming
+                // neither field nor line (refusal probes of 2026-10-31, L10, L11, H03).
+                if (value is YamlScalarNode { Value: { Length: > 0 } percent }
+                    && !(double.TryParse(percent, NumberStyles.Float, CultureInfo.InvariantCulture, out var fraction) && fraction is >= 0 and <= 1))
+                    problem($"{field} is {percent} — it takes a fraction from 0 to 1" + (key == "ChanceNone" ? ", the chance the list gives nothing" : "") +
+                        (double.TryParse(percent.TrimEnd('%', ' '), NumberStyles.Float, CultureInfo.InvariantCulture, out var whole) && whole is > 1 and <= 100
+                            ? $": {whole.ToString(CultureInfo.InvariantCulture)}% is `{key}: {(whole / 100).ToString(CultureInfo.InvariantCulture)}`"
+                            : $": write it as readRecord shows one, `{key}: 0.25` for a quarter"));
+            }
             else if (propertyType.IsEnum || propertyType.IsPrimitive)
             {
                 // The reader's own words name neither field nor line: "The input string '15.0' was not in a
                 // correct format", "Requested value 'Passive' was not found" (eval round 11's probes).
-                if (value is YamlScalarNode { Value: { Length: > 0 } one } && Unfit(propertyType, one) is { } expected)
+                if (value is YamlScalarNode { Value: { Length: > 0 } one } && Unfit(propertyType, one, key) is { } expected)
                     problem($"{field} is {one} — {expected}");
+                // Flags written as one value, which the reader refused in its own words, "Could not convert to
+                // Mutagen.Bethesda.Skyrim.CriticalData+Flag: OnDeath" (refusal probes of 2026-10-31, W30, A16, P11).
+                else if (value is YamlScalarNode { Value: { Length: > 0 } flagged } && propertyType.IsDefined(typeof(FlagsAttribute), false)
+                    && !long.TryParse(flagged, out _))
+                    problem($"{field} is written as one value, {flagged} — it takes a list: `{key}:` and below it each flag on a line of its own, " +
+                        $"as deep as `{key}:` and starting `- `: " + string.Join(" ", flagged.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                            .Select(f => $"`- {f}`")));
                 else if (value is YamlSequenceNode many && propertyType.IsDefined(typeof(FlagsAttribute), false))
                 {
                     // A magic effect's flags in a spell's, named where they go in one problem: the model copied ShockDamageFFAimed's
@@ -593,7 +715,7 @@ public static class RecordLinks
                     // flags a spell takes, round 43's spell+detailed #5 took them out of its magic effect too.
                     var effects = new List<string>();
                     foreach (var item in many.Children.OfType<YamlScalarNode>())
-                        if (item.Value is { Length: > 0 } flag && Unfit(propertyType, flag) is { } flagExpected)
+                        if (item.Value is { Length: > 0 } flag && Unfit(propertyType, flag, key) is { } flagExpected)
                         {
                             if (path.Length == 0 && record != typeof(MagicEffect) && record.GetProperties().Any(p => p.Name == "Effects")
                                 && Enum.GetNames<MagicEffect.Flag>().Contains(flag, StringComparer.Ordinal)) effects.Add(flag);
@@ -650,6 +772,48 @@ public static class RecordLinks
     }
 
     /// <summary>
+    /// A link written as a record's in-game name, as the words that name the record: the project's own, the load order's of
+    /// that name, or the editor IDs closest to the name with its spaces taken out — `Right Hand`'s RightHand. Told only that a
+    /// link is a FormID or an editor ID, a probe's `ObjectEffect: Probe Fire` had the name of the project's own enchantment
+    /// (refusal probes of 2026-10-31, N02, W18, A11). Null where nothing is near.
+    /// </summary>
+    private static string? ByName(string raw, Type takes, string wanted, string field, string pluginDir, RecordIndex index, Dictionary<string, Target> own)
+    {
+        var last = field.Split('.')[^1];
+        var line = last.EndsWith(']') ? "- {0}" : $"{last}: {{0}}";
+        var mine = RecordFiles.FlatRecords(pluginDir)
+            .Where(f => takes.IsAssignableFrom(f.Type))
+            .Select(f => (Text: File.ReadAllText(f.File), f.Type))
+            .Where(f => string.Equals(RecordFiles.NameOf(f.Text), raw.Trim(), StringComparison.OrdinalIgnoreCase))
+            .Select(f => RecordFiles.Identity(f.Text).EditorId).OfType<string>().ToList();
+        if (mine.Count > 0)
+            return $"that is the in-game name of {mine[0]}, new in this project — a link names a record by its editor ID: write `{string.Format(line, mine[0])}`";
+        // The one whose editor ID is the name itself first — SteelSword before a quest's copy named "Steel Sword" — then the closest.
+        var compact = Regex.Replace(raw, @"[\s'_-]+", "");
+        var named = index.ByFormKey.Values.Where(e => e.EditorId is not null && takes.IsAssignableFrom(e.GetterType)
+                && string.Equals(e.Name, raw.Trim(), StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(e => string.Equals(e.EditorId, compact, StringComparison.OrdinalIgnoreCase))
+            .ThenBy(e => Closeness(compact, e.EditorId!)).ThenBy(e => e.FormKey.ID).ThenBy(e => e.EditorId!.Length).ToList();
+        if (named.Count > 0)
+            return $"the in-game name of {named[0].EditorId} ({Session.FormKeyText(named[0].FormKey)})" +
+                (named.Count > 1 ? $" and of {named.Count - 1} other {wanted} record{(named.Count == 2 ? "" : "s")}" +
+                    $" ({string.Join(", ", named.Skip(1).Take(4).Select(e => e.EditorId))}{(named.Count > 5 ? ", …" : "")})" : "") +
+                $" — a link names a record by its editor ID: write the one meant, `{string.Format(line, named[0].EditorId)}`";
+        var near = Near(compact, takes, own, index);
+        return near.Count > 0 ? $"a link is a FormID like 012EB7:Skyrim.esm, or the editor ID of {RecordFiles.Article(wanted)} — the {wanted} records " +
+            $"closest to it: {string.Join(", ", near)}" : null;
+    }
+
+    /// <summary>A dictionary's key and value types, or null for any other type.</summary>
+    private static (Type Key, Type Value)? Pairs(Type type) => new[] { type }.Concat(type.GetInterfaces())
+        .Where(i => i.IsGenericType && i.GetGenericTypeDefinition() is var d && (d == typeof(IReadOnlyDictionary<,>) || d == typeof(IDictionary<,>)))
+        .Select(i => (i.GetGenericArguments()[0], i.GetGenericArguments()[1])).Cast<(Type, Type)?>().FirstOrDefault();
+
+    /// <summary>What a part of one for each sex holds — an armor's WorldModel an ArmorModel — or null for any other type.</summary>
+    private static Type? Gendered(Type type) => new[] { type }.Concat(type.GetInterfaces())
+        .FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition().Name == "IGenderedItemGetter`1")?.GetGenericArguments()[0];
+
+    /// <summary>
     /// The value of an NPC's AIData the official plugins' named NPCs have most often, by its type: told only the
     /// names, the model took the second, Aggressive, for an NPC the task gave no aggression (eval round 26). Counted over
     /// the 3,186 named NPCs the 80 official plugins define (2026-10-21).
@@ -672,7 +836,7 @@ public static class RecordLinks
     /// What a value of a field of names, a number or a truth is not, as words after it — "it takes a whole
     /// number, such as 15", "it takes one of Unaggressive, Aggressive…" — or null for one the reader takes.
     /// </summary>
-    private static string? Unfit(Type type, string raw)
+    internal static string? Unfit(Type type, string raw, string? key = null)
     {
         var invariant = CultureInfo.InvariantCulture;
         if (type.IsEnum)
@@ -687,8 +851,9 @@ public static class RecordLinks
                     || name.StartsWith("0x", StringComparison.OrdinalIgnoreCase) && long.TryParse(name[2..], NumberStyles.HexNumber, invariant, out _)) continue;
                 return names.FirstOrDefault(n => n.Equals(name, StringComparison.OrdinalIgnoreCase)) is { } spelled
                     ? $"it is spelled {spelled}"
-                    : $"it takes one of {string.Join(", ", names.Take(16))}{(names.Length > 16 ? ", …" : "")}" +
-                        (MostOften(type) is { } usual ? $" ({usual})" : "");
+                    : Listed(type, name, key) is var listed && listed.Length > 0
+                        ? $"it takes one of {string.Join(", ", listed.Take(16))}{(listed.Length > 16 ? ", …" : "")}" +
+                        (MostOften(type) is { } usual ? $" ({usual})" : "") : null;
             }
             return null;
         }
@@ -702,6 +867,38 @@ public static class RecordLinks
         var (min, max) = (Convert.ToDecimal(type.GetField("MinValue")!.GetValue(null), invariant),
             Convert.ToDecimal(type.GetField("MaxValue")!.GetValue(null), invariant));
         return whole < min || whole > max ? $"it takes a whole number from {min} to {max}" : null;
+    }
+
+    /// <summary>Short names written for an actor value, and the one each means.</summary>
+    private static readonly Dictionary<string, string> ShortNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["HP"] = "Health", ["HitPoints"] = "Health", ["Life"] = "Health", ["MP"] = "Magicka", ["Mana"] = "Magicka",
+        ["SP"] = "Stamina", ["Fatigue"] = "Stamina"
+    };
+
+    /// <summary>The values a field of actor values takes, by its name: a magic effect's school, its resistance.</summary>
+    private static readonly Dictionary<string, string[]> FieldValues = new(StringComparer.Ordinal)
+    {
+        ["MagicSkill"] = ["Alteration", "Conjuration", "Destruction", "Illusion", "Restoration"],
+        ["ResistValue"] = ["ResistFire", "ResistFrost", "ResistShock", "ResistMagic", "PoisonResist", "ResistDisease"]
+    };
+
+    /// <summary>
+    /// An enum's names in the order to offer them for a value written: the field's own values first (a school for MagicSkill),
+    /// then the name a short one means, then the closest, then the rest in their order. Offered the first 16 of the actor
+    /// values, Aggression to Sneak, `MagicSkill: Fire`, `ResistValue: FireResist` and `ActorValue: HP` were shown neither
+    /// Destruction, ResistFire nor Health (refusal probes of 2026-10-31, S12, S13, S24).
+    /// </summary>
+    private static string[] Listed(Type type, string raw, string? key)
+    {
+        var names = Enum.GetNames(type);
+        // A field of its own values offers those alone: a school is what MagicSkill holds, though it takes any actor value.
+        if (key is not null && FieldValues.TryGetValue(key, out var values) && values.Where(names.Contains).ToArray() is { Length: > 0 } own)
+            return own;
+        var meant = ShortNames.TryGetValue(raw.Trim(), out var name) && names.Contains(name) ? [name] : Array.Empty<string>();
+        var closest = names.Select(n => (Name: n, Score: Closeness(raw.Trim(), n))).Where(c => c.Score < int.MaxValue)
+            .OrderBy(c => c.Score).Select(c => c.Name);
+        return meant.Concat(closest).Concat(names).Distinct().ToArray();
     }
 
     /// <summary>

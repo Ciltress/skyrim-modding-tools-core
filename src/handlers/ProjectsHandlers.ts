@@ -245,6 +245,15 @@ export class ProjectsHandlers extends BaseHandler {
                     // A path placed elsewhere than sent is said where the model reads first, not only among the changes.
                     const placed = edited.changed.filter(change => change.includes('(sent as '));
                     const placedNote = placed.length > 0 ? ` Set where the record has it, not where it was sent: ${placed.join('; ')}.` : '';
+                    // A remove of a field the file has not: "Changed and built" beside "no ObjectEffect to remove" (refusal probes of
+                    // 2026-10-31, E09).
+                    if (edited.changed.length > 0 && edited.changed.every(change => /^no .+ to remove$/.test(change))) {
+                        const nothing = `Nothing changed: ${edited.changed.join('; ')} — the file is as it was.`;
+                        if (!build) return { nextStep: nothing, ...edited };
+                        const { text: _unchanged, ...unchanged } = edited;
+                        const built = await this.build(project);
+                        return { ...built, nextStep: `${nothing} ${built.nextStep ?? ''}`.trim(), edited: unchanged };
+                    }
                     if (!build) return { nextStep: `Run buildProject next — the plugin has this change only once a build answers success.${placedNote}`, ...edited };
                     // Without the file's text: the build may change the file again, and its answer says how.
                     const { text: _text, ...change } = edited;

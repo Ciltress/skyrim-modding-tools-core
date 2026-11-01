@@ -751,6 +751,23 @@ describe('the Skyrim backend', () => {
         await expect(backend.editRecord({ project: 'FlameBlade', record: 'FlameBlaed', set })).rejects.toThrow(new RegExp(`^${escape(listed)}$`));
     });
 
+    it('gives a mistyped record path\'s call to the file it is a letter or two off', async () => {
+        // Told to send the call again once the file was written, a probe wrote a second sword under the mistyped name
+        // (refusal probes of 2026-10-31, E16, H15).
+        const { backend, fixture, helperAnswers } = makeBackend();
+        await backend.newProject({ project: 'FlameBlade' });
+        write(path.join(fixture.projects, 'FlameBlade', 'plugin', 'Weapons', 'FlameBlade.yaml'), 'EditorID: FlameBlade\n');
+        helperAnswers.editRecord = () => { throw new HelperError('notFound', 'No record file \'Weapons/FlameBlaed.yaml\' in the project.'); };
+        const set = { 'BasicStats.Damage': 12 };
+        const refused = await backend.editRecord({ project: 'FlameBlade', record: 'Weapons/FlameBlaed.yaml', set }).catch((error: unknown) => error);
+        expect((refused as HelperError).message).toBe('No record file \'Weapons/FlameBlaed.yaml\' in the project — it has Weapons/FlameBlade.yaml. ' +
+            'Nothing was changed: the same call to Weapons/FlameBlade.yaml — editRecord {"project": "FlameBlade", "record": ' +
+            '"Weapons/FlameBlade.yaml", "set": [{"path": "BasicStats.Damage", "value": 12}], "build": true}');
+        // A path far from every file is handed back as before.
+        await expect(backend.editRecord({ project: 'FlameBlade', record: 'Weapons/IronDagger.yaml', set })).rejects.toThrow(
+            'once the file is written, send this call again');
+    });
+
     it('takes editRecord\'s record as a path from the projects folder too, as moveRecord and deleteRecord do', async () => {
         // Refused for `HildaTheNord/plugin/Npcs/Hilda.yaml`, the model sent `Npcs/Hilda.yaml` next (eval round 83's npc+detailed #1).
         const { backend, fixture, helperAnswers } = makeBackend();
@@ -977,6 +994,13 @@ describe('the Skyrim backend', () => {
         // Sent as text, as small models send an argument now and then.
         expect((await edit({ build: 'true' })).edited).toEqual({ file: full, changed });
 
+        // A remove of a field the file has not changes nothing, and says so (refusal probe E09: "Changed and built" beside it).
+        helperAnswers.editRecord = () => ({ file, changed: ['no ObjectEffect to remove'], text: 'EditorID: FlameBlade\n' });
+        const unchanged = await edit({ build: true });
+        expect(unchanged.nextStep).toBe(`Nothing changed: no ObjectEffect to remove — the file is as it was. Built. ${TOLD}`);
+        expect((await edit({})).nextStep).toBe('Nothing changed: no ObjectEffect to remove — the file is as it was.');
+        helperAnswers.editRecord = () => ({ file, changed, text: 'EditorID: FlameBlade\n' });
+
         helperAnswers.checkRecords = () => ({ records: 1, leftOut: [], notes: ['a note'] });
         const warned = await edit({ build: true });
         expect(Object.keys(warned).slice(0, 3)).toEqual(['status', 'warnings', 'nextStep']);
@@ -1105,6 +1129,12 @@ describe('the Skyrim backend', () => {
         expect(warning).toContain('editRecord {"project": "FlameBlade", "record": "Weapons/FlameBlade.yaml", "set": [{"path": "Model.File", ' +
             '"value": "Weapons\\\\Iron\\\\LongSword.nif"}], "build": true}');
         expect(warning).toContain(`as ${path.join(fixture.projects, 'FlameBlade', 'assets', 'meshes', 'Weapons', 'Iron', 'Sword.nif')}.`);
+
+        // No model at all, given as "": no mesh to look up, and no assets path to name (round 94's sword #5 wrote none).
+        models = [unknown('FlameBlade', '')];
+        const [bare] = (await backend.buildProject('FlameBlade')).warnings!;
+        expect(bare).toMatch(/^Weapons\/FlameBlade\.yaml: FlameBlade has no Model, so the game draws nothing for it: not in the world, in a hand or in the inventory\. IronSword is the record/);
+        expect(bare).toMatch(/"build": true\}\.$/);
 
         // None the game has: told to copy a record's Model lines. None unknown: no archive is read.
         models = [{ ...unknown('FlameBlade', 'Weapons\\Iron\\Sword.nif'), like: [{ editorId: 'MadeUpSword', model: 'Weapons\\MadeUp\\Sword.nif' }] }];

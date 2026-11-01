@@ -401,6 +401,11 @@ public sealed class Session : IDisposable
     {
         // A fix with one right answer is written first, and named in a refusal that comes after it too: the model
         // knows the file as it wrote it, and an edit of the line taken out finds nothing.
+        // A file that is no one YAML record — JSON, or two records apart by `---` — before any correction: the EditorID one wrote a
+        // line above a JSON record's `{`, and the repeated-line one deleted 11 lines of a second record (refusal probes of
+        // 2026-10-31, G13, F20, G19).
+        if (RecordFiles.NotOneRecord(dir) is { Count: > 0 } unfit)
+            throw new HelperException("badRecord", $"{unfit.Count} record file(s) cannot be built as written: {string.Join("; ", unfit)}");
         // A group folder in other letters before all: no file in it is read until it has its name.
         var corrected = RecordFiles.FolderCase(dir);
         // An editor ID first: a copied FormKey is taken out by the EditorID beside it.
@@ -513,6 +518,10 @@ public sealed class Session : IDisposable
         if (miscast.Count > 0)
             throw new HelperException("badRecord",
                 $"{miscast.Count} effect(s) would do nothing in game: {string.Join("; ", miscast.Take(12))}" + (miscast.Count > 12 ? "; …" : ""));
+        // And a new NPC of no race, which has no body in game (RecordNeeds).
+        var raceless = RecordNeeds.Raceless(mod, lookup, Index, dir);
+        if (raceless.Count > 0)
+            throw new HelperException("badRecord", $"{raceless.Count} NPC(s) would have no body in game: {string.Join("; ", raceless)}");
 
         Directory.CreateDirectory(Path.GetDirectoryName(output)!);
         try
@@ -545,7 +554,8 @@ public sealed class Session : IDisposable
             ["models"] = ModelFiles.Unknown(mod, lookup, Index, dir),
             ["notes"] = new JsonArray((await OverrideNotes(dir, mod.ModKey)).Concat(EffectCasting.Notes(mod, lookup, Index, dir))
                 .Concat(KeptFromSource.Notes(mod, lookup, Index, dir)).Concat(LevelBounds.Notes(mod, dir))
-                .Concat(WeaponEffects.Notes(mod, lookup, Index, dir)).Select(n => (JsonNode)n).ToArray())
+                .Concat(WeaponEffects.Notes(mod, lookup, Index, dir)).Concat(KindParts.Notes(mod, lookup, Index, dir))
+                .Concat(RecordNeeds.ListNotes(mod, dir)).Select(n => (JsonNode)n).ToArray())
         };
     }
 

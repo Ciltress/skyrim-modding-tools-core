@@ -79,6 +79,22 @@ public static class EffectCasting
             problems.Add($"{files.GetValueOrDefault(enchantmentKey) ?? files.GetValueOrDefault(weapon.FormKey) ?? name}: {name} is cast ConstantEffect on " +
                 $"{enchantment.TargetType}, and {Carried(name, weapon)}");
         }
+        // An armor's enchantment is cast ConstantEffect on Self while it is worn: one cast on each hit, a weapon's, does nothing
+        // there, and an iron cuirass carrying EnchWeaponFireDamage01 built with no word (refusal probes of 2026-10-31, A14, F14).
+        foreach (var armor in mod.Armors.Where(a => a.FormKey.ModKey == mod.ModKey && !a.ObjectEffect.IsNull))
+        {
+            var key = armor.ObjectEffect.FormKey;
+            var enchantment = mod.ObjectEffects.FirstOrDefault(o => o.FormKey == key)
+                ?? (lookup.TryResolve<IObjectEffectGetter>(key, out var loaded) ? loaded : null);
+            if (enchantment is null || enchantment.CastType == CastType.ConstantEffect) continue;
+            var name = enchantment.EditorID ?? Session.FormKeyText(key);
+            var armorName = armor.EditorID ?? Session.FormKeyText(armor.FormKey);
+            const string worn = "EnchArmorFortifyHealth01";
+            problems.Add($"{files.GetValueOrDefault(armor.FormKey) ?? armorName}: {armorName}, an armor, carries {name}, cast {enchantment.CastType} on " +
+                $"{enchantment.TargetType} as a weapon's enchantment is, on each hit — an armor's is cast ConstantEffect on Self while it is " +
+                $"worn, and one cast otherwise does nothing there. Name an enchantment the game's armors carry, as {worn} (readRecord " +
+                $"{{\"record\": \"{worn}\"}}), or write the project's own ConstantEffect on Self with effects cast so");
+        }
         foreach (var caster in Casters(mod).Where(c => c.Record.FormKey.ModKey == mod.ModKey))
         {
             var name = caster.Record.EditorID ?? Session.FormKeyText(caster.Record.FormKey);
@@ -127,7 +143,24 @@ public static class EffectCasting
                 {
                     var instead = InPlace(ownEffect, caster, i, mod, lookup, index, pluginDir, files);
                     if (instead is not null) offered.Add(key);
-                    problems.Add(said + $"give both the same CastType and TargetType, the ones the {caster.Kind} is meant to have" +
+                    // The effect's own file cast as the record is, as the call it is: said in words, it was the half of the answer a
+                    // model could not make, and the call beside it the delete alone (refusal probes of 2026-10-31, S23, F07).
+                    // A record cast ConstantEffect on anything but Self is the one written wrong — no spell is cast so — and is cast as
+                    // its effect is: made the other way, a constant aimed spell's fire bolt would have been made constant too (F10).
+                    var recordWrong = caster.Cast == CastType.ConstantEffect && caster.Target != TargetType.Self;
+                    var (castFile, castName, otherName, cast, target, current) = recordWrong
+                        ? (files.GetValueOrDefault(caster.Record.FormKey), name, effectName, effect.CastType, effect.TargetType, (Cast: caster.Cast, Target: caster.Target))
+                        : (files.GetValueOrDefault(key), effectName, name, EffectsCast(caster.Cast), caster.Target, (Cast: effect.CastType, Target: effect.TargetType));
+                    var castAs = new[]
+                    {
+                        current.Cast != cast ? $"{{\"path\": \"CastType\", \"value\": \"{cast}\"}}" : null,
+                        current.Target != target ? $"{{\"path\": \"TargetType\", \"value\": \"{target}\"}}" : null
+                    }.OfType<string>().ToList();
+                    problems.Add(said + (castFile is not null && castAs.Count > 0
+                            ? $"one call casts {castName} as {otherName} is cast, and builds again: " +
+                              ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), castFile, string.Join(", ", castAs), build: true) +
+                              $" — where {castName} is meant to be cast so, give {otherName} the CastType and TargetType meant"
+                            : $"give both the same CastType and TargetType, the ones the {caster.Kind} is meant to have") +
                         (instead is null ? "" : $"; or {instead}"));
                     continue;
                 }
@@ -248,8 +281,14 @@ public static class EffectCasting
         var gameName = effect.EditorID ?? Session.FormKeyText(effect.FormKey);
         var said = $"name the game's {gameName} in its place, as {Shown(example)} does — in {name}'s Effects[{item}] `BaseEffect: {gameName}`";
         var alone = Uses(own, mod).All(u => u.Caster.Record.FormKey == caster.Record.FormKey);
-        return files.GetValueOrDefault(own.FormKey) is { } relative && alone
-            ? said + $" — and delete {relative.Replace('\\', '/')}: {ToolCalls.Delete(pluginDir, relative)}"
+        // Both calls, in their order, then the build: given the delete alone, made alone it left the spell naming an effect gone
+        // (refusal probes of 2026-10-31, S23, F08).
+        if (files.GetValueOrDefault(own.FormKey) is { } relative && alone && files.GetValueOrDefault(caster.Record.FormKey) is { } casterFile)
+            return $"name the game's {gameName} in its place, as {Shown(example)} does — two calls and a build: " +
+                ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), casterFile, $"{{\"path\": \"Effects[{item}].BaseEffect\", \"value\": \"{gameName}\"}}") +
+                $", then {ToolCalls.Delete(pluginDir, relative)}, then buildProject";
+        return files.GetValueOrDefault(own.FormKey) is { } file && alone
+            ? said + $" — and delete {file.Replace('\\', '/')}: {ToolCalls.Delete(pluginDir, file)}"
             : said;
     }
 
@@ -290,6 +329,9 @@ public static class EffectCasting
             + (own.MagicSkill != ActorValue.None && effect.MagicSkill == own.MagicSkill ? 2 : 0)
             + (own.Archetype.ActorValue != ActorValue.None && effect.Archetype.ActorValue == own.Archetype.ActorValue ? 1 : 0)
             + (at == item ? 1 : 0)
+            // The effect the project's was copied from first: Firebolt's, on its projectile, not a storm spell's that shares its
+            // keywords (refusal probes of 2026-10-31, S23).
+            + (!own.Projectile.IsNull && effect.Projectile.FormKey == own.Projectile.FormKey ? 3 : 0)
             + (RecordLinks.SharedWords(words, RecordLinks.WordsOf(record.Record.EditorID ?? "")).Count > 0 ? 1 : 0);
         // Like it where it says what it does: damage to Health is not offered a cloak's or a heal's effect.
         bool Fits(IMagicEffectGetter effect) =>

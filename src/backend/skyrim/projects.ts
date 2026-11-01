@@ -380,6 +380,35 @@ export function editedRecord(projectsDir: string, paths: ProjectPaths, given: st
     return isFile(afterName) ? afterName : bare && isFile(`${afterName}.yaml`) ? `${afterName}.yaml` : given;
 }
 
+/**
+ * The one record file of the project a record path names with a letter or two otherwise — `Weapons/ProbeSwrd.yaml` for
+ * Weapons/ProbeSword.yaml — as its path in the plugin folder; undefined where none is, or more than one. Told only to send its
+ * call again once the file was written, a probe wrote a second ProbeSword under the mistyped name (refusal probes of 2026-10-31,
+ * E16, H15).
+ */
+export function nearRecordFile(paths: ProjectPaths, record: string): string | undefined {
+    const wanted = record.trim().replace(/\\/g, '/').replace(/\.ya?ml$/i, '').toLowerCase();
+    const near = recordFiles(paths.plugin)
+        .map(file => path.relative(paths.plugin, file).split(path.sep).join('/'))
+        .filter(file => {
+            const name = file.replace(/\.yaml$/i, '').toLowerCase();
+            const [a, b] = wanted.includes('/') ? [name, wanted] : [name.split('/').pop()!, wanted];
+            return a !== b && editDistance(a, b) <= 2;
+        });
+    return near.length === 1 ? near[0] : undefined;
+}
+
+/** The letters to add, take out or change to make one word the other. */
+function editDistance(a: string, b: string): number {
+    let row = Array.from({ length: b.length + 1 }, (_, i) => i);
+    for (let i = 1; i <= a.length; i++) {
+        const next = [i];
+        for (let j = 1; j <= b.length; j++) next[j] = Math.min(row[j] + 1, next[j - 1] + 1, row[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+        row = next;
+    }
+    return row[b.length];
+}
+
 export function recordFileList(paths: ProjectPaths): string {
     const files = recordFiles(paths.plugin).map(file => path.relative(paths.plugin, file).split(path.sep).join('/'));
     return files.length === 0 ? 'none yet' : files.slice(0, 20).join(', ') + (files.length > 20 ? ` and ${files.length - 20} more` : '');
