@@ -24,9 +24,10 @@ public static class MisplacedFields
     /// <summary>
     /// Moves what has one place, in each record file of the plugin folder; answers each file and what was moved.
     /// <paramref name="copiedFrom"/> names the load order's record a part's field keeps the value of — by the record's type, its
-    /// file's text, the part, the field and the value — where the field written at the margin is to take its place.
+    /// file's text, the part, the field, the value kept and the one written at the margin — where the margin's is to take its
+    /// place; null where it is not.
     /// </summary>
-    public static List<(string File, string Change)> Move(string pluginDir, Func<Type, string, string, string, string, string?>? copiedFrom = null)
+    public static List<(string File, string Change)> Move(string pluginDir, Func<Type, string, string, string, string, string, string?>? copiedFrom = null)
     {
         var changes = new List<(string File, string Change)>();
         foreach (var (file, relative, type) in RecordFiles.FlatRecords(pluginDir))
@@ -231,7 +232,7 @@ public static class MisplacedFields
     private sealed record Moved(string Text, string Change);
 
     /// <summary>The first move the file needs — fields at the margin first, then those a level too deep — or null.</summary>
-    private static Moved? NextMove(string text, Type type, Func<Type, string, string, string, string, string?>? copiedFrom)
+    private static Moved? NextMove(string text, Type type, Func<Type, string, string, string, string, string, string?>? copiedFrom)
     {
         if (Root(text) is not { } root) return null;
         var lines = text.Split('\n').ToList();
@@ -312,7 +313,7 @@ public static class MisplacedFields
     /// field above, or wrote them back at the margin (eval rounds 22 and 32).
     /// </summary>
     private static Moved? Under(List<string> lines, YamlMappingNode root, Type type, string part, List<YamlScalarNode> keys,
-        Func<Type, string, string, string, string, string?>? copiedFrom = null)
+        Func<Type, string, string, string, string, string, string?>? copiedFrom = null)
     {
         if (type.GetProperties(Public).FirstOrDefault(p => p.Name == part) is not { } property) return null;
         var names = keys.Select(k => k.Value!).ToList();
@@ -335,11 +336,12 @@ public static class MisplacedFields
                     var dropped = lines[start].TrimEnd('\r').Trim();
                     // The part's one kept from the record the file was written after, the margin's the one written for it: the
                     // margin's in its place. Told to write the value meant under BasicStats, where the Iron Sword's 25 was, and
-                    // delete the margin's 150, 2 of 7 runs of eval rounds 87–101 were refused again.
+                    // delete the margin's 150, 2 of 7 runs of eval rounds 87–101 were refused again. Only where copiedFrom finds it
+                    // clear which is which; else the refusal below stands.
                     if (kept != written)
                     {
                         if (keptNode.Start.Line != keptNode.End.Line
-                            || copiedFrom?.Invoke(type, string.Join('\n', lines), part, inPart.Value!, kept) is not { } source)
+                            || copiedFrom?.Invoke(type, string.Join('\n', lines), part, inPart.Value!, kept, written) is not { } source)
                             return null;
                         var keptLine = (int)keptNode.Start.Line - 1;
                         var column = (int)keptNode.Start.Column - 1;

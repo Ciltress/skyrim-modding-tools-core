@@ -126,37 +126,45 @@ internal static class KeptFromSource
     private static string? NameOf(IMajorRecordGetter record) => record is ITranslatedNamedGetter named ? named.Name?.String : null;
 
     /// <summary>
-    /// The load order's weapon a new weapon's file was written after, where its part's field keeps that weapon's value: the
-    /// IronSword whose BasicStats.Value is the 25 a Flame Blade kept — of the weapons with the model the file names whose field is
-    /// that value — playable and plain, as Notes reads them — the one whose links the file names most, as Source ranks them; of a
-    /// tie, the first in load order. Null for none, or a file of another type or no model.
+    /// The load order's weapon a new weapon's file was written after, where its part's field keeps that weapon's value and the
+    /// value written at the margin is the file's own: the IronSword whose BasicStats.Value is the 25 a Flame Blade kept, beside
+    /// the 150 written for it. The weapon is found as Source finds it, by the file alone, never by a value — of the playable,
+    /// plain weapons with the model the file names, the one whose links the file names most, one at least — so a value of the
+    /// user's that some other weapon of that model has is never taken for a copied one. Null, and the refusal stands, where the
+    /// weapons ranked first differ in that field, where <paramref name="kept"/> is not theirs, or where any weapon of that model
+    /// has <paramref name="written"/>: which of the two is the file's own is then not the build's to guess.
     /// </summary>
-    internal static string? CopiedFrom(ILinkCache lookup, RecordIndex index, Type type, string text, string part, string key, string value)
+    internal static string? CopiedFrom(ILinkCache lookup, RecordIndex index, Type type, string text, string part, string key, string kept,
+        string written)
     {
         if (type != typeof(Weapon) || MisplacedFields.Root(text) is not { } root
             || !root.Children.TryGetValue(new YamlDotNet.RepresentationModel.YamlScalarNode("Model"), out var model)
             || model is not YamlDotNet.RepresentationModel.YamlMappingNode modelFields
             || !modelFields.Children.TryGetValue(new YamlDotNet.RepresentationModel.YamlScalarNode("File"), out var fileNode)
             || ModelPath((fileNode as YamlDotNet.RepresentationModel.YamlScalarNode)?.Value) is not { } file) return null;
-        (string? Name, int Shared) best = (null, -1);
+        var mates = new List<(string Name, string? Value, int Shared)>();
         foreach (var entry in index.ByFormKey.Values.Where(e => e.Signature == "WEAP" && !e.Unplayable))
         {
             // Plain, as Notes reads the weapons a new one is written after: no template, no enchantment.
             if (!lookup.TryResolve<IWeaponGetter>(entry.FormKey, out var weapon) || !weapon.Template.IsNull || !weapon.ObjectEffect.IsNull) continue;
             if (!string.Equals(ModelPath(weapon.Model?.File), file, StringComparison.OrdinalIgnoreCase)) continue;
             var held = weapon.GetType().GetProperty(part)?.GetValue(weapon) is { } partValue ? partValue.GetType().GetProperty(key)?.GetValue(partValue) : null;
-            if (held is null || Convert.ToString(held, CultureInfo.InvariantCulture) is not { } shown
-                || shown != value && !(double.TryParse(shown, NumberStyles.Float, CultureInfo.InvariantCulture, out var a)
-                    && double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var b) && a == b)) continue;
             // Its links the file names, by FormID or by editor ID.
-            var shared = weapon.EnumerateFormLinks().Select(l => l.FormKey).Where(k => !k.IsNull).Distinct().Count(k =>
-                text.Contains(Session.FormKeyText(k), StringComparison.OrdinalIgnoreCase)
-                || index.ByFormKey.TryGetValue(k, out var linked) && linked.EditorId is { } id
+            var shared = weapon.EnumerateFormLinks().Select(l => l.FormKey).Where(f => !f.IsNull).Distinct().Count(f =>
+                text.Contains(Session.FormKeyText(f), StringComparison.OrdinalIgnoreCase)
+                || index.ByFormKey.TryGetValue(f, out var linked) && linked.EditorId is { } id
                     && System.Text.RegularExpressions.Regex.IsMatch(text, $@"(?<!\w){System.Text.RegularExpressions.Regex.Escape(id)}(?!\w)"));
-            if (shared > best.Shared) best = (weapon.EditorID ?? Session.FormKeyText(weapon.FormKey), shared);
+            mates.Add((weapon.EditorID ?? Session.FormKeyText(weapon.FormKey), held is null ? null : Convert.ToString(held, CultureInfo.InvariantCulture), shared));
         }
-        return best.Name;
+        if (mates.Count == 0 || mates.Max(m => m.Shared) is var most && most == 0) return null;
+        var first = mates.Where(m => m.Shared == most).ToList();
+        return first.All(m => SameNumber(m.Value, kept)) && !mates.Any(m => SameNumber(m.Value, written)) ? first[0].Name : null;
     }
+
+    /// <summary>Whether a value read and one written are the same: 25 and 25.0 are.</summary>
+    private static bool SameNumber(string? read, string written) =>
+        read is not null && (read == written || double.TryParse(read, NumberStyles.Float, CultureInfo.InvariantCulture, out var a)
+            && double.TryParse(written, NumberStyles.Float, CultureInfo.InvariantCulture, out var b) && a == b);
 
     /// <summary>A model's path as the game finds it: backslashes, below the Meshes folder, in any case.</summary>
     private static string? ModelPath(string? given)

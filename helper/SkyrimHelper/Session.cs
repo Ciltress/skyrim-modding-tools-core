@@ -432,7 +432,8 @@ public sealed class Session : IDisposable
         corrected.AddRange(FlagLines.OutOfFlags(dir));
         corrected.AddRange(FlagLines.IntoFlags(dir));
         // A weapon's field at the margin takes the place of its part's, where that one is the weapon's it was written after.
-        corrected.AddRange(MisplacedFields.Move(dir, (type, text, part, key, value) => KeptFromSource.CopiedFrom(Cache, Index, type, text, part, key, value)));
+        corrected.AddRange(MisplacedFields.Move(dir, (type, text, part, key, kept, written) =>
+            KeptFromSource.CopiedFrom(Cache, Index, type, text, part, key, kept, written)));
         corrected.AddRange(MisplacedFields.MoveEffectData(dir));
         // Once each field is in its part: a model's texture hashes are found by the part they are under.
         corrected.AddRange(RecordFiles.DropBrokenModelData(dir));
