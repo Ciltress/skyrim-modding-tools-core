@@ -575,9 +575,17 @@ public static class RecordLinks
             // its line goes, said: told "give it a first line `MutagenObjectType:`", the model wrote it at the margin above
             // `Archetype:`, twice (eval round 82's sword+detailed #5).
             var under = Regex.Replace(path.Split('.')[^1], @"\[\d+\]$", "");
+            // A name's lines below `Level:`, where the NPC has a Name too: told the level's kinds alone, a model set
+            // Configuration.Level.TargetLanguage (eval round 108's npc #1; with no Name, the build writes them as its Name).
+            var nameKeys = type.Name == "ANpcLevel" && mapping.Children.Count > 0
+                && mapping.Children.Keys.All(k => k is YamlScalarNode { Value: "TargetLanguage" or "Value" })
+                ? mapping.Children.Keys.OfType<YamlScalarNode>().Select(k => k.Value!).ToList() : null;
             problem($"{path} is a field of several kinds: its first line, below `{under}:` and two spaces deeper, is `MutagenObjectType:` " +
                 $"naming one — {string.Join(", ", kinds)}" +
-                (named is null ? "" : $"; {named} is none of them") + (type.Name == "ANpcLevel" ? $"; {RecordFiles.NpcLevel}" : ""));
+                (named is null ? "" : $"; {named} is none of them") +
+                (nameKeys is null ? "" : $"; {string.Join(" and ", nameKeys)} below `{under}:` {(nameKeys.Count == 1 ? "is" : "are")} a name's — " +
+                    "an NPC's name is its `Name:` at the margin, and its level another field: write the name there, and a level in its place") +
+                (type.Name == "ANpcLevel" ? $"; {RecordFiles.NpcLevel}" : ""));
             return;
         }
         // The fields of the level above written here, named in one problem with what this part holds: told

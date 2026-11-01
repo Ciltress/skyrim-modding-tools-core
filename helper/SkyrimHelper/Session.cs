@@ -445,8 +445,11 @@ public sealed class Session : IDisposable
         corrected.AddRange(RecordFiles.MendNumbersAndBytes(dir));
         // And an NPC's aggression or responsibility written as none is, by the part it is in too.
         corrected.AddRange(RecordFiles.MendAIData(dir));
-        // And its level written as a number, once a level at the margin is under Configuration.
+        // And a name written below `Level:`, then its level written as a number, once a level at the margin is under Configuration.
+        corrected.AddRange(RecordFiles.NameOutOfLevel(dir));
         corrected.AddRange(RecordFiles.MendLevel(dir));
+        // And the level its bounds bound, where it has bounds and no level.
+        corrected.AddRange(RecordFiles.LevelForBounds(dir));
         // A spell's or enchantment's lines from its effects, read where each is: its cast, and an effect's flags in the spell's.
         corrected.AddRange(CasterLines.DropEffectFlags(dir, Index, Cache));
         corrected.AddRange(CasterLines.CastAsEffects(dir, Index, Cache));

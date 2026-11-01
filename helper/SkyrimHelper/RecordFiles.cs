@@ -1908,6 +1908,92 @@ public static class RecordFiles
         return changes;
     }
 
+    private static readonly Regex EmptyLevelLine = new(@"^(?<indent>[ \t]*)Level[ \t]*:[ \t]*(?:#.*)?\r?$");
+    private static readonly Regex NameFieldLine = new(@"^[ \t]+(?<key>TargetLanguage|Value)[ \t]*:");
+    private static readonly Regex MarginNameLine = new(@"^Name[ \t]*:", RegexOptions.Multiline);
+
+    /// <summary>
+    /// An NPC's name written below `Level:` — a name's lines, `TargetLanguage:` and `Value:` — where the NPC has no `Name:`,
+    /// written as its Name at the margin: the model's Hilda had `Level:` where `Name:` was meant, and refused for a level that
+    /// names no kind, it set Configuration.Level.TargetLanguage, then a level, and answered with a Hilda the game shows nameless
+    /// (eval round 108's npc #1). With a Name of its own, the refusal says the lines are a name's (RecordLinks).
+    /// </summary>
+    public static List<(string File, string Change)> NameOutOfLevel(string pluginDir)
+    {
+        var changes = new List<(string File, string Change)>();
+        foreach (var (file, relative, type) in FlatRecords(pluginDir))
+        {
+            if (type != typeof(Npc)) continue;
+            var text = File.ReadAllText(file);
+            if (MarginNameLine.IsMatch(text)) continue;
+            var lines = text.Split('\n').ToList();
+            static int IndentOf(string line) => line.Length - line.TrimStart(' ').Length;
+            for (var i = 0; i < lines.Count; i++)
+            {
+                if (EmptyLevelLine.Match(lines[i]) is not { Success: true } header) continue;
+                var indent = header.Groups["indent"].Length;
+                var below = new List<int>();
+                for (var j = i + 1; j < lines.Count && (lines[j].Trim().Length == 0 || IndentOf(lines[j]) > indent); j++)
+                    if (lines[j].Trim().Length > 0) below.Add(j);
+                var keys = below.Select(j => NameFieldLine.Match(lines[j])).ToList();
+                if (below.Count == 0 || keys.Any(k => !k.Success) || keys.All(k => k.Groups["key"].Value != "Value")) continue;
+                var eol = lines[i].EndsWith('\r') ? "\r" : "";
+                var name = new List<string> { "Name:" + eol };
+                name.AddRange(below.Select(j => "  " + lines[j].TrimStart(' ', '\t')));
+                var written = string.Join(", ", below.Select(j => $"`{lines[j].Trim()}`"));
+                lines.RemoveRange(i, below[^1] - i + 1);
+                // At the margin below the EditorID, or the FormKey, where a vanilla record has it near the top.
+                var at = lines.FindIndex(l => Regex.IsMatch(l, @"^EditorID[ \t]*:"));
+                if (at < 0) at = lines.FindIndex(l => Regex.IsMatch(l, @"^FormKey[ \t]*:"));
+                lines.InsertRange(at + 1, name);
+                File.WriteAllText(file, string.Join('\n', lines));
+                changes.Add((relative, $"wrote `Level:` (line {i + 1}) and the lines below it, {written}, as the NPC's `Name:` at the margin — " +
+                    $"they are a name's lines, and {Identity(text).EditorId ?? "the NPC"} had no Name; a level is " +
+                    "`Level: {MutagenObjectType: …}` under Configuration"));
+                break;
+            }
+        }
+        return changes;
+    }
+
+    private static readonly Regex AnyLevelLine = new(@"^[ \t]*Level[ \t]*:", RegexOptions.Multiline);
+    private static readonly Regex TemplateLink = new(@"^[ \t]*Template[ \t]*:[ \t]*(?!(?:Null|null|~)[ \t]*(?:#|\r?$))[^\s#]", RegexOptions.Multiline);
+
+    /// <summary>
+    /// A new NPC's level bounds, CalcMinLevel and CalcMaxLevel, with no Level line, given the level they bound — one that follows
+    /// the player's, `Level: {MutagenObjectType: PcLevelMult, LevelMult: 1}`, written above them: with no Level, its level is
+    /// fixed at 0, which bounds do not bound. 25 NPC files of eval rounds 87–108 were first written so; warned of the fixed level,
+    /// two runs made both of the warning's calls, the level and the bounds removed (rounds 106's and 108's npc+detailed #2). A
+    /// level written beside the bounds keeps the warning (LevelBounds); an NPC with a template, which may give its level, is left.
+    /// </summary>
+    public static List<(string File, string Change)> LevelForBounds(string pluginDir)
+    {
+        var changes = new List<(string File, string Change)>();
+        var own = OwnPlugin(pluginDir);
+        foreach (var (file, relative, type) in FlatRecords(pluginDir))
+        {
+            if (type != typeof(Npc)) continue;
+            var text = File.ReadAllText(file);
+            if (Identity(text).FormKey is { } key && key.ModKey != own) continue;
+            if (AnyLevelLine.IsMatch(text) || TemplateLink.IsMatch(text)) continue;
+            var lines = text.Split('\n').ToList();
+            var bounds = ValueFields(lines.ToArray(), type)
+                .Where(f => f.PartKey == "Configuration" && f.Key is "CalcMinLevel" or "CalcMaxLevel").ToList();
+            if (bounds.Count == 0 || bounds.All(f => short.TryParse(f.Value, NumberStyles.None, CultureInfo.InvariantCulture, out var n) && n == 0)) continue;
+            var first = bounds.MinBy(f => f.Line);
+            var indent = lines[first.Line][..(lines[first.Line].Length - lines[first.Line].TrimStart(' ', '\t').Length)];
+            var eol = lines[first.Line].EndsWith('\r') ? "\r" : "";
+            const string follows = "{MutagenObjectType: PcLevelMult, LevelMult: 1}";
+            lines.Insert(first.Line, $"{indent}Level: {follows}{eol}");
+            File.WriteAllText(file, string.Join('\n', lines));
+            changes.Add((relative, $"wrote `Level: {follows}` as line {first.Line + 1}, above Configuration's `{first.Key}: {first.Value}` — " +
+                $"{Identity(text).EditorId ?? "the NPC"} had level bounds and no Level, a level fixed at 0 that they do not bound; they " +
+                "bound a level that follows the player's, as this one does between them. A fixed level is " +
+                "`Level: {MutagenObjectType: NpcLevel, Level: 10}`, with no bounds"));
+        }
+        return changes;
+    }
+
     /// <summary>
     /// A field of bytes written as the number 0, or as zero bytes of another length, as zero bytes of the length its type gives
     /// it — the sword's Data.Unused, three bytes, was written as twelve; null for any other value, or a length unknown.

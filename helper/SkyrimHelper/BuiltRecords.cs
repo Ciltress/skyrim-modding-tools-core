@@ -87,12 +87,23 @@ internal static class BuiltRecords
                         _ => ""
                     }
                 }.Where(p => p.Length > 0));
+                // Its class, voice and outfit too: the model's Hilda was built with no outfit where the task asked for iron
+                // armor, and the line read only race, sex and level (eval round 108's npc+detailed #5).
+                yield return string.Join(", ",
+                    NpcPart(npc, "class", npc.Class, NpcConfiguration.TemplateFlag.Stats, id),
+                    NpcPart(npc, "voice", npc.Voice, NpcConfiguration.TemplateFlag.Traits, id),
+                    NpcPart(npc, "outfit", npc.DefaultOutfit, NpcConfiguration.TemplateFlag.Inventory, id));
                 break;
             case IBookGetter book:
                 yield return $"weight {Number(book.Weight)}, value {book.Value}";
                 break;
         }
     }
+
+    /// <summary>An NPC's linked part by its editor ID — "outfit ArmorIronAllOutfit" — its template's where a flag gives it that, or "no outfit".</summary>
+    private static string NpcPart(INpcGetter npc, string part, IFormLinkGetter link, NpcConfiguration.TemplateFlag given, Func<IFormLinkGetter, string> id) =>
+        !link.IsNull ? $"{part} {id(link)}"
+            : !npc.Template.IsNull && npc.Configuration.TemplateFlags.HasFlag(given) ? $"{part} from its template" : $"no {part}";
 
     private static string Effects(IReadOnlyList<IEffectGetter> effects, Func<IFormLinkGetter, string> id) =>
         effects.Count == 0
