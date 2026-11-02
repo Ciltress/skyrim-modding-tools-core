@@ -342,6 +342,15 @@ public static class RecordEdits
     private static string SetPath(string text, Type type, string path, JsonNode? value, List<string> changes, Context context)
     {
         var (steps, label) = Placed(type, path);
+        // A field sent under another name — a weapon's Enchantments, its ObjectEffect — refused with the call that sets the one
+        // meant: told "an enchantment is ObjectEffect", the model wrote the sword's file whole again, without it, and set
+        // ObjectEffect two turns later (eval round 112's sword+detailed #3).
+        if (steps is [{ Index: null } only] && Property(type, only.Key) is null && value is JsonValue
+            && RecordFiles.SynonymFor(type, only.Key) is { } meant && Property(type, meant) is not null)
+            throw new HelperException("badRequest", $"{label}: {RecordFiles.Article(type.Name)} has no field {only.Key}" +
+                $"{RecordFiles.HintFor(type, only.Key)} — one call sets {meant} and builds again: " +
+                ToolCalls.Edit(ToolCalls.ProjectOf(context.PluginDir), context.Relative, $"{{\"path\": \"{meant}\", \"value\": {value.ToJsonString()}}}", build: true) +
+                ". Nothing was written.");
         var types = Types(type, steps, label, (below, link) => Linked(text, steps, below, link, context));
         if (value is JsonValue braced && braced.TryGetValue<string>(out var bracedText) && Fielded(bracedText, types[^1], out var unescaped) is { } parsed)
         {
@@ -579,6 +588,7 @@ public static class RecordEdits
         var root = Root(text) ?? throw Unreadable();
         YamlNode node = root;
         var indent = 0; // the column the current mapping's keys are written at
+        YamlScalarNode? into = null; // the key of the part the current mapping is, where that key is on a line of its own
         for (var i = 0; i < steps.Count; i++)
         {
             var step = steps[i];
@@ -591,7 +601,24 @@ public static class RecordEdits
                 // Missing from here on: written whole, below the fields the mapping has.
                 if (steps.Skip(i).Any(s => s.Index is not null))
                     throw new HelperException("badRequest", $"{path}: there is no {step.Key} to take an item of — set {Upto(steps, i + 1).Split('[')[0]} whole, as a list. Nothing was written.");
+                // A field the part's written kind has not, refused before writing: an NPC's Level, a PcLevelMult, took
+                // `Configuration.Level.Level` — an NpcLevel's field, which a level of any kind is checked for (eval round 112's
+                // npc+detailed #3).
+                if (i > 0 && types[i - 1].IsAbstract && Field(mapping, "MutagenObjectType") is { } named
+                    && RecordFiles.KindOf(types[i - 1], named) is { } kind && kind.GetProperty(step.Key, Public) is null)
+                    throw new HelperException("badRequest", $"{path}: {Upto(steps, i)} is {RecordFiles.Article(kind.Name)}, which has no field " +
+                        $"{step.Key}{RecordFiles.HintFor(kind, step.Key).Replace(RecordFiles.NpcLevel, NpcLevel)} — its fields: " +
+                        $"{string.Join(", ", Fields(kind))}. Nothing was written.");
                 var whole = Nest(steps.Skip(i).ToList(), types.Skip(i).ToList(), value);
+                // A part written in braces on its line — `Level: {MutagenObjectType: PcLevelMult, LevelMult: 1}`, as the build
+                // writes a level — takes a new field with its fields written as lines: below the braces, the new line left YAML
+                // that does not read, refused as this tool's own fault (eval round 112's npc+detailed #3).
+                if (mapping.Style == YamlDotNet.Core.Events.MappingStyle.Flow && into is not null && FromYaml(mapping) is JsonObject fields)
+                {
+                    fields[step.Key] = whole;
+                    changes.Add($"added {path}: {Shown(value)}, with {Upto(steps, i)} written as lines");
+                    return ReplaceField(text, into, mapping, Render(into.Value ?? "", fields, Column(into)));
+                }
                 var keyIndent = mapping.Children.Count > 0 ? Column(mapping.Children.Keys.First()) : indent;
                 changes.Add($"added {path}: {Shown(value)}");
                 return InsertAfter(text, mapping, ReferenceEquals(mapping, root), Render(step.Key, whole, keyIndent));
@@ -626,6 +653,7 @@ public static class RecordEdits
                 }
                 node = item;
                 indent = Column(item) + 2;
+                into = null;
                 continue;
             }
             // A part written empty — `Level:`, nothing below it — takes the fields set below it, written there whole: refused as
@@ -636,7 +664,12 @@ public static class RecordEdits
                 changes.Add($"set {path}: {Shown(value)}, below {Upto(steps, i + 1)}, which was empty");
                 return ReplaceField(text, key, child, Render(step.Key, Nest(steps.Skip(i).ToList(), types.Skip(i).ToList(), value), Column(key)));
             }
-            if (!last) { node = child; continue; }
+            if (!last)
+            {
+                into = mapping.Style == YamlDotNet.Core.Events.MappingStyle.Flow ? null : key;
+                node = child;
+                continue;
+            }
             // A text — Name, Description — takes its words: written into its Value.
             if (Translated(types[i]) && value is JsonValue words && words.TryGetValue<string>(out var said))
             {
@@ -660,6 +693,7 @@ public static class RecordEdits
     {
         var root = Root(text) ?? throw Unreadable();
         YamlNode node = root;
+        YamlScalarNode? into = null; // the key of the part the current mapping is, where that key is on a line of its own
         for (var i = 0; i < steps.Count; i++)
         {
             var step = steps[i];
@@ -669,6 +703,30 @@ public static class RecordEdits
                 return text;
             }
             var child = mapping.Children[key];
+            // A field of a part written in braces on its line, or an item of a list written so, goes from it, the rest written as
+            // lines: the line of `Level: {MutagenObjectType: PcLevelMult, LevelMult: 1}` went whole with its LevelMult, and the NPC
+            // with its level (refusal probes of 2026-11-02, B04).
+            var flowItem = step.Index is int at && i == steps.Count - 1 && mapping.Style != YamlDotNet.Core.Events.MappingStyle.Flow
+                && child is YamlSequenceNode { Style: YamlDotNet.Core.Events.SequenceStyle.Flow } flowList && at < flowList.Children.Count;
+            if (flowItem && FromYaml(child) is JsonArray items)
+            {
+                items.RemoveAt(step.Index!.Value);
+                if (items.Count == 0)
+                {
+                    changes.Add($"removed {path} and the {step.Key} it was the last of");
+                    return RemoveLines(text, Line(key.Start), FieldEnd(text, key, child));
+                }
+                changes.Add($"removed {path}, with {step.Key} written as lines");
+                return ReplaceField(text, key, child, Render(step.Key, items, Column(key)));
+            }
+            if (step.Index is null && i == steps.Count - 1 && mapping.Style == YamlDotNet.Core.Events.MappingStyle.Flow && into is not null
+                && FromYaml(mapping) is JsonObject fields)
+            {
+                fields.Remove(step.Key);
+                changes.Add($"removed {path}, with {Upto(steps, i)} written as lines");
+                return ReplaceField(text, into, mapping, Render(into.Value ?? "", fields, Column(into)));
+            }
+            into = step.Index is null && mapping.Style != YamlDotNet.Core.Events.MappingStyle.Flow ? key : null;
             if (step.Index is int n)
             {
                 if (child is not YamlSequenceNode list || n >= list.Children.Count) { changes.Add($"no {path} to remove"); return text; }

@@ -137,28 +137,59 @@ internal static class KeptFromSource
     internal static string? CopiedFrom(ILinkCache lookup, RecordIndex index, Type type, string text, string part, string key, string kept,
         string written)
     {
-        if (type != typeof(Weapon) || MisplacedFields.Root(text) is not { } root
+        if (type != typeof(Weapon) || Mates(lookup, index, text) is not { Count: > 0 } weapons) return null;
+        string? Held(IWeaponGetter weapon) =>
+            weapon.GetType().GetProperty(part)?.GetValue(weapon) is { } partValue && partValue.GetType().GetProperty(key)?.GetValue(partValue) is { } held
+                ? Convert.ToString(held, CultureInfo.InvariantCulture) : null;
+        var mates = weapons.Select(m => (m.Name, Value: Held(m.Weapon), m.Shared)).ToList();
+        if (mates.Max(m => m.Shared) is var most && most == 0) return null;
+        var first = mates.Where(m => m.Shared == most).ToList();
+        return first.All(m => SameNumber(m.Value, kept)) && !mates.Any(m => SameNumber(m.Value, written)) ? first[0].Name : null;
+    }
+
+    /// <summary>
+    /// The load order's weapons a new weapon's file was written after, found as CopiedFrom finds them — of the playable, plain
+    /// weapons with the file's model, those whose links the file names most, one at least — in load order; none for a file
+    /// with no model, or no weapon of its model.
+    /// </summary>
+    internal static List<(string Name, IWeaponGetter Weapon)> Followed(ILinkCache lookup, RecordIndex index, string text)
+    {
+        var mates = Mates(lookup, index, text);
+        if (mates.Count == 0 || mates.Max(m => m.Shared) is var most && most == 0) return [];
+        return mates.Where(m => m.Shared == most).Select(m => (m.Name, m.Weapon)).ToList();
+    }
+
+    /// <summary>
+    /// A link field's value on a weapon as a file writes it — its editor ID, or its FormID where it has none — or null where
+    /// the weapon has none.
+    /// </summary>
+    internal static string? LinkOn(IWeaponGetter weapon, string field, RecordIndex index) =>
+        weapon.GetType().GetProperty(field)?.GetValue(weapon) is IFormLinkGetter { IsNull: false } link
+            ? index.ByFormKey.TryGetValue(link.FormKey, out var entry) && entry.EditorId is { } id ? id : Session.FormKeyText(link.FormKey)
+            : null;
+
+    /// <summary>The playable, plain weapons with a file's model, each with how many of its links the file names, by FormID or editor ID.</summary>
+    private static List<(string Name, IWeaponGetter Weapon, int Shared)> Mates(ILinkCache lookup, RecordIndex index, string text)
+    {
+        if (MisplacedFields.Root(text) is not { } root
             || !root.Children.TryGetValue(new YamlDotNet.RepresentationModel.YamlScalarNode("Model"), out var model)
             || model is not YamlDotNet.RepresentationModel.YamlMappingNode modelFields
             || !modelFields.Children.TryGetValue(new YamlDotNet.RepresentationModel.YamlScalarNode("File"), out var fileNode)
-            || ModelPath((fileNode as YamlDotNet.RepresentationModel.YamlScalarNode)?.Value) is not { } file) return null;
-        var mates = new List<(string Name, string? Value, int Shared)>();
+            || ModelPath((fileNode as YamlDotNet.RepresentationModel.YamlScalarNode)?.Value) is not { } file) return [];
+        var mates = new List<(string Name, IWeaponGetter Weapon, int Shared)>();
         foreach (var entry in index.ByFormKey.Values.Where(e => e.Signature == "WEAP" && !e.Unplayable))
         {
             // Plain, as Notes reads the weapons a new one is written after: no template, no enchantment.
             if (!lookup.TryResolve<IWeaponGetter>(entry.FormKey, out var weapon) || !weapon.Template.IsNull || !weapon.ObjectEffect.IsNull) continue;
             if (!string.Equals(ModelPath(weapon.Model?.File), file, StringComparison.OrdinalIgnoreCase)) continue;
-            var held = weapon.GetType().GetProperty(part)?.GetValue(weapon) is { } partValue ? partValue.GetType().GetProperty(key)?.GetValue(partValue) : null;
             // Its links the file names, by FormID or by editor ID.
             var shared = weapon.EnumerateFormLinks().Select(l => l.FormKey).Where(f => !f.IsNull).Distinct().Count(f =>
                 text.Contains(Session.FormKeyText(f), StringComparison.OrdinalIgnoreCase)
                 || index.ByFormKey.TryGetValue(f, out var linked) && linked.EditorId is { } id
                     && System.Text.RegularExpressions.Regex.IsMatch(text, $@"(?<!\w){System.Text.RegularExpressions.Regex.Escape(id)}(?!\w)"));
-            mates.Add((weapon.EditorID ?? Session.FormKeyText(weapon.FormKey), held is null ? null : Convert.ToString(held, CultureInfo.InvariantCulture), shared));
+            mates.Add((weapon.EditorID ?? Session.FormKeyText(weapon.FormKey), weapon, shared));
         }
-        if (mates.Count == 0 || mates.Max(m => m.Shared) is var most && most == 0) return null;
-        var first = mates.Where(m => m.Shared == most).ToList();
-        return first.All(m => SameNumber(m.Value, kept)) && !mates.Any(m => SameNumber(m.Value, written)) ? first[0].Name : null;
+        return mates;
     }
 
     /// <summary>Whether a value read and one written are the same: 25 and 25.0 are.</summary>

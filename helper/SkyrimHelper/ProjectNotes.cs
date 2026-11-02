@@ -223,15 +223,36 @@ public static class ProjectNotes
                 "Npc" => $"{was} becomes '{now}' wherever the game places them",
                 _ => $"the game shows that record as '{now}' wherever it is"
             };
+            var namers = Namers(records, relative, text, key);
+            var start = $"{relative}: overrides {entry.EditorId} of {key.ModKey.FileName} and renames it from '{was}' to '{now}': {becomes}, " +
+                $"with all this file changes.";
+            // A new record of that name the project has already, of the same type: the copy is left over, and making it new made a
+            // second one. The model wrote its Flame Blade from IronSword's copy, kept the copy renamed 'Flame Blade', was given the
+            // call that made it FlameBlade2, and answered with every Iron Sword in the game renamed (eval round 112's sword+detailed #1).
+            var twin = records.FirstOrDefault(r => r.Relative != relative && r.Type == type && NameIn(r.Text) == now
+                && (RecordFiles.Identity(r.Text).FormKey is not { } theirs || theirs.ModKey == own));
+            if (twin.Relative is not null)
+            {
+                var twinId = RecordFiles.Identity(twin.Text).EditorId;
+                var pointed = twinId is null ? [] : namers.Select(n => ToolCalls.Edit(project, n.Relative,
+                    string.Join(", ", n.Paths.Select(p => $"{{\"path\": {Quoted(p)}, \"value\": {Quoted(twinId)}}}")))).ToList();
+                var pointing = pointed.Count > 0
+                    ? $"point {string.Join(" and ", namers.Select(n => $"{n.Relative}'s {string.Join(", ", n.Paths)}"))} at {twinId}, " +
+                      $"{string.Join("; then ", pointed)}; then "
+                    : "";
+                notes.Add(start + $" The project has the new '{now}' already, {twin.Relative}{(twinId is null ? "" : $" ({twinId})")}, so " +
+                    $"this copy is left over: unless the user asked for {was} itself to change, {pointing}delete it — " +
+                    $"{ToolCalls.Delete(pluginDir, relative)} — and build again, buildProject {{\"project\": {Quoted(project)}}}; {was} then " +
+                    $"stays as it is, and {twin.Relative} is the one '{now}'");
+                continue;
+            }
             // That edit as the one call it is: told to delete the FormKey line and give the copy an EditorID of its own, the model
             // judged it hard — "This requires knowing the *original* content of the record … patching over it is difficult" —
             // kept the renamed Prisoner and answered (eval round 64's npc #3, the fifth such copy kept in rounds 50–64).
             var id = RecordFiles.EditorIdFromName(now, Free) ?? RecordFiles.Numbered($"{entry.EditorId}New", Free);
             editorIds.Add(id);
-            var namers = Namers(records, relative, text, key);
             var call = ToolCalls.Edit(project, relative, $"{{\"path\": \"EditorID\", \"value\": {Quoted(id)}}}", "\"FormKey\"", build: namers.Count == 0);
-            var start = $"{relative}: overrides {entry.EditorId} of {key.ModKey.FileName} and renames it from '{was}' to '{now}': {becomes}, " +
-                $"with all this file changes. {Unless(was)} — ";
+            start += $" {Unless(was)} — ";
             if (namers.Count == 0)
             {
                 notes.Add(start + $"one call does it: {call}, which deletes this file's FormKey line, gives it an EditorID of its own and " +

@@ -441,6 +441,10 @@ public static class RecordFiles
     public static string HintFor(Type type, string key) =>
         Hint(type, FieldsOf(type), key) is { } hint ? $" ({hint})" : "";
 
+    /// <summary>The field another name of one stands for — a weapon's Enchantments, its ObjectEffect — or null.</summary>
+    internal static string? SynonymFor(Type type, string key) =>
+        Synonyms.FirstOrDefault(s => s.Field is not null && s.Types.Contains(type.Name) && s.Keys.Contains(key, StringComparer.OrdinalIgnoreCase)).Field;
+
     /// <summary>
     /// The part of the record a top-level field it lacks goes under, where the refusal names one place: an NPC's
     /// level, under Configuration; another, as "move it under BasicStats" says. Null for any other — a field to

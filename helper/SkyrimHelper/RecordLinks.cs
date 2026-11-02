@@ -82,6 +82,32 @@ public static class RecordLinks
             // The weapon most like this file's, looked for once a file, and its keywords' call given once.
             (string EditorId, List<string> Keywords)? like = null;
             var (likeLooked, likeGiven) = (false, false);
+            // The fields linking to no record that the record can go without, deleted by the one call the last of them gives; and
+            // the load order's weapons this file was written after, looked for once a file. Told only to write the one meant, the
+            // model kept two sounds it had made up beside IronSword's three, which IronSword has not, until its turns ran out
+            // (eval round 112's sword+detailed #3).
+            var unlinked = new List<string>();
+            var lastUnlinked = -1;
+            List<(string Name, IWeaponGetter Weapon)>? followed = null;
+            // Where the refusal offers the records closest to a name, the deletion is offered only where the weapon followed has no
+            // such field: a spell's HalfCostPerk written DestructionApprentice is DestructionApprentice25, not a line to drop.
+            string Unlinked(string field, bool offered = false)
+            {
+                if (field.Contains('.') || field.Contains('[') || Kept.Contains(field)) return "";
+                var (said, lacks) = ((string?)null, false);
+                if (type == typeof(Weapon) && lookup is not null)
+                {
+                    followed ??= KeptFromSource.Followed(lookup, index, text);
+                    if (followed.Count > 0 && followed.Select(f => KeptFromSource.LinkOn(f.Weapon, field, index)).Distinct().ToList() is [var held])
+                        (said, lacks) = held is null
+                            ? ($" — {followed[0].Name}, the weapon this file was written after, has no {field}", true)
+                            : ($" — {followed[0].Name}, the weapon this file was written after, has `{field}: {held}`", false);
+                }
+                if (offered && !lacks) return said ?? "";
+                unlinked.Add(field);
+                lastUnlinked = problems.Count;
+                return lacks ? $"{said}: delete the line" : $"{said}; or, if none is meant, delete the line";
+            }
             // An enchantment's base named as the magic effect it casts, the line beside its Effects: offered another enchantment
             // to name, the model's went round its files until the turns ran out, naming the game's base on the last (eval round
             // 95's sword #1). A new enchantment does without one. Named by its FormID, it was told only to write the one meant,
@@ -141,7 +167,7 @@ public static class RecordLinks
                         problems.Add($"{relative}: {field} is {raw}, {mismatch}; {field} takes {RecordFiles.Article(wanted)}" +
                             (index.ByFormKey.TryGetValue(linked, out var linkedEntry)
                                 ? WrongType(field, wanted, linkedEntry.Type, linkedEntry.EditorId ?? raw)
-                                : " — write the editor ID of the one meant, or its FormID as findRecords answers it"));
+                                : " — write the editor ID of the one meant, or its FormID as findRecords answers it" + Unlinked(field)));
                     return;
                 }
                 if (LoadOrderFormId.Match(raw) is { Success: true } numbered)
@@ -210,7 +236,7 @@ public static class RecordLinks
                         (nameless.Count > 0 ? $"{string.Join(", ", nameless)} {(nameless.Count == 1 ? "has" : "have")} no EditorID line: " +
                             $"give the record meant the line EditorID: {editorId}" + (near.Count > 0 ? "; or " : "") : "") +
                         (near.Count > 0 ? $"the {wanted} records closest to it: {string.Join(", ", near)}"
-                            : nameless.Count > 0 ? "" : $"find the {wanted} with findRecords"));
+                            : nameless.Count > 0 ? "" : $"find the {wanted} with findRecords") + Unlinked(field, near.Count > 0 || nameless.Count > 0));
                     return;
                 }
                 if (!takes.IsAssignableFrom(found.Type))
@@ -243,6 +269,9 @@ public static class RecordLinks
             if (problems.Count > before)
                 problems[before] = problems[before].Insert(relative.Length + 2, RecordFiles.Droppable(type, relative, text,
                     RecordFiles.FlatRecords(pluginDir).Where(f => f.Relative != relative).Select(f => (f.Relative, File.ReadAllText(f.File))), pluginDir));
+            if (lastUnlinked >= 0)
+                problems[lastUnlinked] += $" — one call deletes {(unlinked.Count == 1 ? "it" : string.Join(" and ", unlinked))} and builds again: " +
+                    ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, "", string.Join(", ", unlinked.Select(ToolCalls.Quoted)), build: true);
             if (replacements.Count == 0) continue;
             var withFormIds = text;
             foreach (var r in replacements.OrderByDescending(r => r.Start))
@@ -933,6 +962,13 @@ public static class RecordLinks
             .OrderBy(c => c.Score).Select(c => c.Name);
         return meant.Concat(closest).Concat(names).Distinct().ToArray();
     }
+
+    /// <summary>
+    /// The link fields a refusal never offers to delete: an NPC's race, which it cannot go without (RecordNeeds), and a weapon's
+    /// or armor's enchantment, written for its own sake — the Iron Sword a Flame Blade follows has none, and its enchantment
+    /// named by a typo is to be named right (refusal probe W20).
+    /// </summary>
+    private static readonly HashSet<string> Kept = new(["Race", "ObjectEffect"], StringComparer.Ordinal);
 
     /// <summary>
     /// What is wrong with a FormKey a link field holds, as words after it — "which is IronSword, a Weapon",
