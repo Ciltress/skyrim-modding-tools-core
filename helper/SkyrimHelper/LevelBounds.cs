@@ -9,7 +9,8 @@ namespace SkyrimHelper;
 /// a level that follows the player's, and beside a fixed one the game reads neither. Asked for a Hilda "whose level follows
 /// the player's between 5 and 30", a model wrote the two bounds and no Level line — a fixed level of 0 — and answered that her
 /// level follows the player's between 5 and 30, the build's `built` line reading "level 0" (eval round 103's npc+detailed #1
-/// and #5). The game's own NPCs of a fixed level write no bounds, so a copy of one has no note.
+/// and #5). The game's own NPCs of a fixed level write no bounds, so a copy of one has no note. And a level that follows the
+/// player's at 0 times it, which holds the NPC at its lowest level.
 /// </summary>
 internal static class LevelBounds
 {
@@ -26,10 +27,20 @@ internal static class LevelBounds
         foreach (var npc in npcs)
         {
             var configuration = npc.Configuration;
-            if (configuration.Level is not INpcLevelGetter level || (configuration.CalcMinLevel == 0 && configuration.CalcMaxLevel == 0)) continue;
             // One whose template gives its stats has the template's level.
             if (!npc.Template.IsNull && configuration.TemplateFlags.HasFlag(NpcConfiguration.TemplateFlag.Stats)) continue;
             if (files.GetValueOrDefault(npc.FormKey) is not { } relative) continue;
+            // A level that follows the player's at 0 times it: told to delete its `Mult: 1`, a model built Hilda "level 0 × the
+            // player's, 5 to 25" — level 5 for good — and answered her as made (eval round 114's npc #4).
+            if (configuration.Level is IPcLevelMultGetter { LevelMult: <= 0 } nothing)
+            {
+                notes.Add($"{relative}: {npc.EditorID ?? Session.FormKeyText(npc.FormKey)}'s level follows the player's at {nothing.LevelMult} " +
+                    $"times it, so it never rises above its CalcMinLevel {configuration.CalcMinLevel} — LevelMult is the multiple, 1 the player's " +
+                    "own level. One call makes it follow the player's and builds again: " +
+                    ToolCalls.Edit(project, relative, "{\"path\": \"Configuration.Level.LevelMult\", \"value\": 1}", build: true));
+                continue;
+            }
+            if (configuration.Level is not INpcLevelGetter level || (configuration.CalcMinLevel == 0 && configuration.CalcMaxLevel == 0)) continue;
             notes.Add($"{relative}: {npc.EditorID ?? Session.FormKeyText(npc.FormKey)}'s level is fixed at {level.Level}, so its " +
                 $"CalcMinLevel {configuration.CalcMinLevel} and CalcMaxLevel {configuration.CalcMaxLevel} do nothing — they bound a level " +
                 "that follows the player's. One call makes it follow the player's between them and builds again: " +

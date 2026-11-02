@@ -661,6 +661,16 @@ public static class RecordLinks
                     // moved Storm Bolt's magnitude into its Conditions (eval round 39's spell+detailed #4), as at the
                     // margin in round 24.
                     var deleted = deleting is null ? "" : $"; one call deletes it and builds again: {deleting(field, "")}";
+                    // Another name of a field this part has, with its value: renamed in one call (RecordFiles.Synonyms) — told to
+                    // delete a level's `Mult: 1`, a model held its NPC at level 5 (eval round 114's npc #4).
+                    if (RecordFiles.SynonymFor(type, key) is { } meant && type.GetProperty(meant, BindingFlags.Public | BindingFlags.Instance) is not null
+                        && value is YamlScalarNode { Value: { Length: > 0 } said })
+                    {
+                        var written = double.TryParse(said, NumberStyles.Float, CultureInfo.InvariantCulture, out _) ? said : ToolCalls.Quoted(said);
+                        problem($"{path} has no field {key} (write it as `{meant}: {said}`: {RecordFiles.HintFor(type, key).Trim(' ', '(', ')')}" +
+                            (deleting is null ? ")" : $"; one call does it and builds again: {deleting(field, $"{{\"path\": \"{path}.{meant}\", \"value\": {written}}}")})"));
+                        continue;
+                    }
                     problem($"{path} has no field {key}" + (RecordFiles.LevelHint(type, key) is { } level
                             ? (deleting is not null && Holds(mapping, "Level", key) ? $" (its Level holds {key} already: delete this one{deleted})" : $" ({level})")
                         : record.Name == "MagicEffect" && key == "Data" ? $" ({RecordFiles.EffectStrength})"

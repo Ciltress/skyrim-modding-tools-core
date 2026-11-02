@@ -63,6 +63,9 @@ public sealed class Session : IDisposable
         // With the load order's records where one is set: a path below a link is refused naming the record linked there.
         "editRecord" => RecordEdits.Edit(Required(p, "projectPluginDir"), Required(p, "record"), p["set"] as JsonObject, p["remove"] as JsonArray,
             indexing is null ? null : Index),
+        // What an editRecord call refused for want of its file would still change in the file written since; nothing is written.
+        "pendingEdit" => RecordEdits.Pending(Required(p, "projectPluginDir"), Required(p, "record"), p["set"] as JsonObject,
+            p["remove"] as JsonArray, p["among"] as JsonArray, indexing is null ? null : Index),
         "sksePlugins" => SksePlugins.Read(p),
         "bsaFiles" => BsaFiles.Find(p),
         _ => throw new HelperException("unknownMethod", $"No method '{method}'.")
@@ -135,6 +138,17 @@ public sealed class Session : IDisposable
         var limit = p["limit"]?.GetValue<int>() ?? DefaultLimit;
         var types = p["types"]?.AsArray().Select(t => t!.GetValue<string>()).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var plugin = p["plugin"]?.GetValue<string>();
+        // A type by the game's word for what it holds — a note, a potion — read as that record type, and said so: refused with
+        // "Did you mean BOOK (Book)?", three runs of eval round 114 spent a turn on it (note+detailed #2–#4; 7 runs in rounds 87–114).
+        var readAs = new List<string>();
+        foreach (var type in types?.ToList() ?? [])
+        {
+            if (RecordIndex.Meant(type) is not { } kept) continue;
+            var (meant, signature) = kept;
+            types!.Remove(type);
+            types.Add(meant);
+            readAs.Add($"'{type}' read as {signature} ({meant}), the record type Skyrim keeps it as");
+        }
         // A misspelled type would match nothing, and "no records" sends a model looking elsewhere.
         foreach (var type in types ?? [])
         {
@@ -203,6 +217,7 @@ public sealed class Session : IDisposable
         var rows = new JsonArray();
         foreach (var e in all.Take(limit)) rows.Add(e.ToJson());
         var answer = new JsonObject { ["total"] = all.Count, ["records"] = rows };
+        if (readAs.Count > 0) answer["typesRead"] = string.Join("; ", readAs);
         if (notFound.Count > 0)
         {
             answer["notFound"] = notFound;

@@ -53,6 +53,17 @@ interface CopiedRecords {
     alreadyInProject: { formId: string; file: string }[];
 }
 
+/**
+ * An editRecord call refused for want of its file: the record files its project had then, relative to the plugin folder, when it
+ * was refused, and in how many builds it has been said.
+ */
+interface RefusedEdit {
+    request: EditRecordRequest;
+    before: string[];
+    at: number;
+    said: number;
+}
+
 export interface SkyrimInstanceBackendOptions {
     engine: SkyrimEngine;
     /** The caller's bearer token, in HTTP mode. */
@@ -76,6 +87,8 @@ export interface SkyrimInstanceBackendOptions {
 export class SkyrimInstanceBackend implements SkyrimBackend {
     private accepted = false;
     private readonly nexus: NexusCatalogue;
+    /** editRecord calls refused for want of their file, by plugin folder: a build says what a file written since lacks of each. */
+    private readonly refusedEdits = new Map<string, RefusedEdit[]>();
 
     constructor(private readonly options: SkyrimInstanceBackendOptions) {
         this.nexus = options.nexus ?? new NexusCatalogue({ appVersion: CORE_INFO.version });
@@ -262,10 +275,76 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
                 throw new HelperError(error.code, `No record file '${request.record}' in the project — it has ${near}. Nothing was changed: ` +
                     `the same call to ${near} — ${editCall(paths, { ...request, record: near })}`);
             }
+            this.keepRefusedEdit(paths, request);
             throw new HelperError(error.code, `${error.message} Nothing was changed: once the file is written, send this ` +
                 `call again for its changes — ${editCall(paths, request)}`);
         });
         return { ...edited, file: path.resolve(paths.plugin, edited.file) };
+    }
+
+    /** A call refused for want of its file, kept with the record files the project had then; the same call sent again replaces it. */
+    private keepRefusedEdit(paths: ProjectPaths, request: EditRecordRequest): void {
+        const key = path.resolve(paths.plugin);
+        const same = (kept: RefusedEdit) => JSON.stringify(kept.request) === JSON.stringify(request);
+        const kept = (this.refusedEdits.get(key) ?? []).filter(edit => !same(edit) && Date.now() - edit.at < REFUSED_EDIT_KEPT_MS);
+        const before = recordFiles(paths.plugin).map(file => path.relative(paths.plugin, file).split(path.sep).join('/'));
+        this.refusedEdits.set(key, [...kept, { request, before, at: Date.now(), said: 0 }]);
+    }
+
+    /**
+     * What an editRecord call refused for want of its file still lacks in the file written since, as a warning with the one call
+     * that writes it: told "once the file is written, send this call again", a model wrote its NPC from an atronach, never sent
+     * the call — her race, her voice — again, and answered that it had made her a Nord (eval round 114's npc #2). The helper
+     * finds the file and tries each change on it without writing; a call is said in two builds at most, and dropped once
+     * its file holds it.
+     */
+    private async refusedEditWarnings(paths: ProjectPaths): Promise<string[]> {
+        const key = path.resolve(paths.plugin);
+        const kept = (this.refusedEdits.get(key) ?? []).filter(edit => Date.now() - edit.at < REFUSED_EDIT_KEPT_MS);
+        if (kept.length === 0) {
+            this.refusedEdits.delete(key);
+            return [];
+        }
+        const now = recordFiles(paths.plugin).map(file => path.relative(paths.plugin, file).split(path.sep).join('/'));
+        const warnings: string[] = [];
+        const left: RefusedEdit[] = [];
+        for (const edit of kept) {
+            if (edit.said >= 2) continue;
+            const { request } = edit;
+            const pending = await this.engine.helper.call<{ file: string | null; differs?: { path: string; has: string | null; removes: boolean }[] }>(
+                'pendingEdit', {
+                    projectPluginDir: paths.plugin,
+                    record: editedRecord(this.engine.projectsDir, paths, request.record),
+                    ...(request.set ? { set: request.set } : {}),
+                    ...(request.remove ? { remove: request.remove } : {}),
+                    among: now.filter(file => !edit.before.includes(file))
+                }).catch(() => ({ file: null }));
+            // No file of it yet, or no one file: kept for a later build.
+            if (!pending.file) {
+                left.push(edit);
+                continue;
+            }
+            const differs = pending.differs ?? [];
+            if (differs.length === 0) continue;
+            edit.said++;
+            left.push(edit);
+            const sets = differs.filter(d => !d.removes);
+            const removes = differs.filter(d => d.removes);
+            const said = [
+                ...sets.map(d => `${d.path} is ${d.has ?? 'not in it'}, where that call set ${shownValue(request.set?.[d.path])}`),
+                ...removes.map(d => `${d.path} is in it still, ${d.has}, where that call removed it`)
+            ];
+            warnings.push(`${pending.file}: an editRecord call was refused before this file was written — '${request.record}' was no ` +
+                `record file of the project yet — and was not sent again, so its changes are not in it: ${said.join('; ')}. One call ` +
+                `makes them and builds again: ${editCall(paths, {
+                    record: pending.file,
+                    ...(sets.length > 0 ? { set: Object.fromEntries(sets.map(d => [d.path, request.set?.[d.path]])) } : {}),
+                    ...(removes.length > 0 ? { remove: removes.map(d => d.path) } : {})
+                })}`);
+        }
+        if (left.length > 0) this.refusedEdits.set(key, left);
+        else this.refusedEdits.delete(key);
+        return warnings;
     }
 
     async moveRecord(request: MoveRecordRequest): Promise<MoveRecordResult> {
@@ -478,6 +557,7 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
         // An override that changes nothing, said once the plugin is written: told apart only from the record itself.
         warnings.push(...built.notes ?? []);
         warnings.push(...await this.missingModels(paths, built.models ?? []));
+        warnings.push(...await this.refusedEditWarnings(paths));
 
         // A file keeps the name its author gave it, the build's FormID written in: renamed the way Spriggit names
         // a file, Hilda's went on being edited under its old name, then written anew — a second Hilda (eval probe
@@ -1156,6 +1236,15 @@ const BUILD_TIMEOUT_MS = 600_000;
  * response budget (responseBudget.ts), which would otherwise withhold the whole answer.
  */
 const PATCH_TEXT_BYTES = 16_000;
+
+/** How long a refused editRecord call is kept for its file to be written: a task's turns, not a later one's. */
+const REFUSED_EDIT_KEPT_MS = 3_600_000;
+
+/** A value of a call's `set` as a warning names it: a word as it is, anything else as JSON, cut at 60 characters. */
+function shownValue(value: unknown): string {
+    const said = typeof value === 'string' ? value : JSON.stringify(value) ?? 'nothing';
+    return said.length > 60 ? `${said.slice(0, 57)}…` : said;
+}
 
 /**
  * A helper call made after this tool call already wrote files — a created project, assigned FormIDs.

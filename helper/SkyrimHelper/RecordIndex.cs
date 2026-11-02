@@ -118,6 +118,14 @@ public sealed class RecordIndex
         ["Power"] = "Spell", ["Ability"] = "Spell",
     };
 
+    /// <summary>
+    /// The record type a word of <see cref="EditorNames"/> stands for, with its signature — Book, BOOK for a note — where the
+    /// word is no record type itself; else null.
+    /// </summary>
+    public static (string Type, string Signature)? Meant(string name) =>
+        !IsRecordType(name) && EditorNames.TryGetValue(name, out var type) && Signatures.TryGetValue(type, out var signature)
+            ? (type, signature) : null;
+
     /// <summary>Whether a filter names a record type: a signature like WEAP, or a type name like Weapon.</summary>
     public static bool IsRecordType(string name) =>
         Signatures.Keys.Any(k => k.Equals(name, StringComparison.OrdinalIgnoreCase))

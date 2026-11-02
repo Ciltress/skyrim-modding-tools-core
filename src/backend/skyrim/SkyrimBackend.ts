@@ -429,6 +429,8 @@ export interface RecordSearchResult {
     notFound?: string[];
     /** With `notFound`: how to search what was not found — by `text`, which also reads in-game names. */
     nextStep?: string;
+    /** A type of `types` named by the game's word for what it holds — NOTE — and the record type it was read as: BOOK. */
+    typesRead?: string;
 }
 
 export interface RecordRequest {

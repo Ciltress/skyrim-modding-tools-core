@@ -198,7 +198,11 @@ public static class RecordFiles
         // in no outfit at all (eval round 113's npc+detailed #4).
         (["Npc"], ["Outfit", "Outfits", "Clothes", "Clothing"], "DefaultOutfit",
             "an NPC's outfit is DefaultOutfit, naming an Outfit record — SleepingOutfit is the one worn in bed"),
-        (["Npc", "NpcConfiguration", "PcLevelMult", "NpcLevel"], ["Level", "LevelMult", "CalcMinLevel", "CalcMaxLevel"], null, NpcLevel)
+        (["Npc", "NpcConfiguration", "PcLevelMult", "NpcLevel"], ["Level", "LevelMult", "CalcMinLevel", "CalcMaxLevel"], null, NpcLevel),
+        // Told "delete it" for a `Mult: 1` below a level that follows the player's, a model deleted it: the level was 0 times the
+        // player's, held at its CalcMinLevel, and the model answered it as made (eval round 114's npc #4).
+        (["PcLevelMult"], ["Mult", "Multiplier", "LevelMultiplier", "PlayerLevelMult", "PcMult", "PcLevelMult"], "LevelMult",
+            "the multiple of the player's level is LevelMult — 1 is the player's own level, and without it the level stays at CalcMinLevel")
     ];
 
     /// <summary>Where a spell's school is: in its magic effects, not in the spell — a field to delete there.</summary>

@@ -768,6 +768,63 @@ describe('the Skyrim backend', () => {
             'once the file is written, send this call again');
     });
 
+    it('warns a build of what an editRecord refused for want of its file still lacks in the file written since', async () => {
+        // Told "once the file is written, send this call again", a model wrote its NPC from an atronach, never sent the call —
+        // her race, her voice — again, and answered that it had made her a Nord (eval round 114's npc #2).
+        const { backend, calls, fixture, helperAnswers } = makeBackend();
+        await backend.newProject({ project: 'HildaTheNord' });
+        const plugin = path.join(fixture.projects, 'HildaTheNord', 'plugin');
+        write(path.join(plugin, 'Races', 'Kept.yaml'), 'EditorID: Kept\n');
+        helperAnswers.editRecord = () => {
+            throw new HelperError('notFound', 'No record file \'dunBluePalacePelagiusAtronachFlame\' in the project — its record files: Races/Kept.yaml.');
+        };
+        const set = { 'Name.Value': 'Hilda', Race: 'NordRace', Voice: 'FemaleNord' };
+        await expect(backend.editRecord({ project: 'HildaTheNord', record: 'dunBluePalacePelagiusAtronachFlame.yaml', set }))
+            .rejects.toThrow('once the file is written, send this call again');
+
+        write(path.join(plugin, 'Npcs', 'Hilda.yaml'), 'EditorID: Hilda\n');
+        helperAnswers.pendingEdit = () => ({
+            file: 'Npcs/Hilda.yaml',
+            differs: [
+                { path: 'Race', has: '0131F5:Skyrim.esm (AtronachFlameRace)', removes: false },
+                { path: 'Voice', has: '01F1D3:Skyrim.esm (CrAtronachFlameVoice)', removes: false }
+            ]
+        });
+        const warning = 'Npcs/Hilda.yaml: an editRecord call was refused before this file was written — ' +
+            '\'dunBluePalacePelagiusAtronachFlame.yaml\' was no record file of the project yet — and was not sent again, so its changes are ' +
+            'not in it: Race is 0131F5:Skyrim.esm (AtronachFlameRace), where that call set NordRace; Voice is 01F1D3:Skyrim.esm ' +
+            '(CrAtronachFlameVoice), where that call set FemaleNord. One call makes them and builds again: editRecord {"project": ' +
+            '"HildaTheNord", "record": "Npcs/Hilda.yaml", "set": [{"path": "Race", "value": "NordRace"}, {"path": "Voice", "value": ' +
+            '"FemaleNord"}], "build": true}';
+        expect((await backend.buildProject('HildaTheNord')).warnings).toEqual([warning]);
+        // The helper is asked with the call as it was sent, and the files written since it was refused.
+        expect(calls.filter(c => c.method === 'pendingEdit').map(c => c.params)).toEqual([{
+            projectPluginDir: plugin, record: 'dunBluePalacePelagiusAtronachFlame.yaml', set, among: ['Npcs/Hilda.yaml']
+        }]);
+        // Said in two builds at most.
+        expect((await backend.buildProject('HildaTheNord')).warnings).toEqual([warning]);
+        expect((await backend.buildProject('HildaTheNord')).warnings).toBeUndefined();
+        expect(calls.filter(c => c.method === 'pendingEdit')).toHaveLength(2);
+    });
+
+    it('drops a refused editRecord once its file holds its changes, and keeps it while no file of it is written', async () => {
+        const { backend, calls, fixture, helperAnswers } = makeBackend();
+        await backend.newProject({ project: 'FlameBlade' });
+        helperAnswers.editRecord = () => {
+            throw new HelperError('notFound', 'No record file \'FlameBlade\' in the project — its record files: none yet; write one first.');
+        };
+        await expect(backend.editRecord({ project: 'FlameBlade', record: 'FlameBlade', set: { 'BasicStats.Value': 150 } })).rejects.toThrow();
+        write(path.join(fixture.projects, 'FlameBlade', 'plugin', 'ObjectEffects', 'FlameBladeBurn.yaml'), 'EditorID: FlameBladeBurn\n');
+        // No file of it yet: no warning, and asked again at the next build.
+        helperAnswers.pendingEdit = () => ({ file: null });
+        expect((await backend.buildProject('FlameBlade')).warnings).toBeUndefined();
+        // The file written with what the call set: dropped, and asked no more.
+        helperAnswers.pendingEdit = () => ({ file: 'Weapons/FlameBlade.yaml', differs: [] });
+        expect((await backend.buildProject('FlameBlade')).warnings).toBeUndefined();
+        expect((await backend.buildProject('FlameBlade')).warnings).toBeUndefined();
+        expect(calls.filter(c => c.method === 'pendingEdit')).toHaveLength(2);
+    });
+
     it('takes editRecord\'s record as a path from the projects folder too, as moveRecord and deleteRecord do', async () => {
         // Refused for `HildaTheNord/plugin/Npcs/Hilda.yaml`, the model sent `Npcs/Hilda.yaml` next (eval round 83's npc+detailed #1).
         const { backend, fixture, helperAnswers } = makeBackend();

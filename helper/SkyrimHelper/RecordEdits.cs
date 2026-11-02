@@ -44,8 +44,110 @@ public static class RecordEdits
             throw new HelperException("badRequest", $"{relative}'s YAML does not read, so no field can be found in it; nothing was written — " +
                 $"{RecordLinks.YamlBreak(text, broken, type, pluginDir, relative)}. Write that right in the file with your file tools, " +
                 "then call editRecord again.");
-        var context = new Context(pluginDir, relative, index);
         var changes = found is null ? new List<string>() : [found];
+        text = Apply(text, type, set, remove, changes, new Context(pluginDir, relative, index));
+        // A change that left no YAML is this tool's fault, never written.
+        if (Root(text) is null)
+            throw new HelperException("badRequest", $"The change would leave {relative} no YAML to read; nothing was written. Change it with your file tools.");
+        File.WriteAllText(file, written.Contains("\r\n") ? text.Replace("\n", "\r\n") : text);
+        return new JsonObject
+        {
+            ["file"] = relative,
+            ["changed"] = new JsonArray(changes.Select(c => (JsonNode)c).ToArray()),
+            ["text"] = text
+        };
+    }
+
+    /// <summary>
+    /// What an editRecord call refused for want of its file would still change, now that a file it meant is written — nothing
+    /// is written. The file is the one the call names, where the project has it now; else the one of <paramref name="among"/>,
+    /// the files written since the refusal, whose record has every field the call names. Refused for an NPC the project had no
+    /// file of yet, a model wrote her from an atronach, never sent the call — her race, her voice — again, and answered that it
+    /// had made her a Nord (eval round 114's npc #2). Each change is tried alone: one editRecord would refuse is left out, and
+    /// one the file holds already — a link by EditorID where the file has its FormID, a number or a word in another case — too.
+    /// </summary>
+    public static JsonObject Pending(string pluginDir, string record, JsonObject? set, JsonArray? remove, JsonArray? among, RecordIndex? index = null)
+    {
+        var removed = (remove ?? []).Select(r => r?.GetValue<string>() ?? "").ToList();
+        var paths = (set ?? []).Select(f => f.Key).Concat(removed).ToList();
+        var written = (among ?? []).Select(a => (a?.GetValue<string>() ?? "").Replace('\\', '/')).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        List<(string File, string Relative, Type Type)> meant;
+        try { meant = [Find(pluginDir, record, out _)]; }
+        catch (HelperException)
+        {
+            meant = RecordFiles.FlatRecords(pluginDir).Where(f => written.Contains(f.Relative) && paths.All(p => HasField(f.Type, p))).ToList();
+        }
+        if (meant is not [var (file, relative, type)]) return new JsonObject { ["file"] = null };
+        var text = File.ReadAllText(file).Replace("\r\n", "\n");
+        if (Unread(text) is not null) return new JsonObject { ["file"] = null };
+        var context = new Context(pluginDir, relative, index);
+        var held = Normal(FromYaml(Root(text)!), index);
+        var differs = new JsonArray();
+        var changes = new List<(string Path, JsonObject? Set, JsonArray? Remove)>(
+            (set ?? []).Select(f => (f.Key, (JsonObject?)new JsonObject { [f.Key] = f.Value?.DeepClone() }, (JsonArray?)null))
+                .Concat(removed.Select(p => (p, (JsonObject?)null, (JsonArray?)new JsonArray(JsonValue.Create(p))))));
+        foreach (var (path, alone, gone) in changes)
+        {
+            string after;
+            try { after = Apply(text, type, alone, gone, [], context); }
+            catch (HelperException) { continue; }
+            if (Root(after) is not { } changed || JsonNode.DeepEquals(held, Normal(FromYaml(changed), index))) continue;
+            var steps = Placed(type, path).Steps;
+            var there = At(text, steps) ?? At(text, Parse(path));
+            differs.Add(new JsonObject
+            {
+                ["path"] = path,
+                ["has"] = there is null ? null : Shown(there, index),
+                ["removes"] = gone is not null
+            });
+        }
+        return new JsonObject { ["file"] = relative, ["differs"] = differs };
+    }
+
+    /// <summary>Whether a path names a field the record type has — where it is placed, as editRecord places it.</summary>
+    private static bool HasField(Type type, string path)
+    {
+        try
+        {
+            var (steps, label) = Placed(type, path);
+            Types(type, steps, label);
+            return true;
+        }
+        catch (HelperException) { return false; }
+    }
+
+    /// <summary>
+    /// A record's fields as JSON to compare: a link as the record it names, by its FormID or its EditorID in the load order; a
+    /// number as a number; a word in one case; a list of words — flags, keywords — in any order.
+    /// </summary>
+    private static JsonNode? Normal(JsonNode? node, RecordIndex? index) => node switch
+    {
+        JsonObject fields => new JsonObject(fields.Select(f => KeyValuePair.Create(f.Key, Normal(f.Value, index)))),
+        JsonArray items when items.Select(i => Normal(i, index)).ToList() is var normal => new JsonArray(
+            (normal.All(i => i is JsonValue v && v.TryGetValue<string>(out _))
+                ? normal.OrderBy(i => i!.GetValue<string>(), StringComparer.Ordinal) : normal.AsEnumerable()).ToArray()),
+        JsonValue one when one.TryGetValue<string>(out var said) => LinkOf(said, index) is { } key ? JsonValue.Create("@" + Session.FormKeyText(key))
+            : double.TryParse(said, NumberStyles.Float, CultureInfo.InvariantCulture, out var number) ? JsonValue.Create(number)
+            : JsonValue.Create(said.Trim().ToLowerInvariant()),
+        JsonValue one when double.TryParse(one.ToJsonString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var number) => JsonValue.Create(number),
+        _ => node?.DeepClone()
+    };
+
+    /// <summary>The record a value names: a FormID, or an EditorID of the load order; null for any other value.</summary>
+    private static FormKey? LinkOf(string said, RecordIndex? index) =>
+        FormKey.TryFactory(said.Trim(), out var key) ? key
+            : index is not null && index.ByEditorId.TryGetValue(said.Trim(), out var named) ? named : null;
+
+    /// <summary>A field's value as an answer shows it: a FormID with the EditorID of the record it names.</summary>
+    private static string Shown(YamlNode node, RecordIndex? index) =>
+        node is YamlScalarNode { Value: { } said } && FormKey.TryFactory(said.Trim(), out var key)
+            && index?.ByFormKey.GetValueOrDefault(key)?.EditorId is { } named
+            ? $"{said.Trim()} ({named})"
+            : node is YamlScalarNode ? Shown(node) : Shown(FromYaml(node));
+
+    /// <summary>A call's changes made to a file's text: each field set, then each removed.</summary>
+    private static string Apply(string text, Type type, JsonObject? set, JsonArray? remove, List<string> changes, Context context)
+    {
         foreach (var (path, value) in set ?? []) text = SetPath(text, type, path, value, changes, context);
         var setting = (set ?? []).Select(f => Placed(type, f.Key).Steps).ToList();
         foreach (var path in (remove ?? []).Select(r => r?.GetValue<string>() ?? ""))
@@ -78,16 +180,7 @@ public static class RecordEdits
             }
             text = Remove(text, steps, label, changes);
         }
-        // A change that left no YAML is this tool's fault, never written.
-        if (Root(text) is null)
-            throw new HelperException("badRequest", $"The change would leave {relative} no YAML to read; nothing was written. Change it with your file tools.");
-        File.WriteAllText(file, written.Contains("\r\n") ? text.Replace("\n", "\r\n") : text);
-        return new JsonObject
-        {
-            ["file"] = relative,
-            ["changed"] = new JsonArray(changes.Select(c => (JsonNode)c).ToArray()),
-            ["text"] = text
-        };
+        return text;
     }
 
     /// <summary>The record file named by its path in the plugin folder, its file name, or the record's EditorID.</summary>
