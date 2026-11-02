@@ -483,9 +483,13 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
         // a file, Hilda's went on being edited under its old name, then written anew — a second Hilda (eval probe
         // 23, round 30). A pull writes Spriggit's names.
         const fullPath = (file: string) => path.resolve(paths.plugin, file);
+        // Each correction said as the build's own work: a model took "moved `Level`, `SpeedMultiplier` under `Configuration`"
+        // for warnings to fix, wrote its NPC again from memory with the lines among her Flags, and answered unbuilt (eval
+        // round 113's npc #3). The file's name ends at the first ": " — a drive's colon has none after it.
+        const done = corrected.map(entry => entry.replace(': ', ', done by the build: '));
         return {
             project, plugin, output,
-            ...(corrected.length > 0 ? { corrected } : {}),
+            ...(done.length > 0 ? { corrected: done } : {}),
             records: built.records,
             masters: built.masters,
             headerVersion: built.headerVersion,

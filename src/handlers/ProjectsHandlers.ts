@@ -150,34 +150,46 @@ export class ProjectsHandlers extends BaseHandler {
                         // the enchantment and set a magnitude on it, then answered the sword built (eval rounds 97, 108 and 111's
                         // sword+detailed).
                         const enchanted = result.added.map(record => enchantmentIn(record.files[0]?.text));
-                        const copies = [
-                            ...result.added.map((record, i) => `${record.editorId ?? record.formId} (${record.editorId ? `${record.formId}, ` : ''}` +
-                                `${article(record.type)} ${record.type}${enchanted[i] ? ` enchanted with ${enchanted[i]!.named}` : ''})`),
-                            ...result.alreadyInProject.map(record => record.formId)
-                        ];
+                        const folder = result.project.pluginFolder;
+                        const inPlugin = (file: string | undefined) =>
+                            file?.startsWith(folder) ? file.slice(folder.length + 1).replace(/\\/g, '/') : undefined;
+                        // A record copied before is left as it is, and said so with its own file and names: answered "is copied
+                        // as an override" with the IronSword of an answer that copied nothing, a model sent addPatch for the
+                        // same enchantment four more times and ran out of turns (eval round 113's sword+detailed #3).
+                        const kept = result.alreadyInProject.map(record => {
+                            const relative = inPlugin(record.files[0]?.path);
+                            const text = record.files[0]?.text;
+                            const named = /^(.+?) - [0-9A-Fa-f]{6}_/.exec(relative?.split('/').pop() ?? '')?.[1];
+                            const editorId = /^EditorID:[ \t]*['"]?([^\s'"#]+)/m.exec(text ?? '')?.[1] ?? named;
+                            // The copy's file is found by its name: made a new record since, it holds no FormKey of the record's.
+                            const remade = text !== undefined && !new RegExp(`^FormKey:[ \\t]*${record.formId.replace(/[.]/g, '\\.')}`, 'im').test(text);
+                            return { formId: record.formId, named, editorId, relative, remade, type: relative?.split('/')[0].replace(/s$/, '') };
+                        });
+                        const overrides = kept.filter(k => !k.remade);
+                        const copies = result.added.map((record, i) => `${record.editorId ?? record.formId} (${record.editorId ? `${record.formId}, ` : ''}` +
+                            `${article(record.type)} ${record.type}${enchanted[i] ? ` enchanted with ${enchanted[i]!.named}` : ''})`);
                         const carried = enchanted.find(e => e !== null);
                         const one = copies.length === 1;
                         // The copy's fields changed with the edit tool, its old text from memory: 32 of the 82 such edits in runs
                         // with addPatch of eval rounds 49–57 were refused, 3 of its 42 editRecord calls — and round 57's
                         // sword+detailed #5 ran out of turns on fifteen refused edits of addPatch's Iron Sword.
                         const first = result.added[0];
-                        const example = first?.editorId ?? first?.formId ?? 'IronSword';
+                        const shown = overrides[0] ?? kept[0];
+                        const example = first?.editorId ?? first?.formId ?? shown?.editorId ?? shown?.formId ?? 'IronSword';
                         // A field of the copy's own kind; a name would rename the record everywhere, as the note says.
                         const field = ({
                             Weapon: '{"path": "BasicStats.Damage", "value": 12}', Armor: '{"path": "ArmorRating", "value": 30}',
                             Spell: '{"path": "BaseCost", "value": 60}', Npc: '{"path": "AIData.Aggression", "value": "Unaggressive"}'
-                        } as Record<string, string>)[first?.type ?? 'Weapon'] ?? '{"path": "<the field>", "value": <its new value>}';
-                        const folder = result.project.pluginFolder;
-                        const copied = first?.files[0]?.path ?? result.alreadyInProject[0]?.files[0]?.path;
-                        const record = copied?.startsWith(folder) ? copied.slice(folder.length + 1).replace(/\\/g, '/') : example;
+                        } as Record<string, string>)[first?.type ?? shown?.type ?? 'Weapon'] ?? '{"path": "<the field>", "value": <its new value>}';
+                        const record = inPlugin(first?.files[0]?.path) ?? shown?.relative ?? example;
                         // The copy made new by one call, its changes kept: told to write a new file and delete the copy, a model
                         // deleted the copy that held the price of 150 it had set, and wrote the new sword at 25 (eval round 89's
                         // sword+detailed #1); 7 of 33 renamed copies of rounds 87–105 went that way.
                         const fresh = `New${example.replace(/[^A-Za-z0-9_]/g, '')}`;
                         const renew = `editRecord {"project": ${JSON.stringify(result.project.project)}, "record": ${JSON.stringify(record)}, ` +
                             `"set": [{"path": "EditorID", "value": "${fresh}"}], "remove": ["FormKey"], "build": true}`;
-                        return {
-                            note: `${copies.join(', ')} ${one ? 'is' : 'are'} copied as ${one ? 'an override' : 'overrides'}: ` +
+                        const copiedNote = copies.length === 0 ? '' :
+                            `${copies.join(', ')} ${one ? 'is' : 'are'} copied as ${one ? 'an override' : 'overrides'}: ` +
                                 `${one ? 'it changes that record' : 'each changes its record'} itself, everywhere the game uses ` +
                                 `${one ? 'it' : 'them'} — a new name renames ${one ? 'it' : 'them'} everywhere. If a new record ` +
                                 `like it was meant, one call makes ${one ? 'the copy' : 'the first copy'} a new record, keeping what it holds and ` +
@@ -185,7 +197,26 @@ export class ProjectsHandlers extends BaseHandler {
                                 (carried ? ` An enchantment is a record of its own: ${carried.named} is the ObjectEffect ` +
                                     `${one ? 'this copy carries' : 'a copy carries'} — to change it or make one like it, copy that record, ` +
                                     `addPatch {"project": ${JSON.stringify(result.project.project)}, "records": [${JSON.stringify(carried.id)}]}, ` +
-                                    'or write a new ObjectEffect from it.' : ''),
+                                    'or write a new ObjectEffect from it.' : '');
+                        const single = overrides.length === 1;
+                        const keptNote = overrides.length === 0 ? '' :
+                            `${overrides.map(k => `${k.editorId ? `${k.editorId} (${k.formId})` : k.formId}${k.relative ? `, ${k.relative}` : ''}`).join('; ')} ` +
+                                `${single ? 'is' : 'are'} in the project already, copied before, and not copied again: ${single ? 'that file is the copy' : 'those files are the copies'}, ` +
+                                `as ${single ? 'it was' : 'they were'} left, with every change made to ${single ? 'it' : 'them'} — change ${single ? 'it' : 'them'} there.` +
+                                (copies.length > 0 ? '' : ` ${single ? 'It is' : 'Each is'} still an override, changing ${single ? 'that record' : 'its record'} ` +
+                                    `everywhere the game uses it. If a new record like it was meant, one call makes ${single ? 'the copy' : 'the first copy'} ` +
+                                    `a new record, keeping what it holds, and builds: ${renew}, with an EditorID of its own in place of ${fresh}.`);
+                        // A copy made a new record keeps the copy's file name, by which the record counts as copied: said so, with the
+                        // move that frees the name for a copy of the record itself.
+                        const remadeNote = kept.filter(k => k.remade).map(k => {
+                            const source = k.named ?? k.formId;
+                            return `${k.relative} was ${source}'s copy (${k.formId}) and is a new record of its own now, ${k.editorId} — it keeps ` +
+                                `the copy's file name, so ${source} was not copied again. To change ${source} itself as well, give that file a ` +
+                                `name of its own first, moveRecord {"project": ${JSON.stringify(result.project.project)}, "from": ` +
+                                `${JSON.stringify(k.relative)}, "to": ${JSON.stringify(`${k.relative?.split('/')[0]}/${k.editorId}.yaml`)}}, then send addPatch again.`;
+                        }).join(' ');
+                        return {
+                            note: [copiedNote, keptNote, remadeNote].filter(Boolean).join(' '),
                             nextStep: `Change a copy's fields with editRecord, which needs no old text to match — {"record": ` +
                                 `"${example}", "set": [${field}]} — then run buildProject.`,
                             ...result
@@ -480,9 +511,12 @@ export class ProjectsHandlers extends BaseHandler {
         // Told what the build had moved, the model made the moves itself — edits of the file as it had been, which
         // found nothing — then wrote it anew without the FormKey line the build gave it (eval round 45's
         // npc #3): 4 of the 209 builds with `corrected` in rounds 30–45 were followed so, and 2 of those runs failed.
+        // Read as warnings to fix, the corrections were made again from memory, into a file that no longer read (eval round
+        // 113's npc #3): nothing in them is left to do.
         const done = built.corrected?.length
-            ? 'Each change in `corrected` is done: the build wrote it into the file, and the plugin has it. A file it ' +
-                'changed no longer reads as it was written — read it before editing it again.'
+            ? 'Each change in `corrected` is done: the build wrote it into the file, and the plugin has it — none is a ' +
+                'warning, and nothing in them is left to fix or to make again. A file it changed no longer reads as it was ' +
+                'written — read it before editing it again.'
             : undefined;
         // The model's answer named an enchantment and a value its files did not hold: it had written another name, and the call
         // that set the value had failed (eval round 87's sword+detailed #4). The plugin read back says what the game gets.

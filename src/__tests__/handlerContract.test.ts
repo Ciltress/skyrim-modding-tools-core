@@ -357,18 +357,20 @@ describe('every tool takes an argument sent as text for its declared type', () =
  * Sword of Embers, a Weapon — took it for the enchantment and answered the sword built (eval rounds 97, 108 and 111).
  */
 describe("addPatch's note says what each copy is", () => {
-    async function note(added: { formId: string; editorId: string | null; type: string; text?: string }[]) {
+    async function answer(added: { formId: string; editorId: string | null; type: string; text?: string }[],
+        already: { formId: string; file: string; text?: string }[] = []) {
         const backend = new InMemorySkyrimBackend();
         vi.spyOn(backend, 'addPatch').mockResolvedValue({
             project: { project: 'FlameBlade', plugin: 'FlameBlade.esp', light: true, path: 'p', pluginFolder: 'p/plugin', created: false },
             added: added.map(a => ({ formId: a.formId, editorId: a.editorId, type: a.type, from: 'Skyrim.esm',
                 files: [{ path: `p/plugin/Weapons/${a.editorId}.yaml`, text: a.text }] })),
-            alreadyInProject: []
+            alreadyInProject: already.map(a => ({ formId: a.formId, files: [{ path: `p/plugin/${a.file}`, text: a.text }] }))
         } as any);
         const handler = createHandlers(backend, CORE_PRODUCT).find(h => h.getTools().some(t => t.name === 'addPatch'))!;
-        const result = await handler.handle('addPatch', { project: 'FlameBlade', records: added.map(a => a.editorId ?? a.formId) });
-        return JSON.parse(result.content[0].text).note as string;
+        const result = await handler.handle('addPatch', { project: 'FlameBlade', records: [...added.map(a => a.editorId ?? a.formId), ...already.map(a => a.formId)] });
+        return JSON.parse(result.content[0].text) as { note: string; nextStep: string };
     }
+    const note = async (added: Parameters<typeof answer>[0]) => (await answer(added)).note;
 
     it('names an enchanted weapon as a Weapon with its enchantment, and the enchantment as the record to copy', async () => {
         const said = await note([{ formId: '049BB8:Skyrim.esm', editorId: 'EnchIronSwordFire01', type: 'Weapon',
@@ -382,5 +384,35 @@ describe("addPatch's note says what each copy is", () => {
         expect(said).toMatch(/^IronSword \(012EB7:Skyrim\.esm, a Weapon\) is copied/);
         expect(said).not.toContain('An enchantment is a record of its own');
         expect(await note([{ formId: '012E49:Skyrim.esm', editorId: 'ArmorIronCuirass', type: 'Armor' }])).toMatch(/, an Armor\)/);
+    });
+
+    // Answered "is copied as an override" with the IronSword of an answer that copied nothing, a model sent addPatch for the
+    // same enchantment four more times and ran out of turns (eval round 113's sword+detailed #3).
+    it('says a record copied before is in the project already, left as it is, with its own file and names', async () => {
+        const file = 'ObjectEffects/EnchWeaponFireDamage01 - 049BB7_Skyrim.esm.yaml';
+        const { note: said, nextStep } = await answer([], [{ formId: '049BB7:Skyrim.esm', file,
+            text: 'FormKey: 049BB7:Skyrim.esm\nEditorID: EnchWeaponFireDamage01\nEnchantmentAmount: 500\n' }]);
+        expect(said).toMatch(new RegExp(`^EnchWeaponFireDamage01 \\(049BB7:Skyrim\\.esm\\), ${file.replace(/[.()]/g, '\\$&')} is in the project ` +
+            'already, copied before, and not copied again: that file is the copy, as it was left, with every change made to it'));
+        expect(said).not.toMatch(/is copied as|IronSword/);
+        expect(said).toContain(`editRecord {"project": "FlameBlade", "record": "${file}", "set": [{"path": "EditorID", "value": ` +
+            '"NewEnchWeaponFireDamage01"}], "remove": ["FormKey"], "build": true}');
+        expect(nextStep).toContain('{"record": "EnchWeaponFireDamage01", "set": [{"path": "<the field>"');
+    });
+
+    it('names a record copied before by its file where its text is left out, beside one copied now', async () => {
+        const said = await answer([{ formId: '012EB7:Skyrim.esm', editorId: 'IronSword', type: 'Weapon', text: 'EditorID: IronSword\n' }],
+            [{ formId: '013989:Skyrim.esm', file: 'Weapons/SteelSword - 013989_Skyrim.esm.yaml' }]);
+        expect(said.note).toMatch(/^IronSword \(012EB7:Skyrim\.esm, a Weapon\) is copied as an override: .* in place of NewIronSword\. /);
+        expect(said.note).toMatch(/SteelSword \(013989:Skyrim\.esm\), Weapons\/SteelSword - 013989_Skyrim\.esm\.yaml is in the project already/);
+        expect(said.note).not.toContain('still an override');
+    });
+
+    it('says a copy made a new record since is no override, with the move that frees its name for a copy', async () => {
+        const file = 'Weapons/IronSword - 012EB7_Skyrim.esm.yaml';
+        const { note: said } = await answer([], [{ formId: '012EB7:Skyrim.esm', file, text: 'FormKey: 000800:FlameBlade.esp\nEditorID: FlameBlade\n' }]);
+        expect(said).toBe(`${file} was IronSword's copy (012EB7:Skyrim.esm) and is a new record of its own now, FlameBlade — it keeps ` +
+            'the copy\'s file name, so IronSword was not copied again. To change IronSword itself as well, give that file a name of its ' +
+            `own first, moveRecord {"project": "FlameBlade", "from": "${file}", "to": "Weapons/FlameBlade.yaml"}, then send addPatch again.`);
     });
 });

@@ -958,13 +958,16 @@ describe('the Skyrim backend', () => {
         helperAnswers.checkRecords = () => ({ records: 1, leftOut: [], corrected: [{ file: 'Npcs/Hilda.yaml', change }] });
         const handler = createHandlers(backend as unknown as AppBackend, CORE_PRODUCT).find(h => h.getTools().some(t => t.name === 'buildProject'))!;
         const answer = async () => JSON.parse((await handler.handle('buildProject', { project: 'HildaTheNord' })).content[0].text);
-        const done = 'Each change in `corrected` is done: the build wrote it into the file, and the plugin has it. A file it ' +
-            'changed no longer reads as it was written — read it before editing it again.';
+        const done = 'Each change in `corrected` is done: the build wrote it into the file, and the plugin has it — none is a ' +
+            'warning, and nothing in them is left to fix or to make again. A file it changed no longer reads as it was ' +
+            'written — read it before editing it again.';
 
         const built = await answer();
 
         expect(Object.keys(built).slice(0, 2)).toEqual(['status', 'nextStep']);
-        expect(built).toMatchObject({ status: 'success', nextStep: `Built. ${done} ${TOLD}`, corrected: [expect.stringContaining(change)] });
+        // Each said as the build's own work: read as warnings, the corrections were made again from memory (eval round 113's npc #3).
+        expect(built).toMatchObject({ status: 'success', nextStep: `Built. ${done} ${TOLD}`,
+            corrected: [expect.stringMatching(new RegExp(`Hilda\\.yaml, done by the build: ${change.replace(/[.*+?^${}()|[\]\\`]/g, '\\$&')}$`))] });
         helperAnswers.checkRecords = () => ({ records: 1, leftOut: [], notes: ['a note'], corrected: [{ file: 'Npcs/Hilda.yaml', change }] });
         expect((await answer()).nextStep).toMatch(/^Built, with a warning: fix what it says .* just what it names\. Each change in `corrected` is done:/);
     });
@@ -1270,8 +1273,8 @@ describe('the Skyrim backend', () => {
         expect(fs.readFileSync(sword, 'utf8')).toMatch(/\nEditorID: FlameBlade\nModel:\n {2}File: Weapons\\Iron\\LongSword\.nif\n$/);
         expect(fs.readFileSync(note, 'utf8')).toMatch(/\nBookText: <font face="\$HandwrittenFont">Burn\.\n$/);
         expect(built.corrected).toEqual([
-            `${note}, line 2 (a backslash before a quote): \`BookText: <font face=\\"$HandwrittenFont\\">Burn.\` → \`BookText: <font face="$HandwrittenFont">Burn.\``,
-            `${sword}, line 3 (two backslashes): \`File: Weapons\\\\Iron\\\\LongSword.nif\` → \`File: Weapons\\Iron\\LongSword.nif\``
+            `${note}, line 2 (a backslash before a quote), done by the build: \`BookText: <font face=\\"$HandwrittenFont\\">Burn.\` → \`BookText: <font face="$HandwrittenFont">Burn.\``,
+            `${sword}, line 3 (two backslashes), done by the build: \`File: Weapons\\\\Iron\\\\LongSword.nif\` → \`File: Weapons\\Iron\\LongSword.nif\``
         ]);
         expect(built.warnings).toBeUndefined();
         expect(calls.some(c => c.method === 'build')).toBe(true);
@@ -1348,7 +1351,7 @@ describe('the Skyrim backend', () => {
 
         expect(fs.readFileSync(note, 'utf8')).toMatch(new RegExp(escape(
             '  Value: >-\n    <font face="$HandwrittenFont">Indaryn,\n\n\n    If you dare again.\n\n    Maven\n') + '$'));
-        expect(built.corrected).toEqual([expect.stringContaining('line 5 (line breaks written as \\n): ')]);
+        expect(built.corrected).toEqual([expect.stringContaining('line 5 (line breaks written as \\n), done by the build: ')]);
         expect(built.corrected![0]).toContain('→ 6 lines: 1 `    <font face="$HandwrittenFont">Indaryn,`, 2 empty, 3 empty, ' +
             '4 `    If you dare again.`, 5 empty, 6 `    Maven`');
     });
@@ -1382,7 +1385,7 @@ describe('the Skyrim backend', () => {
             '  File: Clutter\\Books\\Note03.nif'
         ].join('\n') + '\n') + '$'));
         expect(built.corrected).toHaveLength(4);
-        expect(built.corrected![2]).toContain('line 6 (a backslash at the end of the line): `\\` → an empty line');
+        expect(built.corrected![2]).toContain('line 6 (a backslash at the end of the line), done by the build: `\\` → an empty line');
     });
 
     it('passes on what the helper corrected, a FormKey copied into a new record, ahead of the assigned FormIDs', async () => {
@@ -1393,7 +1396,7 @@ describe('the Skyrim backend', () => {
 
         const built = await backend.buildProject('FlameBlade');
 
-        expect(built.corrected).toEqual([`${path.join(fixture.projects, 'FlameBlade', 'plugin', 'Weapons', 'FlameBlade.yaml')}: ${change}`]);
+        expect(built.corrected).toEqual([`${path.join(fixture.projects, 'FlameBlade', 'plugin', 'Weapons', 'FlameBlade.yaml')}, done by the build: ${change}`]);
         expect(built.warnings).toBeUndefined();
         expect(Object.keys(built).indexOf('corrected')).toBeLessThan(Object.keys(built).indexOf('assignedFormIds'));
     });

@@ -194,6 +194,10 @@ public static class RecordFiles
         (["Spell"], ["School", "MagicSkill", "Skill"], null, SpellSchool),
         (["Weapon"], ["Type", "WeaponType"], null, "a weapon's type is AnimationType, under Data — OneHandSword, TwoHandAxe, Bow…"),
         (["Npc"], ["Gender", "Sex", "Female"], null, "a female NPC has Female among the Flags under Configuration"),
+        // Told "delete it: a Npc has it nowhere", a model deleted its NPC's `Outfit:` line and answered her dressed as asked,
+        // in no outfit at all (eval round 113's npc+detailed #4).
+        (["Npc"], ["Outfit", "Outfits", "Clothes", "Clothing"], "DefaultOutfit",
+            "an NPC's outfit is DefaultOutfit, naming an Outfit record — SleepingOutfit is the one worn in bed"),
         (["Npc", "NpcConfiguration", "PcLevelMult", "NpcLevel"], ["Level", "LevelMult", "CalcMinLevel", "CalcMaxLevel"], null, NpcLevel)
     ];
 
