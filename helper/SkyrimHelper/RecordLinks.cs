@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Mutagen.Bethesda.Plugins;
 using Mutagen.Bethesda.Plugins.Cache;
+using Mutagen.Bethesda.Plugins.Records;
 using Mutagen.Bethesda.Skyrim;
 using Mutagen.Bethesda.Strings;
 using YamlDotNet.Core;
@@ -120,11 +121,42 @@ public static class RecordLinks
                         "call deletes the line and builds again — " +
                         ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, "", "\"BaseEnchantment\"", build: true)
                     : null;
+            // An effect item naming what casts magic effects — an enchantment, a spell — in place of the magic effect: told only to
+            // write the one meant, the model named the game's EnchWeaponFireDamage01 there by its FormID, then by its editor ID,
+            // then by its FormID again, and answered that the build was stuck (eval round 116's sword+detailed #1, which failed).
+            // The load order's record says which magic effects it casts.
+            string? CasterAsEffect(string field, string wanted, string editorId, FormKey? key)
+            {
+                if (wanted != "MagicEffect" || !field.EndsWith("].BaseEffect", StringComparison.Ordinal) || key is not { } caster
+                    || lookup is null || !lookup.TryResolve<IMajorRecordGetter>(caster, out var record)) return null;
+                var (effects, what) = record switch
+                {
+                    IObjectEffectGetter e => (e.Effects, "an enchantment"),
+                    ISpellGetter s => (s.Effects, "a spell"),
+                    IScrollGetter s => (s.Effects, "a scroll"),
+                    IIngestibleGetter i => (i.Effects, "a potion"),
+                    IIngredientGetter i => (i.Effects, "an ingredient"),
+                    _ => ((IReadOnlyList<IEffectGetter>?)null, "")
+                };
+                var cast = (effects ?? []).Select(e => e.BaseEffect.FormKeyNullable).OfType<FormKey>().Distinct()
+                    .Select(k => index.ByFormKey.TryGetValue(k, out var entry) && entry.Signature == "MGEF" && entry.EditorId is { } id
+                        ? (EditorId: id, Key: k) : ((string EditorId, FormKey Key)?)null)
+                    .OfType<(string EditorId, FormKey Key)>().ToList();
+                if (cast.Count == 0) return null;
+                var said = $" — {editorId} is {what}, which casts the magic effects its Effects name, not one of them: its Effects name ";
+                return cast is [var one]
+                    ? said + $"{one.EditorId} ({Session.FormKeyText(one.Key)}) — one call names it here and builds again: " +
+                        ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative,
+                            $"{{\"path\": \"{field}\", \"value\": {ToolCalls.Quoted(one.EditorId)}}}", build: true)
+                    : said + $"{string.Join(", ", cast.Select(c => $"{c.EditorId} ({Session.FormKeyText(c.Key)})"))} — write the one meant " +
+                        $"here, `BaseEffect: {cast[0].EditorId}` for the first";
+            }
             // What to write for a link to a record of another type, the same however the link was written: by FormID the magic effect
             // named as a sword's enchantment got the short text, the model wrote the same effect by its editor ID, and was told only
             // then that an enchantment names the effects it casts (eval round 104's sword #4, which failed).
-            string WrongType(string field, string wanted, string kind, string editorId) =>
+            string WrongType(string field, string wanted, string kind, string editorId, FormKey? key) =>
                 BaseAsEffect(field, wanted, kind, editorId) is { } baseText ? baseText
+                    : CasterAsEffect(field, wanted, editorId, key) is { } casterText ? casterText
                     : wanted == "ObjectEffect" && kind == "MagicEffect"
                         ? $" — an enchantment, whose Effects name the magic effects it casts: name one, such as {RecordFiles.ExampleName("ObjectEffect")}, " +
                           $"or write one in ObjectEffects with `- BaseEffect: {editorId}` among its Effects, as readRecord {{\"record\": " +
@@ -166,7 +198,7 @@ public static class RecordLinks
                     if (linked.ModKey != ownPlugin && Mismatch(linked, takes, index) is { } mismatch)
                         problems.Add($"{relative}: {field} is {raw}, {mismatch}; {field} takes {RecordFiles.Article(wanted)}" +
                             (index.ByFormKey.TryGetValue(linked, out var linkedEntry)
-                                ? WrongType(field, wanted, linkedEntry.Type, linkedEntry.EditorId ?? raw)
+                                ? WrongType(field, wanted, linkedEntry.Type, linkedEntry.EditorId ?? raw, linked)
                                 : " — write the editor ID of the one meant, or its FormID as findRecords answers it" + Unlinked(field)));
                     return;
                 }
@@ -244,7 +276,7 @@ public static class RecordLinks
                     // A weapon's enchantment named as the magic effect it was to cast: all 3 runs of eval rounds 40–53 that
                     // were refused so failed — round 53's sword+detailed #5 rewrote its magic effect until the turns ran out.
                     problems.Add($"{relative}: {field} names {found.EditorId}, which is {RecordFiles.Article(Kind(found.Type))}; {field} takes {RecordFiles.Article(wanted)}" +
-                        WrongType(field, wanted, Kind(found.Type), found.EditorId));
+                        WrongType(field, wanted, Kind(found.Type), found.EditorId, found.FormKey));
                     return;
                 }
                 if (found.FormKey is not { } target) return; // A new record, numbered after this check.

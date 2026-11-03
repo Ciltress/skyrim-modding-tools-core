@@ -622,9 +622,9 @@ public sealed class Session : IDisposable
         var records = RecordFiles.FlatRecords(dir).Select(f => (f.Relative, f.Type, Text: File.ReadAllText(f.File))).ToList();
         // The project's new records: told the three ways out, the model answered with its new sword and its new note built and
         // the copy each was made from left beside it (eval round 46's sword #4 and note+detailed #2) — named, the copy is left over.
-        var made = records.Select(f => (f.Type, Identity: RecordFiles.Identity(f.Text)))
+        var made = records.Select(f => (f.Relative, f.Type, f.Text, Identity: RecordFiles.Identity(f.Text)))
             .Where(f => f.Identity.EditorId is not null && (f.Identity.FormKey is not { } key || key.ModKey == own))
-            .Select(f => (f.Type, Id: f.Identity.EditorId!)).ToList();
+            .Select(f => (f.Relative, f.Type, f.Text, Id: f.Identity.EditorId!)).ToList();
         var notes = new List<string>();
         foreach (var (relative, type, text, key, unchanged) in await Copies(records, own))
         {
@@ -637,9 +637,18 @@ public sealed class Session : IDisposable
             var id = Index.ByFormKey.TryGetValue(key, out var entry) && entry.EditorId is { } editorId ? editorId : FormKeyText(key);
             var said = $"{relative}: overrides {id} of {key.ModKey.FileName} and changes nothing in it, every field as the load order " +
                 "has it — in game it only undoes what mods loaded before this one change there. ";
+            // A new record of another type that names the copied one has the load order's without the copy: told the three ways
+            // out, the model answered that the copy of Lightning Bolt's effect, which its new spell named, gave the spell its
+            // magnitude (eval round 116's spell+detailed #1; the 4 runs of rounds 87–116 that ended on this warning failed).
+            var naming = new Regex($@"^[ \t]*(?:-[ \t]+)?(?!EditorID:)(?:[\w.\[\]]+:[ \t]*)?(?:{Regex.Escape(id)}|{Regex.Escape(FormKeyText(key))})[ \t]*(?:#.*)?$",
+                RegexOptions.Multiline | RegexOptions.IgnoreCase);
             notes.Add(made.FirstOrDefault(m => m.Type == type).Id is { } mine
                 ? said + $"{mine} is the project's new {type.Name}: where it is what was asked for, this copy is left over — delete " +
                     $"it, {ToolCalls.Delete(dir, relative)}; where {id} was to change too, write the change into this file"
+                : made.FirstOrDefault(m => naming.IsMatch(Lf(m.Text))) is { Id: not null } namer
+                    ? said + $"{namer.Id} ({namer.Relative}), the project's new {namer.Type.Name}, names {id}: it has the load order's {id} " +
+                        $"without this copy, which is left over — delete it, {ToolCalls.Delete(dir, relative)}; where {id} itself was to " +
+                        "change, write the change into this file"
                 : said + $"A new record like it is this file without its FormKey line, with an EditorID of its own; a change to {id} is " +
                     $"written into this file; a copy that is neither is deleted: {ToolCalls.Delete(dir, relative)}");
         }
