@@ -48,8 +48,9 @@ const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /** A full path as a call written into an answer names it: forward slashes, which no layer of JSON escapes. */
 const slashed = (file: string) => file.split(path.sep).join('/');
 /** What a successful build's nextStep says of the records it lists in `built`. */
-const TOLD = 'The plugin holds what `built` lists: tell the user what you made with its names and numbers. Where one ' +
-    'differs from what the user asked, fix the file and build again.';
+const OWN = 'the build writes each as it stands, and changes one only where `corrected` says so. Tell the user what you made ' +
+    'with them; where one differs from what the user asked, fix it in its file and build again.';
+const TOLD = `The plugin holds what \`built\` lists, its names and numbers your files' own — ${OWN}`;
 
 /** A Skyrim SE instance with a high- and a low-priority mod shipping the same plugin. */
 function makeInstance(options: { edition?: string; gameName?: string } = {}) {
@@ -1137,8 +1138,7 @@ describe('the Skyrim backend', () => {
             status: 'success',
             nextStep: 'Built. The plugin holds: Weapon FlameBlade "Flame Blade" (new): damage 12, weight 10, value 12; enchantment ' +
                 'EnchFlameDamageBurn, charge 500. ObjectEffect EnchFlameDamageBurn "Flame Damage Burn" (new): EnchFireDamageFFContact ' +
-                'magnitude 10. Tell the user what you made with these names and numbers; where one differs from what the user ' +
-                'asked, fix the file and build again.',
+                `magnitude 10. These names and numbers are your files' own — ${OWN}`,
             built: lines
         });
 

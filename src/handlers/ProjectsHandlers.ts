@@ -522,13 +522,15 @@ export class ProjectsHandlers extends BaseHandler {
         // that set the value had failed (eval round 87's sword+detailed #4). The plugin read back says what the game gets.
         // Told to answer from `built`, a model answered the value it had meant to write, 150, where `built` listed the 12 it
         // had written (eval round 102's sword+detailed #5): a mod of a few records — a sword and its enchantment — is said
-        // in the nextStep itself, beside what to do with it.
+        // in the nextStep itself, beside what to do with it. Told so, a model saw the value of 12 it had written where 150 was
+        // asked, and answered that "the build assigned a Value of 12, not 150" (eval round 118's sword+detailed #4): the
+        // names and numbers are the files' own.
         const lines = built.built ?? [];
+        const own = 'the build writes each as it stands, and changes one only where `corrected` says so. Tell the user what you ' +
+            'made with them; where one differs from what the user asked, fix it in its file and build again.';
         const told = lines.length > 0 && lines.length <= 3
-            ? `The plugin holds: ${lines.join('. ')}. Tell the user what you made with these names and numbers; where one ` +
-                'differs from what the user asked, fix the file and build again.'
-            : 'The plugin holds what `built` lists: tell the user what you made with its names and numbers. Where one ' +
-                'differs from what the user asked, fix the file and build again.';
+            ? `The plugin holds: ${lines.join('. ')}. These names and numbers are your files' own — ${own}`
+            : `The plugin holds what \`built\` lists, its names and numbers your files' own — ${own}`;
         if (!warnings?.length) return { nextStep: done ? `Built. ${done} ${told}` : `Built. ${told}`, ...built };
         // A warning at the end of an answer that said success was passed by: five of the eight misses
         // in eval round 21 end on one, each a build that did what was not asked. Its exception, written

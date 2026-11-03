@@ -127,7 +127,10 @@ arguments, see [`Tool-Reference.md`](./Tool-Reference.md), which is generated fr
      lines, and to fix and build again where one differs from what was asked, since eval round 87,
      whose miss answered with a name and a value its files did not hold. A build of up to three records
      says them in the nextStep itself, since eval round 102, whose miss answered the value a model had
-     meant to write while `built` listed the one it had written.
+     meant to write while `built` listed the one it had written. It says the names and numbers are the
+     files' own, which the build writes as they stand, changing one only where `corrected` says so, since
+     eval round 118, whose miss saw its value of 12 where 150 was asked and answered that the build had
+     assigned it.
    - **Change other mods through a patch** (`addPatch`), never in their plugins: an override copied
      from the winning version keeps every other mod's changes, and survives their updates.
    - **Build, deploy and pull are explicit steps.** Deploy refuses a stale build and refuses to
