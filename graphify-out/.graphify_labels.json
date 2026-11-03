@@ -4,7 +4,6 @@
   "5": "Helper Files and Imports",
   "7": "Nexus Mod Pages and Files",
   "8": "Mod Manager Instances",
-  "10": "Build Warnings and the Local-Model Eval",
   "13": "Tool Handlers, Definitions and the Capability Gate",
   "14": "Crash Rule Tests",
   "15": "Tool Args and Errors",
@@ -17,7 +16,6 @@
   "34": "SKSE Plugin Verdicts and Address Library",
   "39": "Items and Crafting Skill",
   "41": "SkyrimBackend Interface",
-  "42": "Crash Log Files and the Chosen Log",
   "43": "Helper Build",
   "44": "NPCs Skill",
   "46": "Crash Rules: Memory and Files",
@@ -27,7 +25,6 @@
   "61": "Magic Skill",
   "62": "Crash Rules: Plugins and Versions",
   "63": "TypeScript Config",
-  "67": "Built Records Read Back",
   "71": "Helper Project Dependencies",
   "74": "Mudcrab Artwork"
 }
