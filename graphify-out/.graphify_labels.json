@@ -1,5 +1,4 @@
 {
-  "2": "Skyrim Backend Interface and the In-Memory Fake",
   "3": "Projects: Build, Deploy, Pull",
   "4": "FOMOD and Plain Installers",
   "5": "Helper Files and Imports",
@@ -9,9 +8,7 @@
   "13": "Tool Handlers, Definitions and the Capability Gate",
   "14": "Crash Rule Tests",
   "15": "Tool Args and Errors",
-  "17": "Crash Rules: Graphics and Addresses",
   "19": "Troubleshooting, Golden Paths and the Write Tools",
-  "20": "Tool Profiles and the Response Budget",
   "21": "Package Manifest",
   "22": "Crash Report Builder and Attribution",
   "27": "Skill Discovery Handlers",
