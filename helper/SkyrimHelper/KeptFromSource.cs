@@ -21,12 +21,20 @@ namespace SkyrimHelper;
 /// right: the user named none. A task that names no number got the note for a damage the model chose, and in eval
 /// rounds 96–99 five of eleven such runs made the call with the kept numbers unchanged, two set numbers of their own,
 /// one of them unbuilt.
+/// A weapon with no such note is set beside the skills' example weapons the same way, their numbers as the core reads
+/// them from each SKILL.md: the detailed sword written with the items skill's AshenHatchet block, its damage alone
+/// changed, kept the example's value of 45, and the model answered the 150 the user had asked for (eval rounds 114 and
+/// 115, sword+detailed #3 and #5).
 /// </summary>
 internal static class KeptFromSource
 {
     private sealed record Number(string Path, string Word, string Mine, string Theirs);
 
-    public static List<string> Notes(ISkyrimModGetter mod, ILinkCache lookup, RecordIndex index, string pluginDir)
+    /// <summary>A weapon a skill writes as its example, with its BasicStats.</summary>
+    public sealed record Example(string EditorId, string Skill, float Value, float Weight, float Damage);
+
+    public static List<string> Notes(ISkyrimModGetter mod, ILinkCache lookup, RecordIndex index, string pluginDir,
+        IReadOnlyList<Example>? examples = null)
     {
         var notes = new List<string>();
         var weapons = mod.Weapons.Where(w => w.FormKey.ModKey == mod.ModKey && w.BasicStats is not null).ToList();
@@ -55,8 +63,25 @@ internal static class KeptFromSource
                 new("BasicStats.Value", "value", Text(mine.BasicStats.Value), Text(theirs.BasicStats?.Value))
             ];
             foreach (var weapon in weapons)
+            {
                 if (ModelPath(weapon.Model?.File.GivenPath) is { } model && byModel.TryGetValue(model, out var candidates))
-                    Note(weapon, Source(weapon, candidates, c => Numbers(weapon, c)), c => Numbers(weapon, c));
+                {
+                    var source = Source(weapon, candidates, c => Numbers(weapon, c));
+                    if (Note(weapon, Numbers(weapon, source), source.EditorID ?? Session.FormKeyText(source.FormKey), NameOf(source),
+                        "copied with its model")) continue;
+                }
+                // The example it keeps the most numbers of — one at least, and not all: one copied whole is the user's choice.
+                Number[] FromExample(Example e) =>
+                [
+                    new("BasicStats.Damage", "damage", Text(weapon.BasicStats!.Damage), Text(e.Damage)),
+                    new("BasicStats.Weight", "weight", Text(weapon.BasicStats.Weight), Text(e.Weight)),
+                    new("BasicStats.Value", "value", Text(weapon.BasicStats.Value), Text(e.Value))
+                ];
+                if ((examples ?? []).Select(e => (Example: e, Numbers: FromExample(e)))
+                        .Select(x => (x.Example, x.Numbers, Kept: x.Numbers.Count(n => n.Mine == n.Theirs)))
+                        .Where(x => x.Kept is > 0 and < 3).OrderByDescending(x => x.Kept).FirstOrDefault() is { Example: not null } kept)
+                    Note(weapon, kept.Numbers, kept.Example.EditorId, null, $"copied from the example weapon of the skill {kept.Example.Skill}");
+            }
         }
         if (armors.Count > 0)
         {
@@ -69,20 +94,22 @@ internal static class KeptFromSource
             ];
             foreach (var armor in armors)
                 if (ModelPath(armor.WorldModel?.Male?.Model?.File.GivenPath) is { } model && byModel.TryGetValue(model, out var candidates))
-                    Note(armor, Source(armor, candidates, c => Numbers(armor, c)), c => Numbers(armor, c));
+                {
+                    var source = Source(armor, candidates, c => Numbers(armor, c));
+                    Note(armor, Numbers(armor, source), source.EditorID ?? Session.FormKeyText(source.FormKey), NameOf(source), "copied with its model");
+                }
         }
         return notes;
 
-        void Note<T>(IMajorRecordGetter record, T source, Func<T, Number[]> numbersOf) where T : IMajorRecordGetter
+        // Whether a note was made: of what the record keeps of the one named `theirs`, whose in-game name is `theirName`.
+        bool Note(IMajorRecordGetter record, Number[] numbers, string theirs, string? theirName, string how)
         {
-            var numbers = numbersOf(source);
             var kept = numbers.Where(n => n.Mine == n.Theirs).ToList();
             var changed = numbers.Where(n => n.Mine != n.Theirs).ToList();
             if (changed.Count == 0) kept = [];
-            var named = NameOf(record) is { Length: > 0 } mine && mine == NameOf(source) ? mine : null;
-            if ((kept.Count == 0 && named is null) || files.GetValueOrDefault(record.FormKey) is not { } relative) return;
+            var named = NameOf(record) is { Length: > 0 } mine && mine == theirName ? mine : null;
+            if ((kept.Count == 0 && named is null) || files.GetValueOrDefault(record.FormKey) is not { } relative) return false;
             var name = record.EditorID ?? Session.FormKeyText(record.FormKey);
-            var theirs = source.EditorID ?? Session.FormKeyText(source.FormKey);
             var said = new List<string>();
             if (named is not null) said.Add($"is still named '{named}', as {theirs} is, so the game has two of that name");
             if (kept.Count > 0)
@@ -100,10 +127,11 @@ internal static class KeptFromSource
                   $"{(one ? "is right as it is" : "are right as they are")}: nothing to change, and this warning stays —" +
                   " answer with the build."
                 : "";
-            notes.Add($"{relative}: {name} {string.Join(", and ", said)} — copied with its model.{numbersAlone} If the user asked for " +
+            notes.Add($"{relative}: {name} {string.Join(", and ", said)} — {how}.{numbersAlone} If the user asked for " +
                 $"{(one ? "another" : "others")}, one call sets {(one ? "it" : "them")} and builds again: " +
                 ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, string.Join(", ", set), build: true) +
                 $", with what the user asked for in place of {Listed(shown)} — what the user left as {theirs}'s stays");
+            return true;
         }
     }
 

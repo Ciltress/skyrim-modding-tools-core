@@ -35,6 +35,7 @@ import type {
     PullResult, RecordQuery, RecordRequest, RecordSearchResult, RecordVersion, RecordVersions, SkyrimBackend
 } from './SkyrimBackend.js';
 import { CORE_INFO } from '../../lib/product.js';
+import { exampleWeapons } from '../../lib/skills.js';
 
 /**
  * What the helper's build answers of a record on a model no record of its type in the load order is on (ModelFiles.cs): its file
@@ -533,7 +534,9 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
             built = await afterLocalWrites(this.engine.helper.call<typeof built>('build', {
                 projectPluginDir: paths.plugin,
                 outputPath: output,
-                headerVersion: this.engine.headerVersion
+                headerVersion: this.engine.headerVersion,
+                // A new weapon that keeps part of a skill example's numbers is noted, as one that keeps its model's record's.
+                examples: exampleWeapons()
             }, BUILD_TIMEOUT_MS));
             // Whatever the files looked like, a plugin without records is never what was asked (eval round 10).
             if (built.records === 0) {

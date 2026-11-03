@@ -53,7 +53,7 @@ EquipSound: WPNAxe1HandDrawSD
 UnequipSound: WPNAxe1HandSheatheSD
 BasicStats:
   Value: 45
-  Weight: 10
+  Weight: 13
   Damage: 9
 Data:
   AnimationType: OneHandAxe

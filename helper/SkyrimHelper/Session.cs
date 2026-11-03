@@ -594,11 +594,19 @@ public sealed class Session : IDisposable
             ["built"] = new JsonArray(BuiltRecords.Lines(written, lookup).Select(l => (JsonNode)l).ToArray()),
             ["models"] = ModelFiles.Unknown(mod, lookup, Index, dir),
             ["notes"] = new JsonArray((await OverrideNotes(dir, mod.ModKey)).Concat(EffectCasting.Notes(mod, lookup, Index, dir))
-                .Concat(KeptFromSource.Notes(mod, lookup, Index, dir)).Concat(LevelBounds.Notes(mod, dir))
+                .Concat(KeptFromSource.Notes(mod, lookup, Index, dir, Examples(p))).Concat(LevelBounds.Notes(mod, dir))
                 .Concat(WeaponEffects.Notes(mod, lookup, Index, dir)).Concat(KindParts.Notes(mod, lookup, Index, dir))
                 .Concat(RecordNeeds.ListNotes(mod, dir)).Select(n => (JsonNode)n).ToArray())
         };
     }
+
+    /// <summary>The skills' example weapons the core sends with a build, each with its BasicStats; none where it sends none.</summary>
+    private static List<KeptFromSource.Example> Examples(JsonObject p) =>
+        (p["examples"] as JsonArray ?? []).OfType<JsonObject>()
+            .Where(e => e["editorId"] is JsonValue && e["skill"] is JsonValue && e["value"] is JsonValue && e["weight"] is JsonValue && e["damage"] is JsonValue)
+            .Select(e => new KeptFromSource.Example(e["editorId"]!.GetValue<string>(), e["skill"]!.GetValue<string>(),
+                e["value"]!.GetValue<float>(), e["weight"]!.GetValue<float>(), e["damage"]!.GetValue<float>()))
+            .ToList();
 
     private static readonly Regex LinkComment = new(@"(?<=[0-9A-Fa-f]{6}:\S+\.es[mpl])[ \t]+#[^\n]*", RegexOptions.IgnoreCase);
 

@@ -184,6 +184,50 @@ export function discoverSkills(): Skill[] {
 
 export function resetSkillCache(): void {
     cache = undefined;
+    examples = undefined;
+}
+
+/** A weapon a skill writes as its example: its editor ID, the skill, and its BasicStats as written. */
+export interface ExampleWeapon {
+    editorId: string;
+    skill: string;
+    value: number;
+    weight: number;
+    damage: number;
+}
+
+let examples: ExampleWeapon[] | undefined;
+
+/**
+ * The weapons the skills' SKILL.md files write as examples — each a file of a `yaml` block under its comment
+ * `# <project>/plugin/Weapons/….yaml` — with the numbers of their BasicStats. The build sets a new weapon beside
+ * them as beside the load order's record of its model: the detailed sword written with the items skill's
+ * AshenHatchet block, its damage alone changed, kept its value 45, and the model answered the 150 the user had
+ * asked for (eval rounds 114 and 115, sword+detailed #3 and #5). Cached with the skills.
+ */
+export function exampleWeapons(): ExampleWeapon[] {
+    if (examples) return examples;
+    const found: ExampleWeapon[] = [];
+    for (const skill of discoverSkills()) {
+        let text: string;
+        try {
+            text = readSkillFile(skill).replace(/\r\n/g, '\n');
+        } catch {
+            continue;
+        }
+        for (const block of text.matchAll(/^```ya?ml\n([\s\S]*?)^```/gm)) {
+            // Each file of the block begins at its comment naming the file; a weapon's is in Weapons/.
+            for (const file of block[1].split(/^(?=# <project>\/plugin\/)/m)) {
+                if (!/^# <project>\/plugin\/Weapons\//.test(file)) continue;
+                const editorId = /^EditorID:[ \t]*(\w+)/m.exec(file)?.[1];
+                const stats = /^BasicStats:[ \t]*\n((?:[ \t]+\S.*\n?)*)/m.exec(file)?.[1] ?? '';
+                const number = (field: string) => Number(new RegExp(`^[ \\t]+${field}:[ \\t]*([\\d.]+)[ \\t]*$`, 'm').exec(stats)?.[1] ?? NaN);
+                const [value, weight, damage] = ['Value', 'Weight', 'Damage'].map(number);
+                if (editorId && [value, weight, damage].every(Number.isFinite)) found.push({ editorId, skill: skill.name, value, weight, damage });
+            }
+        }
+    }
+    return (examples = found);
 }
 
 export function findSkill(name: string, collection?: string): Skill | undefined {

@@ -1079,15 +1079,26 @@ public static class RecordFiles
     /// deleted, then each Effects item of the project naming it set to the effect it names, the last call building. Told "a
     /// MagicEffect has no field BaseEffect (delete it …)", the model deleted the line, and the game's effect with it, and made
     /// a magic effect of the name alone through four more refusals, until its turns ran out (eval round 82's sword+detailed
-    /// #5). Null for any other file.
+    /// #5). So is one whose `Effects` list has one item, an enchantment's whole list: told to delete `Effects`, `Data` and
+    /// `Category` field by field, the model wrote them back by turns until its turns ran out — and every sword run of eval
+    /// rounds 87–115 that wrote a magic effect file failed (round 115's sword+detailed #3). An effect named by an editor ID
+    /// no record has is the game's of the name closest to it — FireDamageFFContact the game's EnchFireDamageFFContact — where
+    /// one alone is closest. Null for any other file.
     /// </summary>
     private static string? EffectItem(Type type, List<string> unknown, string text, string relative,
         IReadOnlyList<(string Relative, string Text)> texts, string pluginDir, RecordIndex index)
     {
-        if (type.Name != "MagicEffect" || !unknown.Contains("BaseEffect") || ValueOf(text, "BaseEffect") is not { Length: > 0 } named) return null;
+        if (type.Name != "MagicEffect") return null;
+        var named = unknown.Contains("BaseEffect") ? ValueOf(text, "BaseEffect") : null;
+        var listed = false;
+        if (named is not { Length: > 0 } && unknown.Contains("Effects") && OneItemsBaseEffect(text) is { } item) (named, listed) = (item, true);
+        if (named is not { Length: > 0 }) return null;
         var key = FormKey.TryFactory(named, out var formKey) ? formKey : index.ByEditorId.TryGetValue(named, out var byId) ? byId : (FormKey?)null;
-        if (key is not { } effect || !index.ByFormKey.TryGetValue(effect, out var entry) || entry.Signature != "MGEF") return null;
-        var game = entry.EditorId ?? named;
+        string game;
+        var closest = false;
+        if (key is { } effect && index.ByFormKey.TryGetValue(effect, out var entry) && entry.Signature == "MGEF") game = entry.EditorId ?? named;
+        else if (key is null && ClosestEffect(named, index) is { } near) (game, closest) = (near, true);
+        else return null;
         var id = Identity(text).EditorId;
         var project = ToolCalls.ProjectOf(pluginDir);
         var namers = id is null ? [] : texts.Where(t => t.Relative != relative && Groups.GetValueOrDefault(t.Relative.Split('/')[0]) is not null)
@@ -1097,8 +1108,12 @@ public static class RecordFiles
                     .Select(l => l.Path).ToList()))
             .Where(n => n.Paths.Count > 0).ToList();
         var delete = ToolCalls.Delete(pluginDir, relative);
-        var what = $"it holds an effect item, as an enchantment's or a spell's Effects do — `BaseEffect: {named}` with its Data — not a " +
-            $"magic effect: {game} is the game's magic effect";
+        var what = (listed
+                ? $"it holds an Effects list, as an enchantment or a spell does — its one item, `BaseEffect: {named}` with its Data — not a "
+                : $"it holds an effect item, as an enchantment's or a spell's Effects do — `BaseEffect: {named}` with its Data — not a ") +
+            (closest
+                ? $"magic effect: no record is {named}, and {game} is the game's magic effect closest to it by name"
+                : $"magic effect: {game} is the game's magic effect");
         if (namers.Count == 0)
             return $"{what}; delete this file — {delete} — and name {game} as `BaseEffect:` in the Effects item meant to cast it";
         var sets = namers.Select((n, at) => ToolCalls.Edit(project, n.Relative,
@@ -1106,6 +1121,31 @@ public static class RecordFiles
         return $"{what}, and {string.Join(" and ", namers.Select(n => n.Name))} name{(namers.Count == 1 ? "s" : "")} this file's {id} in " +
             $"its place. {(namers.Count == 1 ? "Two" : $"{namers.Count + 1}")} calls do it: {delete}; then {string.Join("; then ", sets)}, " +
             $"which names {game} there and builds again";
+    }
+
+    /// <summary>The `BaseEffect` of a file's `Effects` list where the list has one item, an effect item's mapping; else null.</summary>
+    private static string? OneItemsBaseEffect(string text) =>
+        MisplacedFields.Root(text) is { } root
+        && root.Children.TryGetValue(new YamlDotNet.RepresentationModel.YamlScalarNode("Effects"), out var effects)
+        && effects is YamlDotNet.RepresentationModel.YamlSequenceNode { Children.Count: 1 } list
+        && list.Children[0] is YamlDotNet.RepresentationModel.YamlMappingNode item
+        && item.Children.TryGetValue(new YamlDotNet.RepresentationModel.YamlScalarNode("BaseEffect"), out var named)
+        && named is YamlDotNet.RepresentationModel.YamlScalarNode { Value: { } value } && value.Trim() is { Length: > 0 } trimmed
+            ? trimmed : null;
+
+    /// <summary>
+    /// The load order's magic effect an editor ID no record has was meant for: of those whose editor ID holds it or is held in
+    /// it, at least half as long, the shortest — EnchFireDamageFFContact for FireDamageFFContact — where it alone is that
+    /// short; else null, and the effect is not guessed.
+    /// </summary>
+    private static string? ClosestEffect(string named, RecordIndex index)
+    {
+        var near = index.ByFormKey.Values
+            .Where(e => e.Signature == "MGEF" && e.EditorId is { } id && 2 * Math.Min(id.Length, named.Length) >= Math.Max(id.Length, named.Length)
+                && (id.Contains(named, StringComparison.OrdinalIgnoreCase) || named.Contains(id, StringComparison.OrdinalIgnoreCase)))
+            .Select(e => e.EditorId!).Distinct(StringComparer.OrdinalIgnoreCase)
+            .GroupBy(id => Math.Abs(id.Length - named.Length)).OrderBy(g => g.Key).FirstOrDefault()?.ToList();
+        return near is [var one] ? one : null;
     }
 
     /// <summary>

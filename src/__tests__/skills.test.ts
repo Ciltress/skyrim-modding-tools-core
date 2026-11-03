@@ -5,6 +5,7 @@ import {
     skillUriPrefix,
     SkillFileError,
     discoverSkills,
+    exampleWeapons,
     findSkill,
     parseFrontmatter,
     readSkillFile,
@@ -118,6 +119,21 @@ describe('readSkillFile', () => {
 
     it('names what is available when the file does not exist', () => {
         expect(() => readSkillFile(example(), 'nope.md')).toThrow(/Available: SKILL.md, REFERENCE.md, TOOLS.md/);
+    });
+});
+
+describe('exampleWeapons', () => {
+    it("reads each weapon a skill's SKILL.md writes as an example, with its BasicStats as written", () => {
+        expect(exampleWeapons()).toEqual([
+            { editorId: 'AshenHatchet', skill: 'skyrim-modding-items-and-crafting', value: 45, weight: 13, damage: 9 }
+        ]);
+    });
+
+    it("keeps none of the detailed sword's numbers, as the examples are kept unlike the eval's tasks", () => {
+        // The detailed sword asks for damage 12, weight 10 and value 150. AshenHatchet's weight was 10: its block was copied
+        // whole with the damage alone changed, and the value 45 kept (eval rounds 114 and 115).
+        for (const weapon of exampleWeapons())
+            expect([weapon.damage, weapon.weight, weapon.value].filter(n => [12, 10, 150].includes(n))).toEqual([]);
     });
 });
 

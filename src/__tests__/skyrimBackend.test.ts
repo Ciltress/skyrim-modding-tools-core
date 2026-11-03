@@ -1150,6 +1150,19 @@ describe('the Skyrim backend', () => {
         expect(await build()).toMatchObject({ status: 'success', nextStep: `Built. ${TOLD}`, built: lines });
     });
 
+    it("hands the helper the skills' example weapons with each build, to set a new weapon beside", async () => {
+        // The detailed sword written with the items skill's AshenHatchet block, its damage changed, its value 45 answered as
+        // the 150 asked for (eval rounds 114 and 115, sword+detailed #3 and #5): the helper notes a weapon that keeps part of
+        // an example's numbers, as one that keeps part of the load order's record of its model.
+        const { backend, fixture, calls } = makeBackend();
+        await newProjectWithRecord(backend, fixture.projects, 'FlameBlade');
+
+        await backend.buildProject('FlameBlade');
+
+        expect(calls.find(c => c.method === 'build')!.params.examples).toContainEqual(
+            { editorId: 'AshenHatchet', skill: 'skyrim-modding-items-and-crafting', value: 45, weight: 13, damage: 9 });
+    });
+
     it('passes on what the helper notes once the plugin is written — an override that changes nothing — as a warning', async () => {
         const { backend, fixture, helperAnswers } = makeBackend();
         await newProjectWithRecord(backend, fixture.projects, 'MavenNote');
