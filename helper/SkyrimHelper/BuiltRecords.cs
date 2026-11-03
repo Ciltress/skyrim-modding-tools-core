@@ -41,11 +41,38 @@ internal static class BuiltRecords
         return parts.Count == 0 ? head : $"{head}: {string.Join("; ", parts)}";
     }
 
+    /// <summary>
+    /// A weapon's kind as the game wields it, by its AnimationType; a battleaxe and a warhammer, one type, by their keyword.
+    /// Asked for a one-handed sword, the model wrote a copy of the Daedric Dagger, and nothing the build answered called it
+    /// a dagger (eval round 117's sword #4).
+    /// </summary>
+    private static string? Kind(IWeaponGetter weapon, Func<IFormLinkGetter, string> id)
+    {
+        var keywords = (weapon.Keywords ?? []).Select(k => id(k)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return weapon.Data?.AnimationType switch
+        {
+            null => null,
+            WeaponAnimationType.HandToHand => "hand-to-hand",
+            WeaponAnimationType.OneHandSword => "a one-handed sword",
+            WeaponAnimationType.OneHandDagger => "a dagger",
+            WeaponAnimationType.OneHandAxe => "a war axe",
+            WeaponAnimationType.OneHandMace => "a mace",
+            WeaponAnimationType.TwoHandSword => "a greatsword",
+            WeaponAnimationType.TwoHandAxe => keywords.Contains("WeapTypeWarhammer") ? "a warhammer"
+                : keywords.Contains("WeapTypeBattleaxe") ? "a battleaxe" : "a two-handed axe or hammer",
+            WeaponAnimationType.Bow => "a bow",
+            WeaponAnimationType.Staff => "a staff",
+            WeaponAnimationType.Crossbow => "a crossbow",
+            var other => other.ToString()
+        };
+    }
+
     private static IEnumerable<string> Parts(IMajorRecordGetter record, Func<IFormLinkGetter, string> id)
     {
         switch (record)
         {
             case IWeaponGetter weapon:
+                if (Kind(weapon, id) is { } kind) yield return kind;
                 if (weapon.BasicStats is { } stats)
                     yield return $"damage {stats.Damage}, weight {Number(stats.Weight)}, value {stats.Value}";
                 if (!weapon.ObjectEffect.IsNull)

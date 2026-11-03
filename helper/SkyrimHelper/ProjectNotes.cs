@@ -32,6 +32,21 @@ public static class ProjectNotes
         RegexOptions.Multiline);
     private static readonly Regex OtherArchetype = new(@"^Archetype:[ \t]*\r?\n(?:[ \t]+[^\r\n]*\r?\n)*?[ \t]+Type:[ \t]*(?!(?:Dual|Peak)?ValueModifier\b)\w+", RegexOptions.Multiline);
 
+    /// <summary>An effect item's magic effect: `- BaseEffect: EnchFireDamageFFContact`, or a FormID with its comment.</summary>
+    private static readonly Regex CastLine = new(@"^[ \t]*(?:-[ \t]+)?BaseEffect:[ \t]*(?<value>[^\s#]+)(?:[ \t]*#[ \t]*(?<named>\S+))?", RegexOptions.Multiline);
+
+    /// <summary>
+    /// A magic effect named by FormID as its editor ID — the load order's, else the comment a file writes after it; one
+    /// named by editor ID as written, a comment after it the model's own words (`# CHANGED: …`, eval round 117's sword #4).
+    /// </summary>
+    private static string EffectName(Match line, RecordIndex index)
+    {
+        var written = line.Groups["value"].Value;
+        if (!FormKey.TryFactory(written, out var key)) return written;
+        return index.ByFormKey.TryGetValue(key, out var entry) && entry.EditorId is { } id ? id
+            : line.Groups["named"].Success ? line.Groups["named"].Value : written;
+    }
+
     /// <summary>The record types whose work is their Effects: each item a magic effect, with its strength.</summary>
     private static readonly HashSet<string> Effected = new(StringComparer.Ordinal) { "Spell", "ObjectEffect", "Ingestible", "Ingredient", "Scroll" };
 
@@ -178,10 +193,28 @@ public static class ProjectNotes
                     }));
             }
             // So too a new magic effect: the model's Storm Bolt was a magic effect alone, built and told the user as the spell
-            // (eval round 34, spell+detailed #3).
+            // (eval round 34, spell+detailed #3). Beside the project's records that cast others it is left over, said first, with
+            // the deletion: told only how a spell casts it, the model's enchantment cast the game's EnchFireDamageFFContact, and
+            // its run ended on its copy of Fire Storm, "unused due to correct linking" (eval round 117's sword #4).
             if (type == typeof(MagicEffect) && RecordFiles.Identity(text).EditorId is { } effect && !RecordFiles.NamedElsewhere(records, relative, text))
-                notes.Add($"{relative}: no record of the project names {effect}, so the magic effect does nothing — a spell casts it " +
-                    $"as `- BaseEffect: {effect}` among its `Effects`, as an enchantment, potion or scroll does");
+            {
+                var delete = ToolCalls.Delete(pluginDir, relative);
+                var casters = records.Where(r => r.Relative != relative && Effected.Contains(r.Type.Name))
+                    .Select(r => (r.Relative, r.Type, Name: RecordFiles.Identity(r.Text).EditorId ?? r.Relative,
+                        Cast: CastLine.Matches(r.Text).Select(m => EffectName(m, index))
+                            .Distinct(StringComparer.OrdinalIgnoreCase).ToList()))
+                    .Where(c => c.Cast.Count > 0).ToList();
+                notes.Add($"{relative}: no record of the project names {effect}, so the magic effect does nothing — " + (casters switch
+                {
+                    [var one] => $"{one.Name} ({one.Relative}), the project's {one.Type.Name}, casts {string.Join(", ", one.Cast)}, not " +
+                        $"{effect}, which is left over: delete it, {delete}; where {one.Name} was to cast {effect}, write `BaseEffect: {effect}` " +
+                        "in its Effects item",
+                    [.. var first, var last] => $"the project's {string.Join(", ", first.Select(c => c.Name))} and {last.Name} cast others: where none was to cast it, it is " +
+                        $"left over — delete it, {delete}; where one was, write `BaseEffect: {effect}` in its Effects item",
+                    _ => $"a spell casts it as `- BaseEffect: {effect}` among its `Effects`, as an enchantment, potion or scroll does — " +
+                        $"write the one meant to; where none is, delete it: {delete}"
+                }));
+            }
         }
         // The project's new enchantments, by the editor IDs and FormIDs a weapon's or armor's link may name them by.
         var enchantments = newRecords.Where(r => r.Type == typeof(ObjectEffect))

@@ -493,6 +493,18 @@ public static class RecordEdits
             value = Listed(text, steps, label, said);
             label += " (a list, sent as a text)";
         }
+        // A list of parts sent as a text — a leveled list's Entries as a JSON list in a text, then as the lines a file writes —
+        // was written as that text, in quotes, then as a block of text: the build after each refused the file, the same text
+        // sent again answered success, and the model wrote the file whole (eval round 117's npc+detailed #5). A text that
+        // reads as no list is refused.
+        if (steps[^1].Index is null && value is JsonValue partsSent && partsSent.TryGetValue<string>(out var partsSaid)
+            && Items(types[^1]) is { } part && typeof(Loqui.ILoquiObject).IsAssignableFrom(part))
+        {
+            value = ListOf(partsSaid) ?? throw new HelperException("badRequest", $"{label}: a list, and \"{Shown(partsSent)}\" reads as " +
+                $"none — send its items as a JSON list, {{\"path\": \"{Upto(steps, steps.Count)}\", \"value\": [{{…}}, …]}}, or as the " +
+                "lines a file writes them in, each item from `- `. Nothing was written.");
+            label += " (a list, sent as a text)";
+        }
         // A value the field cannot hold, refused before it is written: "twelve" for a damage, 12 for BasicStats, null — each was
         // written, and the build after it refused the file the tool had made (refusal probes of 2026-10-31, E06, E20, E23).
         if (Unwritable(types[^1], value, path) is { } unwritable)
@@ -586,6 +598,28 @@ public static class RecordEdits
                 ? $"{label}: a list, set whole, and {names[0]} is among its items already: {Json(held)}. Nothing was written."
                 : $"{label}: a list, set whole — to add {names[0]}, set it to {Json([.. held, names[0]])}. Nothing was written.");
         return new JsonArray(names.Select(n => (JsonNode?)JsonValue.Create(n)).ToArray());
+    }
+
+    /// <summary>
+    /// A text that reads as a list — JSON, or the lines a file writes, a line end written or sent as `\n`, a JSON text's quotes
+    /// escaped once more read as quotes — as that list; null for a text that reads as none.
+    /// </summary>
+    private static JsonArray? ListOf(string said)
+    {
+        var written = said.Trim();
+        var tried = new List<string> { written, Regex.Replace(written, @"\\r\\n|\\n", "\n") };
+        if (written.StartsWith('[') && written.Contains("\\\"") && !Regex.IsMatch(written, @"(?<!\\)""")) tried.Add(Regex.Replace(written, @"\\([""\\])", "$1"));
+        foreach (var each in tried.Distinct())
+        {
+            try
+            {
+                var yaml = new YamlStream();
+                yaml.Load(new StringReader(each));
+                if (yaml.Documents.Count > 0 && yaml.Documents[0].RootNode is YamlSequenceNode list) return (JsonArray)FromYaml(list)!;
+            }
+            catch (Exception e) when (e is YamlException or ArgumentException or InvalidCastException) { }
+        }
+        return null;
     }
 
     private static string Json(IEnumerable<string> names) => new JsonArray(names.Select(n => (JsonNode?)JsonValue.Create(n)).ToArray()).ToJsonString();
