@@ -56,7 +56,8 @@ export class HelperClient implements HelperTransport {
     private nextId = 1;
     private readonly logger = createLogger('SkyrimHelper');
 
-    constructor(private readonly executable: string) { }
+    /** `args` is for a stand-in helper run by another program; the helper itself takes none. */
+    constructor(private readonly executable: string, private readonly args: readonly string[] = []) { }
 
     get running(): boolean {
         return !!this.child && this.child.exitCode === null && !this.child.killed;
@@ -70,8 +71,13 @@ export class HelperClient implements HelperTransport {
                 `(needs the .NET 10 SDK), or set SKYRIM_HELPER_PATH to a built helper.`);
         }
 
-        const child = spawn(this.executable, [], { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
+        const child = spawn(this.executable, [...this.args], { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
         this.child = child;
+        // The helper does not keep its host running: a host whose work is done ends, and the helper ends with its
+        // stdin. OpenClaw's `agent exec` waits for that since 2026.10.10, and every run of the eval waited 21 minutes
+        // for its kill. A call waiting for its answer keeps the host alive by its timer.
+        child.unref();
+        for (const pipe of [child.stdin, child.stdout, child.stderr]) (pipe as { unref?: () => void } | null)?.unref?.();
 
         readline.createInterface({ input: child.stdout! }).on('line', line => this.answer(line));
         readline.createInterface({ input: child.stderr! }).on('line', line => {
