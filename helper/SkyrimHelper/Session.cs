@@ -593,7 +593,8 @@ public sealed class Session : IDisposable
         var notes = (await OverrideNotes(dir, mod.ModKey)).Concat(EffectCasting.Notes(mod, lookup, Index, dir))
             .Concat(KeptFromSource.Notes(mod, lookup, Index, dir, Examples(p))).Concat(LevelBounds.Notes(mod, dir))
             .Concat(WeaponEffects.Notes(mod, lookup, Index, dir)).Concat(KindParts.Notes(mod, lookup, Index, dir))
-            .Concat(RecordNeeds.ListNotes(mod, dir)).Select(n => (JsonNode)n).ToArray();
+            .Concat(RecordNeeds.ListNotes(mod, dir)).Concat(BookTexts.Notes(mod, lookup, Index, dir))
+            .Select(n => (JsonNode)n).ToArray();
         return new JsonObject
         {
             ["output"] = output,
