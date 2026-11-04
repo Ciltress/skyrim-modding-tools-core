@@ -368,6 +368,8 @@ export interface BuildResult {
     scripts: { compiled: number };
     /** What did not stop the build but was not built: record files outside the plugin folder. */
     warnings?: string[];
+    /** For each file two or more warnings give a fix on, the one call that makes them all and builds again. */
+    combined?: { file: string; count: number; call: string }[];
 }
 
 export interface DeployResult {

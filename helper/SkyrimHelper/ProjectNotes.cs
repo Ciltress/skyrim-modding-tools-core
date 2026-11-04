@@ -135,7 +135,7 @@ public static class ProjectNotes
                         ? $"; the EnchantmentAmount {ownEnchantment.Relative} writes is the enchantment's own, not the weapon's charge" : "") +
                     "; one call gives it 500, as Iron Sword of Embers has — the charge the user asked for in its place, if they " +
                     "named one — and builds again: " +
-                    ToolCalls.Edit(ProjectOf(pluginDir), relative, "{\"path\": \"EnchantmentAmount\", \"value\": 500}", build: true) +
+                    ToolCalls.Fix(ProjectOf(pluginDir), relative, "{\"path\": \"EnchantmentAmount\", \"value\": 500}") +
                     " — a unique meant to need none, as the Ebony Blade, keeps none");
             }
             // One with Traits among its TemplateFlags is its template's race and sex in game, whatever its own lines say: the
@@ -148,7 +148,7 @@ public static class ProjectNotes
                     $"it has the race, sex, voice and looks of its template {template} — {Listed(traits.Select(t => RaceName(t.Race, cache)).Distinct().ToList())}, " +
                     $"{string.Join(" and ", traits.Select(t => t.Female).Distinct().Order().Select(Sex))} — not the {Sex(female)} {RaceName(race, cache)} " +
                     "its file writes; one call removes the template and its flags, and builds again: " +
-                    ToolCalls.Edit(ProjectOf(pluginDir), relative, "", "\"Template\", \"Configuration.TemplateFlags\"", build: true) +
+                    ToolCalls.Fix(ProjectOf(pluginDir), relative, "", "\"Template\", \"Configuration.TemplateFlags\"") +
                     " — an NPC meant to be its template's kind keeps them");
             if (type == typeof(Npc) && Voice(text, index, cache) is { } voice
                 && !(TemplateLine.IsMatch(text) && text.Contains("Traits", StringComparison.Ordinal)))
@@ -162,14 +162,14 @@ public static class ProjectNotes
                 if (womansVoice && !woman)
                     notes.Add($"{relative}: {name} speaks with {voice.EditorID}, a woman's voice, but has no Female among Configuration.Flags, " +
                         "so the game makes this NPC a man — a woman has `- Female` there" + (ConfigurationFlags(text) is { } flags
-                            ? "; one call lists it beside the flags it has, and builds again: " + ToolCalls.Edit(ProjectOf(pluginDir), relative,
-                                $"{{\"path\": \"Configuration.Flags\", \"value\": [{string.Join(", ", flags.Append("Female").Select(Quoted))}]}}", build: true)
+                            ? "; one call lists it beside the flags it has, and builds again: " + ToolCalls.Fix(ProjectOf(pluginDir), relative,
+                                $"{{\"path\": \"Configuration.Flags\", \"value\": [{string.Join(", ", flags.Append("Female").Select(Quoted))}]}}")
                             : ""));
                 else if (woman && !womansVoice && voice.EditorID?.StartsWith("Male", StringComparison.Ordinal) == true)
                     notes.Add($"{relative}: {name} is a woman (Female) who speaks with {voice.EditorID}, a man's voice — " +
                         (WomansVoice(text, index, cache) is { } hers
-                            ? $"one call gives her {hers.Race}'s own woman's voice, and builds again: " + ToolCalls.Edit(ProjectOf(pluginDir), relative,
-                                $"{{\"path\": \"Voice\", \"value\": {Quoted(hers.Voice)}}}", build: true) +
+                            ? $"one call gives her {hers.Race}'s own woman's voice, and builds again: " + ToolCalls.Fix(ProjectOf(pluginDir), relative,
+                                $"{{\"path\": \"Voice\", \"value\": {Quoted(hers.Voice)}}}") +
                                 "; the npcs skill names the other women's voices of each race"
                             : "the npcs skill names each race's woman's voice"));
             }

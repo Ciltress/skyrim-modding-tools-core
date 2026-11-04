@@ -498,7 +498,7 @@ export class ProjectsHandlers extends BaseHandler {
         // told the user the mod was built — most fixed the file after it and never built again. Said at both ends.
         // After 12 of the 29 refusals of rounds 40–50 that named corrections it had written, the model's edits found
         // nothing — it made the build's moves itself, from the file as it had written it, and read it first once.
-        const { warnings, ...built } = await asRequestError(this.backend.buildProject(project)
+        const { warnings, combined, ...built } = await asRequestError(this.backend.buildProject(project)
             .catch((error: unknown) => {
                 if (error instanceof Error) error.message = `Not built: ${error.message.replace(/\.?\s*$/, '.')} ` +
                     (error.message.includes('Corrected in the files already')
@@ -537,12 +537,17 @@ export class ProjectsHandlers extends BaseHandler {
         // "unless the user asked for it so", was read as "the user did not ask for a fix" in three runs of
         // rounds 27–36, two of which failed (eval round 36): it names what may stay instead.
         const one = warnings.length === 1;
+        // The fixes of one file as one call: given four warnings on its sword, three with a call, a model made none of them
+        // and answered with the four as a list, "please instruct me to fix them" (eval round 122's sword #1).
+        const together = (combined ?? []).map(({ file, count, call }) =>
+            ` ${count} of them fix ${file} with a call each: one call makes the ${count} and builds again — ${call} — with a value ` +
+            'the user named in place of one a warning gives, as that warning says.').join('');
         return {
             status: 'built_with_warnings',
             warnings,
             nextStep: `Built, with ${one ? 'a warning' : `${warnings.length} warnings`}: fix what ${one ? 'it' : 'each'} ` +
                 `says and build again — that is part of the task. ${one ? 'It' : 'One'} stays only where the user ` +
-                'asked for just what it names.' + (done ? ` ${done}` : ''),
+                'asked for just what it names.' + together + (done ? ` ${done}` : ''),
             ...built
         };
     }

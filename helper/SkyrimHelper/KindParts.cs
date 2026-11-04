@@ -82,7 +82,7 @@ internal static class KindParts
                 notes.Add($"{relative}: {name}'s model, {model}, is the mesh of {onIt.Count} {other} weapon{(onIt.Count == 1 ? "" : "s")} of the " +
                     $"load order and of no {me.Kind} one — in game {name} looks like {RecordFiles.Article(other ?? "other")} weapon. " +
                     $"{Shown(likeKind.Record)}, the {me.Kind} weapon most like it, is on {likeModel}: one call gives {name} that model" +
-                    (set.Count > 1 ? " and the first-person model with it" : "") + $", and builds again: {ToolCalls.Edit(project, relative, string.Join(", ", set), build: true)}");
+                    (set.Count > 1 ? " and the first-person model with it" : "") + $", and builds again: {ToolCalls.Fix(project, relative, string.Join(", ", set))}");
             }
 
             if (kind.Count < Fewest) continue;
@@ -117,7 +117,7 @@ internal static class KindParts
                 (like is not null && calls.Count > 0
                     ? $"{Shown(like.Record)}, the one most like it, has {(one ? "it" : "them")}: one call writes {(one ? "it" : "them")} as " +
                       $"{Shown(like.Record)} has {(one ? "it" : "them")}, and builds again: " +
-                      ToolCalls.Edit(project, relative, string.Join(", ", calls), build: true)
+                      ToolCalls.Fix(project, relative, string.Join(", ", calls))
                     : "Write them as a record of its kind has them, as readRecord shows one"));
         }
         return notes;

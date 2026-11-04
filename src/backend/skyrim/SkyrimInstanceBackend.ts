@@ -20,10 +20,10 @@ import { CRASH_RULES } from './crash/rules/index.js';
 import { setIniValue } from './gameIni.js';
 import { findCaseInsensitive } from './paths.js';
 import {
-    ProjectError, assignFormIds, belongsAt, correctCopiedEscapes, createProject, type CopiedEscape, deleteCall, deleteRecordFile, editCall, editedRecord, fencedRecordFiles, fileHash,
+    ProjectError, assignFormIds, belongsAt, combinedFixes, correctCopiedEscapes, createProject, type CopiedEscape, deleteCall, deleteRecordFile, editCall, editedRecord, fencedRecordFiles, fileHash,
     keepRecordTexts, misnamedRecordFiles, looseRecordFiles, moveCall, moveRecordFile, nearRecordFile, newestSourceTime, outsideRecordCalls, placeCall,
     projectExists, projectInfo, projectPaths, readDeployState, readProjectHeader, recordFileList, recordFiles, strayRecordFiles, syncFolder, syncYaml,
-    whereRecordsGo, writeDeployState, type ProjectPaths
+    whereRecordsGo, writeDeployState, type EditFix, type ProjectPaths
 } from './projects.js';
 import type { SkyrimEngine } from './engine.js';
 import { NexusCatalogue, markDownloadInstalled, readDownloadMeta } from './nexus.js';
@@ -483,6 +483,7 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
         // where its record has none to the one place it goes, as it says in `corrected`.
         const checked = await this.engine.helper.call<{
             records: number; leftOut?: { file: string; copy: string }[]; notes?: string[]; corrected?: { file: string; change: string }[];
+            fixes?: EditFix[];
         }>('checkRecords', { projectPluginDir: paths.plugin }).catch((error: unknown) => { throw withCorrections(error); });
         corrected.push(...(checked.corrected ?? []).map(({ file, change }) => `${path.join(paths.plugin, file)}: ${change}`));
         // What builds but likely not as meant — a woman's voice on a man, an enchantment nothing carries (eval probe 14),
@@ -528,7 +529,7 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
         const giveBack = keepRecordTexts(paths.plugin);
         let built: {
             records: number; masters: string[]; headerVersion: number; resolvedLinks: BuildResult['resolvedLinks']; built?: string[]; notes?: string[];
-            models?: UnknownModel[];
+            models?: UnknownModel[]; fixes?: EditFix[];
         };
         try {
             built = await afterLocalWrites(this.engine.helper.call<typeof built>('build', {
@@ -559,7 +560,8 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
         }
         // An override that changes nothing, said once the plugin is written: told apart only from the record itself.
         warnings.push(...built.notes ?? []);
-        warnings.push(...await this.missingModels(paths, built.models ?? []));
+        const models = await this.missingModels(paths, built.models ?? []);
+        warnings.push(...models.map(model => model.warning));
         warnings.push(...await this.refusedEditWarnings(paths));
 
         // A file keeps the name its author gave it, the build's FormID written in: renamed the way Spriggit names
@@ -570,6 +572,7 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
         // for warnings to fix, wrote its NPC again from memory with the lines among her Flags, and answered unbuilt (eval
         // round 113's npc #3). The file's name ends at the first ": " — a drive's colon has none after it.
         const done = corrected.map(entry => entry.replace(': ', ', done by the build: '));
+        const combined = combinedFixes(paths, [...checked.fixes ?? [], ...built.fixes ?? [], ...models.flatMap(model => model.fix ? [model.fix] : [])]);
         return {
             project, plugin, output,
             ...(done.length > 0 ? { corrected: done } : {}),
@@ -580,7 +583,8 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
             resolvedLinks: (built.resolvedLinks ?? []).map(link => ({ ...link, file: fullPath(link.file) })),
             built: built.built ?? [],
             scripts: { compiled },
-            ...(warnings.length > 0 ? { warnings } : {})
+            ...(warnings.length > 0 ? { warnings } : {}),
+            ...(combined.length > 0 ? { combined } : {})
         };
     }
 
@@ -1046,13 +1050,13 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
      * Blade on a mesh path of their own making, which the game draws nothing for, and each build answered success. A model of
      * "" is a record with none at all (round 93's note #1, round 94's sword #5).
      */
-    private async missingModels(paths: ProjectPaths, models: UnknownModel[]): Promise<string[]> {
+    private async missingModels(paths: ProjectPaths, models: UnknownModel[]): Promise<{ warning: string; fix?: EditFix }[]> {
         if (models.length === 0) return [];
         const found = await this.findGameFiles([...new Set(models.flatMap(m => [m.model, ...m.like.map(l => l.model)]).filter(Boolean))]);
         const has = (model: string) => model !== '' && (!!found[model] || !!findCaseInsensitive(paths.assets, dataPath(model)));
         return models.filter(m => !has(m.model)).map(m => {
             const like = m.like.find(l => has(l.model));
-            return (m.model
+            const warning = (m.model
                 ? `${m.file}: ${m.editorId}'s model, ${m.model}, is a mesh the game does not have — in no archive it loads, no mod ` +
                   `and not this project's assets folder — so the game draws nothing for ${m.editorId}`
                 : `${m.file}: ${m.editorId} has no Model, so the game draws nothing for it`) +
@@ -1063,6 +1067,7 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
                     : 'Give it the Model lines of a record of the load order like it, as readRecord shows them, and build again') +
                 // Split here: Linux's path functions keep a backslash as part of a name.
                 (m.model ? `; a mesh of its own goes into the project's assets folder, as ${path.join(paths.assets, ...dataPath(m.model).split('\\'))}.` : '.');
+            return { warning, ...(like ? { fix: { file: m.file, set: [{ path: 'Model.File', value: like.model }], remove: [] } } : {}) };
         });
     }
 

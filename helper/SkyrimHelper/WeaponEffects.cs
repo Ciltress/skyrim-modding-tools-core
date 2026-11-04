@@ -117,14 +117,14 @@ internal static class WeaponEffects
                 }
                 call = $"one call casts {(games.Count == 1 ? "it" : "them")} instead" + (durations ? ", for as long as they do" : "") +
                     (remove.Count > 0 ? $", without a second of its kind" : "") + ", and builds again: " +
-                    ToolCalls.Edit(project, relative, string.Join(", ", set),
-                        remove.Count == 0 ? null : string.Join(", ", remove.OrderDescending().Select(i => ToolCalls.Quoted($"Effects[{i}]"))), build: true);
+                    ToolCalls.Fix(project, relative, string.Join(", ", set),
+                        remove.Count == 0 ? null : string.Join(", ", remove.OrderDescending().Select(i => ToolCalls.Quoted($"Effects[{i}]"))));
             }
             else
             {
                 var carried = Name(EnchantmentOf(Example(games[0].Cast))!);
                 call = $"one call carries {carried}, which casts {Name(games[0].Effect!)}, instead and builds again: " +
-                    ToolCalls.Edit(project, relative, $"{{\"path\": \"ObjectEffect\", \"value\": {ToolCalls.Quoted(carried)}}}", build: true);
+                    ToolCalls.Fix(project, relative, $"{{\"path\": \"ObjectEffect\", \"value\": {ToolCalls.Quoted(carried)}}}");
             }
             notes.Add(said + $". The game's weapons cast {cast}; {call} — an effect meant so stays");
         }

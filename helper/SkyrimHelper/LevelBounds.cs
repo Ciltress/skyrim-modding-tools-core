@@ -42,7 +42,7 @@ internal static class LevelBounds
                 notes.Add($"{relative}: {npc.EditorID ?? Session.FormKeyText(npc.FormKey)}'s level follows the player's at {nothing.LevelMult} " +
                     $"times it, so it never rises above its CalcMinLevel {configuration.CalcMinLevel} — LevelMult is the multiple, 1 the player's " +
                     "own level. One call makes it follow the player's and builds again: " +
-                    ToolCalls.Edit(project, relative, "{\"path\": \"Configuration.Level.LevelMult\", \"value\": 1}", build: true));
+                    ToolCalls.Fix(project, relative, "{\"path\": \"Configuration.Level.LevelMult\", \"value\": 1}"));
                 continue;
             }
             if (configuration.Level is not INpcLevelGetter level) continue;

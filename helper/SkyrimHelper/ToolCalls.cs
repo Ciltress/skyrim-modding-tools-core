@@ -1,3 +1,6 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
+
 namespace SkyrimHelper;
 
 /// <summary>
@@ -32,4 +35,39 @@ internal static class ToolCalls
         $"editRecord {{\"project\": {Quoted(project)}, \"record\": {Quoted(record.Replace('\\', '/'))}" +
         (set.Length == 0 ? "" : $", \"set\": [{set}]") + (remove is null ? "" : $", \"remove\": [{remove}]") +
         (build ? ", \"build\": true" : "") + "}";
+
+    /// <summary>
+    /// A note's fix: the one call it gives, with the build, that it means made unless the user asked otherwise — written as
+    /// Edit writes it, and kept for the build that runs, which answers them beside its notes. The core gives the fixes of one
+    /// file as one call: given four warnings on its sword, three with a call, a model made none of them and answered with the
+    /// four as a list (eval round 122's sword #1). A note whose call is one of two ways, or "if the user asked for others",
+    /// writes Edit, not this.
+    /// </summary>
+    public static string Fix(string project, string record, string set, string? remove = null)
+    {
+        if (Collected.Value is { } fixes)
+        {
+            try
+            {
+                fixes.Add(new JsonObject
+                {
+                    ["file"] = record.Replace('\\', '/'),
+                    ["set"] = JsonNode.Parse($"[{set}]"),
+                    ["remove"] = JsonNode.Parse($"[{remove ?? ""}]")
+                });
+            }
+            catch (JsonException) { }
+        }
+        return Edit(project, record, set, remove, build: true);
+    }
+
+    /// <summary>The fixes the notes of the build that runs give, gathered from here on in its flow.</summary>
+    public static List<JsonObject> CollectFixes()
+    {
+        var fixes = new List<JsonObject>();
+        Collected.Value = fixes;
+        return fixes;
+    }
+
+    private static readonly AsyncLocal<List<JsonObject>?> Collected = new();
 }

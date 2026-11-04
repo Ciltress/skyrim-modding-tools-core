@@ -495,6 +495,45 @@ export function editCall(paths: ProjectPaths, request: { record: string; set?: R
     })}`;
 }
 
+/** A warning's fix: the one editRecord call, with the build, that it means made unless the user asked otherwise. */
+export interface EditFix {
+    file: string;
+    set: { path: string; value: unknown }[];
+    remove: string[];
+}
+
+/**
+ * The fixes of each file that two or more warnings give, as one editRecord call that makes them all and builds: given four
+ * warnings on its sword, three with a call — its charge, six links and its model — a model made none of them and answered
+ * with the four as a list (eval round 122's sword #1). A file whose fixes touch one field twice — the same top-level field,
+ * as `Effects[1]` beside `Effects[0].Data` — is left to its warnings' calls, made one after another.
+ */
+export function combinedFixes(paths: ProjectPaths, fixes: EditFix[]): { file: string; count: number; call: string }[] {
+    const byFile = new Map<string, EditFix[]>();
+    for (const fix of fixes) {
+        const key = fix.file.replace(/\\/g, '/').toLowerCase();
+        byFile.set(key, [...byFile.get(key) ?? [], fix]);
+    }
+    const field = (fieldPath: string) => fieldPath.split(/[.[]/)[0].toLowerCase();
+    const combined: { file: string; count: number; call: string }[] = [];
+    for (const group of byFile.values()) {
+        if (group.length < 2) continue;
+        const fields = group.map(fix => new Set([...fix.set.map(item => field(item.path)), ...fix.remove.map(field)]));
+        if (fields.some((own, at) => [...own].some(name => fields.some((other, there) => there !== at && other.has(name))))) continue;
+        const set = group.flatMap(fix => fix.set);
+        const remove = group.flatMap(fix => fix.remove);
+        const file = group[0].file.replace(/\\/g, '/');
+        combined.push({
+            file, count: group.length,
+            call: `editRecord ${callJson({
+                project: path.basename(paths.root), record: file,
+                ...(set.length > 0 ? { set } : {}), ...(remove.length > 0 ? { remove } : {}), build: true
+            })}`
+        });
+    }
+    return combined;
+}
+
 /** JSON as the other calls in answers are written: a space after each colon and comma. */
 function callJson(value: unknown): string {
     if (Array.isArray(value)) return `[${value.map(callJson).join(', ')}]`;

@@ -1008,6 +1008,45 @@ describe('the Skyrim backend', () => {
         expect(await answer()).not.toHaveProperty('warnings');
     });
 
+    it('gives the fixes two or more warnings give on one file as one call, and leaves a file whose fixes touch a field twice', async () => {
+        // Given four warnings on its sword, three with a call, a model made none of them and answered with the four as a list
+        // (eval round 122's sword #1).
+        const { backend, fixture, helperAnswers } = makeBackend();
+        await newProjectWithRecord(backend, fixture.projects, 'FlameBlade');
+        let fixes: unknown[] = [];
+        let checked: unknown[] = [];
+        // The charge's warning is the record check's, the others the build's: both give their fixes.
+        helperAnswers.checkRecords = () => ({ records: 1, leftOut: [], fixes: checked });
+        helperAnswers.build = params => {
+            write(params.outputPath, 'plugin');
+            return { records: 1, masters: ['Skyrim.esm'], headerVersion: params.headerVersion, resolvedLinks: [], notes: ['one', 'two', 'three'], fixes };
+        };
+        const handler = createHandlers(backend as unknown as AppBackend, CORE_PRODUCT).find(h => h.getTools().some(t => t.name === 'buildProject'))!;
+        const build = async () => JSON.parse((await handler.handle('buildProject', { project: 'FlameBlade' })).content[0].text);
+        checked = [{ file: 'Weapons/FlameBlade.yaml', set: [{ path: 'EnchantmentAmount', value: 500 }], remove: [] }];
+        fixes = [
+            { file: 'Weapons/Shield.yaml', set: [{ path: 'Keywords', value: ['ArmorShield'] }], remove: [] },
+            { file: 'Weapons\\FlameBlade.yaml', set: [{ path: 'EquipSound', value: 'WPNBlade1HandDrawSD' }, { path: 'Model.File', value: 'Weapons\\Iron\\LongSword.nif' }], remove: ['Template'] }
+        ];
+
+        const built = await build();
+
+        expect(built.nextStep).toBe('Built, with 3 warnings: fix what each says and build again — that is part of the task. One stays ' +
+            'only where the user asked for just what it names. 2 of them fix Weapons/FlameBlade.yaml with a call each: one call makes ' +
+            'the 2 and builds again — editRecord {"project": "FlameBlade", "record": "Weapons/FlameBlade.yaml", "set": [{"path": ' +
+            '"EnchantmentAmount", "value": 500}, {"path": "EquipSound", "value": "WPNBlade1HandDrawSD"}, {"path": "Model.File", "value": ' +
+            '"Weapons\\\\Iron\\\\LongSword.nif"}], "remove": ["Template"], "build": true} — with a value the user named in place of one a ' +
+            'warning gives, as that warning says.');
+        expect(built).not.toHaveProperty('combined');
+        // An item taken out of a list moves the ones after it: a field two fixes touch keeps their calls, made one after another.
+        checked = [];
+        fixes = [
+            { file: 'Spells/StormBolt.yaml', set: [{ path: 'Effects[0].Data.Duration', value: 2 }], remove: [] },
+            { file: 'Spells/StormBolt.yaml', set: [], remove: ['Effects[1]'] }
+        ];
+        expect((await build()).nextStep).not.toMatch(/of them fix/);
+    });
+
     it('says first that each change in `corrected` is done, so the file is read before it is edited again', async () => {
         // Told what the build had moved, the model made the moves itself and wrote its NPC anew without its FormKey (eval round 45).
         const { backend, fixture, helperAnswers } = makeBackend();

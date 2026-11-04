@@ -486,11 +486,15 @@ public sealed class Session : IDisposable
             throw new HelperException(e.Code,
                 $"{e.Message} Corrected in the files already: {string.Join("; ", corrected.Select(c => $"{c.File}: {c.Change}"))}.");
         }
+        // Each note's fix beside the notes, as the build gives its own.
+        var fixes = ToolCalls.CollectFixes();
+        var notes = ProjectNotes.Of(dir, Index, Cache).Select(n => (JsonNode)n).ToArray();
         return new JsonObject
         {
             ["records"] = records,
             ["leftOut"] = new JsonArray(leftOut.Select(l => (JsonNode)new JsonObject { ["file"] = l.File, ["copy"] = l.Copy }).ToArray()),
-            ["notes"] = new JsonArray(ProjectNotes.Of(dir, Index, Cache).Select(n => (JsonNode)n).ToArray()),
+            ["notes"] = new JsonArray(notes),
+            ["fixes"] = new JsonArray(fixes.Select(x => (JsonNode)x).ToArray()),
             ["corrected"] = new JsonArray(corrected.Select(c => (JsonNode)new JsonObject { ["file"] = c.File, ["change"] = c.Change }).ToArray())
         };
     }
@@ -584,6 +588,12 @@ public sealed class Session : IDisposable
         // What the links named, kept for the next build, once a plugin was written from them.
         LinkPins.Add(dir, pins, resolvedLinks, mod.ModKey);
         using var written = SkyrimMod.Create(release).FromPath(output).Construct();
+        // Each note's fix, the one call it gives, beside the notes: the core gives those of one file as one call.
+        var fixes = ToolCalls.CollectFixes();
+        var notes = (await OverrideNotes(dir, mod.ModKey)).Concat(EffectCasting.Notes(mod, lookup, Index, dir))
+            .Concat(KeptFromSource.Notes(mod, lookup, Index, dir, Examples(p))).Concat(LevelBounds.Notes(mod, dir))
+            .Concat(WeaponEffects.Notes(mod, lookup, Index, dir)).Concat(KindParts.Notes(mod, lookup, Index, dir))
+            .Concat(RecordNeeds.ListNotes(mod, dir)).Select(n => (JsonNode)n).ToArray();
         return new JsonObject
         {
             ["output"] = output,
@@ -593,10 +603,8 @@ public sealed class Session : IDisposable
             ["resolvedLinks"] = resolvedLinks,
             ["built"] = new JsonArray(BuiltRecords.Lines(written, lookup).Select(l => (JsonNode)l).ToArray()),
             ["models"] = ModelFiles.Unknown(mod, lookup, Index, dir),
-            ["notes"] = new JsonArray((await OverrideNotes(dir, mod.ModKey)).Concat(EffectCasting.Notes(mod, lookup, Index, dir))
-                .Concat(KeptFromSource.Notes(mod, lookup, Index, dir, Examples(p))).Concat(LevelBounds.Notes(mod, dir))
-                .Concat(WeaponEffects.Notes(mod, lookup, Index, dir)).Concat(KindParts.Notes(mod, lookup, Index, dir))
-                .Concat(RecordNeeds.ListNotes(mod, dir)).Select(n => (JsonNode)n).ToArray())
+            ["notes"] = new JsonArray(notes),
+            ["fixes"] = new JsonArray(fixes.Select(f => (JsonNode)f).ToArray())
         };
     }
 
