@@ -221,7 +221,7 @@ A note or a letter is a `Book` too, in `Books/`, mirroring a vanilla one of its 
 | book | `Book3ValuableLustyArgonianMaidVol01` | `Clutter\Books\BasicBook07.nif` | `HighPolyBasicBook07` | `Value`, `Weight` |
 
 Both carry `Keywords` with `VendorItemBook`, and `Teaches` with `MutagenObjectType: BookTeachesNothing`.
-The text is `BookText`'s `Value`, a block under `Value: >-`:
+The text is `BookText`'s `Value`, a block under `Value: |-` whose lines are the text's own, an empty one too:
 
 - A text taken from another book is copied character for character, as `readRecord` shows it: its
   markup — `<font face="$HandwrittenFont">` makes a note handwritten — its words, its empty lines.

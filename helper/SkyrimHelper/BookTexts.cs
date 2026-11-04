@@ -59,8 +59,9 @@ internal static class BookTexts
                 .FirstOrDefault();
             if (closest.Book is null) continue;
 
-            // Blank lines alone say nothing: copied from readRecord's folded text, a note's two blank lines between
-            // its parts were written as one in 170 of the 357 copies of rounds 87–123 — runs that passed.
+            // Blank lines alone say nothing: copied from readRecord's folded text (TextBlocks writes it literal since), a
+            // note's two blank lines between its parts were written as one in 170 of the 357 copies of rounds 87–123 —
+            // runs that passed.
             var changes = closest.Diff.Changes.Where(c => !Blank(c.From) || !Blank(c.To)).ToList();
             if (changes.Count == 0) continue;
             var shown = string.Join("; ", changes.Take(ShownLines).Select(Said)) +

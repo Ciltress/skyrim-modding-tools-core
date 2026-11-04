@@ -322,7 +322,7 @@ public sealed class Session : IDisposable
             var yaml = Path.Combine(dir, "yaml");
             await MutagenYamlConverter.Instance.Serialize(written, yaml);
             return Directory.GetFiles(yaml, "*.yaml", SearchOption.AllDirectories)
-                .Select(f => (Path: Path.GetRelativePath(yaml, f).Replace('\\', '/'), Text: Lf(File.ReadAllText(f))))
+                .Select(f => (Path: Path.GetRelativePath(yaml, f).Replace('\\', '/'), Text: TextBlocks.Literal(Lf(File.ReadAllText(f)))))
                 .Where(f => f.Path != "RecordData.yaml")
                 .OrderBy(f => f.Path, StringComparer.Ordinal)
                 .ToList();
@@ -664,8 +664,12 @@ public sealed class Session : IDisposable
         return notes;
     }
 
-    /// <summary>A record file's text as addPatch's is compared with: line ends and link comments aside.</summary>
-    private static string Bare(string text) => string.Join('\n', LinkComment.Replace(Lf(text), "").Split('\n').Select(l => l.TrimEnd())).TrimEnd();
+    /// <summary>
+    /// A record file's text as addPatch's is compared with: line ends, link comments and a text's block style aside — a copy
+    /// addPatch wrote before v0.2.45 has its texts folded.
+    /// </summary>
+    private static string Bare(string text) =>
+        string.Join('\n', LinkComment.Replace(TextBlocks.Literal(Lf(text)), "").Split('\n').Select(l => l.TrimEnd())).TrimEnd();
 
     /// <summary>
     /// The project's copies of another plugin's records — files whose FormKey is another plugin's — each with whether it reads,
@@ -736,7 +740,8 @@ public sealed class Session : IDisposable
         using var mod = SkyrimMod.Create(release).FromPath(pluginPath).Construct();
         await MutagenYamlConverter.Instance.Serialize(mod, outputDir);
         var files = Directory.GetFiles(outputDir, "*.yaml", SearchOption.AllDirectories);
-        foreach (var file in files) File.WriteAllText(file, Lf(File.ReadAllText(file)));
+        // As readRecord and addPatch write them, so that a pull changes no file of theirs that the plugin holds as it is.
+        foreach (var file in files) File.WriteAllText(file, TextBlocks.Literal(Lf(File.ReadAllText(file))));
         return new JsonObject { ["files"] = files.Length };
     }
 
