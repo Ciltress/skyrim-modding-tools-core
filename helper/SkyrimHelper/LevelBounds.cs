@@ -9,13 +9,18 @@ namespace SkyrimHelper;
 /// a level that follows the player's, and beside a fixed one the game reads neither. Asked for a Hilda "whose level follows
 /// the player's between 5 and 30", a model wrote the two bounds and no Level line — a fixed level of 0 — and answered that her
 /// level follows the player's between 5 and 30, the build's `built` line reading "level 0" (eval round 103's npc+detailed #1
-/// and #5). The game's own NPCs of a fixed level write no bounds, so a copy of one has no note. And a level that follows the
-/// player's at 0 times it, which holds the NPC at its lowest level.
+/// and #5). A copy of one of the game's own has it too: 467 of the 2,002 NPCs of a fixed level in its five masters write bounds
+/// beside it, as EncDremoraWarlock06 (level 46, 7 to 45). And a level that follows the
+/// player's at 0 times it, which holds the NPC at its lowest level; and a fixed level of 0 with no bounds, a file written with
+/// no level at all.
 /// </summary>
 internal static class LevelBounds
 {
     private const string FollowsPlayer = "{\"path\": \"Configuration.Level\", \"value\": {\"MutagenObjectType\": \"PcLevelMult\", \"LevelMult\": 1}}";
     private const string Bounds = "\"Configuration.CalcMinLevel\", \"Configuration.CalcMaxLevel\"";
+    private const string LowestAndHighest = "{\"path\": \"Configuration.CalcMinLevel\", \"value\": 1}, {\"path\": \"Configuration.CalcMaxLevel\", \"value\": 0}";
+    private const string FixedLevel = "{\"path\": \"Configuration.Level\", \"value\": {\"MutagenObjectType\": \"NpcLevel\", \"Level\": 10}}";
+    private static readonly Regex AnyLevelLine = new(@"^[ \t]*Level[ \t]*:", RegexOptions.Multiline);
 
     public static List<string> Notes(ISkyrimModGetter mod, string pluginDir)
     {
@@ -40,7 +45,25 @@ internal static class LevelBounds
                     ToolCalls.Edit(project, relative, "{\"path\": \"Configuration.Level.LevelMult\", \"value\": 1}", build: true));
                 continue;
             }
-            if (configuration.Level is not INpcLevelGetter level || (configuration.CalcMinLevel == 0 && configuration.CalcMaxLevel == 0)) continue;
+            if (configuration.Level is not INpcLevelGetter level) continue;
+            if (configuration.CalcMinLevel == 0 && configuration.CalcMaxLevel == 0)
+            {
+                if (level.Level != 0) continue;
+                // A fixed level of 0 and no bounds: asked for a Hilda "whose level follows the player's between 5 and 30", a model
+                // wrote her with no Level, CalcMinLevel or CalcMaxLevel line, the build's `built` line read "level 0", and it
+                // answered her as asked (eval round 121's npc+detailed #3). Of the 2,002 NPCs of a fixed level in the game's five
+                // masters, 3 are at 0, each beside bounds, which the note below takes (2,376 and the same 3 in its 80 plugins).
+                var unwritten = !AnyLevelLine.IsMatch(File.ReadAllText(Path.Combine(pluginDir, relative)));
+                notes.Add($"{relative}: {npc.EditorID ?? Session.FormKeyText(npc.FormKey)}'s level is fixed at 0" +
+                    (unwritten ? " — its file has no `Level` line" : "") + ", and of the game's 2,002 NPCs of a fixed level, 3 are at 0. " +
+                    "Where the user asked for a level that follows the player's, one call makes it follow it and builds again: " +
+                    ToolCalls.Edit(project, relative, FollowsPlayer + ", " + LowestAndHighest, build: true) +
+                    " — the lowest and highest level the user named in place of 1 and 0, if they named them (a CalcMaxLevel of 0 is no " +
+                    "highest); where the user asked for a fixed level, one call sets it and builds again: " +
+                    ToolCalls.Edit(project, relative, FixedLevel, build: true) + " — the level the user named in place of 10. Where the " +
+                    "user named no level, the first call as it stands.");
+                continue;
+            }
             notes.Add($"{relative}: {npc.EditorID ?? Session.FormKeyText(npc.FormKey)}'s level is fixed at {level.Level}, so its " +
                 $"CalcMinLevel {configuration.CalcMinLevel} and CalcMaxLevel {configuration.CalcMaxLevel} do nothing — they bound a level " +
                 "that follows the player's. One call makes it follow the player's between them and builds again: " +
