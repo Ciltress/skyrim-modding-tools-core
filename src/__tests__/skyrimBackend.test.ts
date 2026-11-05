@@ -1134,12 +1134,19 @@ describe('the Skyrim backend', () => {
         expect(warned).toMatchObject({ status: 'built_with_warnings', nextStep: expect.stringMatching(/^Built, with a warning: /), edited: { changed } });
 
         helperAnswers.checkRecords = () => {
-            throw new HelperError('badRecord', '1 field(s) cannot be built as written: Weapons/FlameBlade.yaml: Damage is high.');
+            throw new HelperError('badRecord', `1 field(s) cannot be built as written: ${file}: Damage is high.`);
         };
         // The edit said made, ahead of the refusal: told only "Changed …", the model sent the same edit again (eval rounds 89–101).
         await expect(edit({ build: true })).rejects.toThrow(new RegExp(`^Changed ${escape(full)} — this edit is made, and sending it again ` +
             'changes nothing: set EditorID: IronSword → FlameBlade; removed FormKey\\. The build after it: Not built: 1 field\\(s\\) cannot be ' +
             'built as written: .* then build again — only a build that answers success writes the plugin\\.$'));
+        // Refused for another file alone, said first: round 128's armor+detailed #3 sent its helmet's edit 5 times while its magic
+        // effect was refused.
+        helperAnswers.checkRecords = () => {
+            throw new HelperError('badRecord', '1 record file(s) cannot be built as written: MagicEffects/FrostWard.yaml: a MagicEffect has no field Type.');
+        };
+        await expect(edit({ build: true })).rejects.toThrow(new RegExp('^The build refused MagicEffects/FrostWard\\.yaml, not this edit\'s file: ' +
+            `fix that next, and do not send this edit again\\. Changed ${escape(full)} — this edit is made`));
 
         // Without it, the change alone: the file's text, and the build named as the next step.
         expect(await edit({})).toMatchObject({

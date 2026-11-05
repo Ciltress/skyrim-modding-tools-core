@@ -344,7 +344,17 @@ export class ProjectsHandlers extends BaseHandler {
                     // runs of eval rounds 89–101, the refusal being for another file. The plugin's build check reads "Changed … Not built:".
                     const built = await this.build(project).catch((error: unknown) => {
                         if (error instanceof Error) {
-                            error.message = `Changed ${change.file} — this edit is made, and sending it again changes nothing: ` +
+                            // Refused for other files alone, said first: the long list of what this edit changed read as the
+                            // refusal, and round 128's armor+detailed #3 sent the same edit of its helmet 5 times while the
+                            // build refused its magic effect.
+                            const edited = change.file.replace(/\\/g, '/').split('/plugin/').pop() ?? '';
+                            const refused = [...new Set([...error.message.matchAll(/(?:^|[\s;:])([A-Z][\w ]*\/[^:;]+?\.yaml):/g)].map(m => m[1]))];
+                            const others = refused.filter(file => file !== edited);
+                            const lead = others.length > 0 && !refused.includes(edited)
+                                ? `The build refused ${others.join(' and ')}, not this edit's file: fix ${others.length === 1 ? 'that' : 'those'} next, ` +
+                                  'and do not send this edit again. '
+                                : '';
+                            error.message = `${lead}Changed ${change.file} — this edit is made, and sending it again changes nothing: ` +
                                 `${change.changed.join('; ')}.${placedNote} The build after it: ${error.message}`;
                         }
                         throw error;

@@ -298,6 +298,10 @@ public static class RecordFiles
             "as the skyrim-modding-world skill shows")
     ];
 
+    /// <summary>A Projectile's own fields, which a model copied from one into an arrow it wrote as a Weapon.</summary>
+    private static readonly HashSet<string> ProjectileFields = new(["Gravity", "Speed", "Range", "CollisionRadius", "FadeDuration",
+        "ImpactForce", "RelaunchInterval", "LifeTime", "TracerChance", "ConeSpread", "MuzzleFlash", "MuzzleFlashDuration"], StringComparer.Ordinal);
+
     /// <summary>Where a spell's school is: in its magic effects, not in the spell — a field to delete there.</summary>
     private const string SpellSchool = "delete it here, and keep the magic effect's: a spell's school is the MagicSkill of the magic effects its Effects name";
 
@@ -1115,6 +1119,18 @@ public static class RecordFiles
                 problems.Add($"{relative}: {item}");
                 continue;
             }
+            // A projectile's flight written into a weapon: an arrow is an Ammunition. Told to delete Gravity, Range, CollisionRadius…,
+            // eval round 127's arrow+detailed #5 did, and built a hand-to-hand weapon named Hunter's Arrow.
+            if (type.Name == "Weapon" && unknown.Where(ProjectileFields.Contains).ToList() is { Count: >= 2 } flight)
+            {
+                problems.Add($"{relative}: {string.Join(", ", flight)} are a Projectile's fields — how an arrow or a bolt flies — and an " +
+                    "arrow is no Weapon: it is an Ammunition, in Ammunitions/, whose `Projectile:` names the projectile it flies as (the game's " +
+                    "SteelArrow names ArrowSteelProjectile). One call moves this file there: " +
+                    ToolCalls.Move(pluginDir, relative, $"Ammunitions/{parts[^1]}") +
+                    $"; then write it as readRecord {{\"record\": \"SteelArrow\"}} shows an arrow — its Model, Projectile, Flags with NonBolt, " +
+                    "Damage, Value and Weight — with these fields deleted");
+                continue;
+            }
             // The family's skill first: its tables have the lines of each kind — told only to read Firebolt, a
             // model built its shock spell on Firebolt's fire effect (eval probe 15).
             var skill = SkillOf((kind ?? type).Name) is { } family ? $"the {family} skill's tables, readSkill {{\"skill\": \"{family}\"}}, or " : "";
@@ -1122,7 +1138,8 @@ public static class RecordFiles
                 ? $" — read {skill}a vanilla one, readRecord {{\"record\": \"{example}\"}}, and write yours with its field names and nesting"
                 : "";
             problems.Add($"{relative}: {Droppable(kind ?? type, relative, text, texts.Value, pluginDir)}" +
-                $"{Article(type.Name)} has no field {Unknown(kind ?? type, known, unknown, text, pluginDir, relative, texts.Value)}{read}");
+                $"{Article(type.Name)} has no field {Unknown(kind ?? type, known, unknown, text, pluginDir, relative, texts.Value)}{read}" +
+                (index is not null && GameEnchantmentEffect(type, text, relative, texts.Value, pluginDir, index) is { } instead ? $"; or {instead}" : ""));
         }
         // Two files of one record: the reader names the FormKey but neither file (eval round 11: 000000 in each new record).
         foreach (var (formKey, holders) in formKeys.Where(pair => pair.Value.Count > 1))
@@ -1269,6 +1286,39 @@ public static class RecordFiles
     /// it, at least half as long, the shortest — EnchFireDamageFFContact for FireDamageFFContact — where it alone is that
     /// short; else null, and the effect is not guessed.
     /// </summary>
+    /// <summary>
+    /// For a magic effect of the project, refused, that an enchantment of the project names: the game's enchantment effect most
+    /// like it — by the words of its editor ID found in the file, Ench… effects alone — named in the enchantment in its place,
+    /// and the file deleted, as calls; null where none is clearly most like it. Eval round 128's armor+detailed #3 wrote
+    /// a frost resistance of its own, `Type: Resistance`, refused field by field until its turns ran out, where the game's
+    /// enchantments of frost resistance name EnchResistFrostConstantSelf.
+    /// </summary>
+    private static string? GameEnchantmentEffect(Type type, string text, string relative, IReadOnlyList<(string Relative, string Text)> texts,
+        string pluginDir, RecordIndex index)
+    {
+        if (type.Name != "MagicEffect" || Identity(text).EditorId is not { } id) return null;
+        var namers = texts.Where(t => t.Relative.StartsWith("ObjectEffects/", StringComparison.OrdinalIgnoreCase))
+            .Select(t => (t.Relative, Paths: RecordLinks.LinksIn(t.Text, typeof(ObjectEffect))
+                .Where(l => l.Path.EndsWith("BaseEffect", StringComparison.Ordinal) && l.Value.Equals(id, StringComparison.OrdinalIgnoreCase))
+                .Select(l => l.Path).ToList()))
+            .Where(n => n.Paths.Count > 0).ToList();
+        if (namers.Count != 1) return null;
+        var said = text.ToUpperInvariant();
+        // Most of its words in the file, then fewest not: EnchRobesResistFrostConstantSelf has a word more than EnchResistFrostConstantSelf.
+        var scored = index.ByFormKey.Values
+            .Where(e => e.Signature == "MGEF" && e.EditorId is { } effect && effect.StartsWith("Ench", StringComparison.Ordinal) && e.FormKey.ModKey != Identity(text).FormKey?.ModKey)
+            .Select(e => RecordLinks.WordsOf(e.EditorId!).Where(w => w != "ENCH" && w.Length >= 4).ToList() is var words
+                ? (Id: e.EditorId!, Score: words.Count(said.Contains), Missing: words.Count(w => !said.Contains(w))) : default)
+            .Where(c => c.Score >= 3).GroupBy(c => (c.Score, -c.Missing)).OrderByDescending(g => g.Key).FirstOrDefault()?
+            .Select(c => c.Id).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (scored is not [var game]) return null;
+        var (namer, paths) = namers[0];
+        return $"name the game's {game}, the magic effect the game's enchantments name for this, in {namer}'s Effects in its place, and delete " +
+            "this file — two calls and a build: " +
+            ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), namer, string.Join(", ", paths.Select(p => $"{{\"path\": \"{p}\", \"value\": {ToolCalls.Quoted(game)}}}"))) +
+            $", then {ToolCalls.Delete(pluginDir, relative)}, then buildProject";
+    }
+
     private static string? ClosestEffect(string named, RecordIndex index)
     {
         var near = index.ByFormKey.Values
