@@ -599,6 +599,8 @@ public sealed class Session : IDisposable
             .Concat(KeptFromSource.Notes(mod, lookup, Index, dir, Examples(p))).Concat(LevelBounds.Notes(mod, dir))
             .Concat(WeaponEffects.Notes(mod, lookup, Index, dir)).Concat(KindParts.Notes(mod, lookup, Index, dir))
             .Concat(RecordNeeds.ListNotes(mod, dir)).Concat(BookTexts.Notes(mod, lookup, Index, dir))
+            .Concat(EffectCasting.GivenBackNotes(mod, lookup, Index, dir)).Concat(MadeNotes.Shouts(mod, lookup, dir))
+            .Concat(MadeNotes.CopiedNames(mod, Index, dir))
             .Select(n => (JsonNode)n).ToArray();
         return new JsonObject
         {

@@ -140,8 +140,9 @@ helper/SkyrimHelper/       the C# plugin helper: Session.cs (the methods), Recor
                            Archives.cs (downloaded files, through SharpCompress), Fomod.cs (ModuleConfig.xml as data),
                            RecordFiles.cs (a project's record files checked before a build: folders, fields,
                            copied FormKeys), RecordLinks.cs (links written as editor IDs made FormIDs), CellContents.cs
-                           (what is placed in a cell, for readRecord), AttachedScripts.cs (each record's scripts, for the
-                           build's script checks)
+                           (what is placed in a cell, for readRecord), MadeNotes.cs (a shout's spells that are no
+                           Voice spells, a recipe's copy of a game record), AttachedScripts.cs (each record's scripts,
+                           for the build's script checks)
 skills/Domain              the modding skills — ours, edit freely
 agents/muddy               Muddy's soul, identity, working rules and avatar: what every product installs; small,
                            as a small local model reads them every turn

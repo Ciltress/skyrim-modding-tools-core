@@ -1138,11 +1138,15 @@ public static class RecordLinks
     }
 
     /// <summary>The record type a link field takes — IMagicEffectGetter for an effect's BaseEffect — or null for a field that is no link.</summary>
+    /// A condition's link is a link or an alias's index (IFormLinkOrIndex), written as a FormKey where it names a record: an
+    /// editor ID there went unresolved, and the reader refused a recipe's `Perk: SteelSmithing` as a malformed FormKey (the
+    /// eval's hand-made recipe and perk mods, 2026-11-04).
     internal static Type? LinkTarget(Type type) =>
         typeof(IFormLinkGetter).IsAssignableFrom(type)
             ? type.GetInterfaces().Append(type)
                 .FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IFormLinkGetter<>))?.GetGenericArguments()[0]
-            : null;
+            : type.GetInterfaces().Append(type)
+                .FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IFormLinkOrIndexGetter<>))?.GetGenericArguments()[0];
 
     /// <summary>The item type of a list field, or null.</summary>
     internal static Type? ElementType(Type type) =>

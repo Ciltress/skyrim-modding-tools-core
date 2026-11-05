@@ -55,6 +55,9 @@ public static class RecordFiles
         "Spell" or "MagicEffect" or "Scroll" or "Shout" => "magic",
         "Npc" => "npcs",
         "LeveledItem" or "LeveledNpc" or "LeveledSpell" => "leveled-lists",
+        "Perk" => "perks",
+        "Quest" => "quests-and-scripts",
+        "Cell" or "PlacedObject" or "PlacedNpc" or "Container" => "world",
         _ => null
     };
 

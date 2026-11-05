@@ -101,6 +101,8 @@ describe('resolveSkill', () => {
         expect(named('cell')).toBe('skyrim-modding-world');
         expect(named('world')).toBe('skyrim-modding-world');
         expect(named('container')).toBe('skyrim-modding-world');
+        expect(named('perk')).toBe('skyrim-modding-perks');
+        expect(named('perks')).toBe('skyrim-modding-perks');
     });
 
     it('answers nothing for a word no skill has', () => {

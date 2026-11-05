@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.RegularExpressions;
 using Mutagen.Bethesda.Plugins;
 using Mutagen.Bethesda.Plugins.Cache;
@@ -247,6 +248,85 @@ public static class EffectCasting
                 (instead is null ? "" : $"; or, with the game's art and sounds too, {instead}"));
         }
         return notes;
+    }
+
+    /// <summary>
+    /// The project's new effects that raise an actor value for a time and never give it back, or that a spell casts and name
+    /// no school, as notes beside a build that succeeds. Without Recover the game keeps the change when the effect ends: a
+    /// carry weight raised for 60 s stays raised for good. Eval round 126's effect task — a spell raising carry weight by an
+    /// effect of the mod's own — went 0 of 10, nine of its effects built so, with no school: the build's line said "no
+    /// school", and nothing more. Each note names the game's effect on the same value that recovers, and its school.
+    /// </summary>
+    public static List<string> GivenBackNotes(ISkyrimModGetter mod, ILinkCache lookup, RecordIndex index, string pluginDir)
+    {
+        var files = Files(pluginDir);
+        var notes = new List<string>();
+        foreach (var effect in mod.MagicEffects.Where(m => m.FormKey.ModKey == mod.ModKey && !Damages(m)
+            && Modifies(m)
+            && m.Archetype.ActorValue != ActorValue.None && !m.Flags.HasFlag(MagicEffect.Flag.Detrimental)))
+        {
+            var uses = Uses(effect, mod).Select(u => (u.Caster, u.Item, Data: u.Caster.Effects[u.Item].Data)).ToList();
+            var timed = uses.FirstOrDefault(u => u.Data is { Duration: > 0, Magnitude: > 0 });
+            var cast = uses.FirstOrDefault(u => u.Caster.Kind == "Spell" && u.Caster.Type == "Spell");
+            var unrecovered = timed.Caster is not null && !effect.Flags.HasFlag(MagicEffect.Flag.Recover);
+            var schoolless = cast.Caster is not null && effect.MagicSkill == ActorValue.None;
+            if ((!unrecovered && !schoolless) || files.GetValueOrDefault(effect.FormKey) is not { } relative) continue;
+
+            var name = effect.EditorID ?? Session.FormKeyText(effect.FormKey);
+            var value = effect.Archetype.ActorValue.ToString();
+            var game = Recovering(effect, lookup, index, mod.ModKey);
+            var school = game?.MagicSkill is { } skill && skill != ActorValue.None ? skill.ToString() : null;
+            var said = new List<string>();
+            if (unrecovered)
+                said.Add($"{name} raises {value} by {timed.Data!.Magnitude.ToString(CultureInfo.InvariantCulture)} for {timed.Data.Duration} s and " +
+                    $"has no Recover among its Flags, so when the effect ends the game never takes it back: the {value} stays raised for good");
+            if (schoolless)
+                said.Add($"{(unrecovered ? "it" : name)} names no MagicSkill, so {cast.Caster.Record.EditorID ?? Session.FormKeyText(cast.Caster.Record.FormKey)} " +
+                    "belongs to no school: casting it trains no skill, and no skill lowers its cost");
+            var set = new List<string>();
+            if (unrecovered)
+                set.Add($"{{\"path\": \"Flags\", \"value\": [{string.Join(", ", FlagNames(effect).Append("Recover").Distinct().Select(ToolCalls.Quoted))}]}}");
+            if (schoolless && school is not null) set.Add($"{{\"path\": \"MagicSkill\", \"value\": \"{school}\"}}");
+            var has = new[] { unrecovered ? "Recover" : null, schoolless && school is not null ? $"MagicSkill {school}" : null }.OfType<string>().ToList();
+            var like = game is not null && has.Count > 0 ? $"{Shown(game)}, the game's effect on {value}, has {string.Join(" and ", has)}: " : "";
+            var write = set.Count > 0
+                ? $"one call writes {(set.Count == 1 ? "it" : "both")} and builds again: " +
+                  ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, string.Join(", ", set), build: true)
+                : "";
+            var named = schoolless && school is null
+                ? (write.Length > 0 ? "; and write " : "write ") + "`MagicSkill:` with its school at the margin — Alteration, Conjuration, Destruction, Illusion or Restoration"
+                : "";
+            notes.Add($"{relative}: {string.Join("; and ", said)} — {like}{write}{named}");
+        }
+        return notes;
+    }
+
+    /// <summary>
+    /// An effect that changes an actor value by its magnitude: a value or peak value modifier, the game's Fortify Carry Weight
+    /// (AlchFortifyCarryWeight) one of the second, with Recover.
+    /// </summary>
+    private static bool Modifies(IMagicEffectGetter effect) => effect.Archetype.Type is MagicEffectArchetype.TypeEnum.ValueModifier
+        or MagicEffectArchetype.TypeEnum.PeakValueModifier or MagicEffectArchetype.TypeEnum.DualValueModifier;
+
+    /// <summary>The flags an effect has, by name.</summary>
+    private static IEnumerable<string> FlagNames(IMagicEffectGetter effect) =>
+        Enum.GetValues<MagicEffect.Flag>().Where(f => Convert.ToInt64(f) != 0 && effect.Flags.HasFlag(f)).Select(f => f.ToString());
+
+    /// <summary>
+    /// The load order's effect on the same value that recovers and harms nothing: one with a school first, then one cast as
+    /// this one is — for a carry weight raised for a time, the potion's Fortify Carry Weight, not Extra Pockets' constant effect.
+    /// </summary>
+    private static IMagicEffectGetter? Recovering(IMagicEffectGetter own, ILinkCache lookup, RecordIndex index, ModKey mine)
+    {
+        var found = new List<IMagicEffectGetter>();
+        foreach (var entry in index.ByFormKey.Values.Where(e => e.Signature == "MGEF" && e.FormKey.ModKey != mine))
+        {
+            if (!lookup.TryResolve<IMagicEffectGetter>(entry.FormKey, out var effect)) continue;
+            if (effect.Archetype.ActorValue != own.Archetype.ActorValue || !Modifies(effect)
+                || !effect.Flags.HasFlag(MagicEffect.Flag.Recover) || effect.Flags.HasFlag(MagicEffect.Flag.Detrimental)) continue;
+            found.Add(effect);
+        }
+        return found.OrderByDescending(e => e.MagicSkill != ActorValue.None).ThenByDescending(e => e.CastType == own.CastType).FirstOrDefault();
     }
 
     /// <summary>The project's record files by the FormKey each writes.</summary>
