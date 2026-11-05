@@ -4,6 +4,7 @@ import type { ToolSpec } from './BaseHandler.js';
 import { ToolError, ToolErrorCode } from './errors.js';
 import type { Product } from '../lib/product.js';
 import {
+    FAMILY_SKILLS,
     SkillFileError,
     discoverSkills,
     readSkillFile,
@@ -46,7 +47,7 @@ export class SkillsHandlers extends BaseHandler {
                     description:
                         'Bundled agent skills — how Skyrim modding works and how to approach it here: the ' +
                         'basics (plugins, FormIDs, load order, conflicts, the tool landscape) and one skill per ' +
-                        'record family (items and crafting, magic, NPCs, leveled lists). Call ' +
+                        `record family (${FAMILY_SKILLS.map(f => f.covers).join('; ')}). Call ` +
                         "with no arguments to see which exist, then pass `collection` for their descriptions " +
                         "and `skill` to read one. Consult a skill's SKILL.md before starting a task it covers: " +
                         'they carry the conventions and checklists the tool descriptions alone do not.',

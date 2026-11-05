@@ -73,7 +73,8 @@ public static class RecordFiles
 
     /// <summary>The group folders a new record of an everyday kind goes into, for messages.</summary>
     // "ObjectEffects (enchantments)" was taken for a folder's name, then "ObjectEffectsEnchantments" (eval probe 19).
-    public const string CommonGroups = "Weapons, Armors, Spells, MagicEffects, Npcs, LeveledItems, and ObjectEffects for an enchantment";
+    public const string CommonGroups = "Weapons, Armors, Spells, MagicEffects, Npcs, LeveledItems, Quests, MiscItems for gold and " +
+        "other misc items, and ObjectEffects for an enchantment";
 
     /// <summary>
     /// The group folder another word names — its record type's own name, or the game's word for it, one
@@ -1685,12 +1686,27 @@ public static class RecordFiles
             taken.Add(name);
             var value = line.Groups[1];
             File.WriteAllText(file, text[..value.Index] + name + text[(value.Index + value.Length)..]);
+            var linker = files.FirstOrDefault(f => f.File != file && LinkBy(editorId).IsMatch(f.Text)).Relative;
             changes.Add((relative, $"wrote `EditorID: {name}` for `EditorID: {editorId}` — {editorId} is {key.ModKey.FileName}'s " +
                 $"{entry.Type} ({Session.FormKeyText(key)}), and this file, with no FormKey line, is a new record of its own; a link by " +
-                $"{editorId} names {key.ModKey.FileName}'s. To change that one instead, copy it in with addPatch and write this file empty"));
+                $"{editorId} names {key.ModKey.FileName}'s. " + (linker is null
+                    ? "To change that one instead, copy it in with addPatch and write this file empty"
+                    : $"{linker} names {editorId}, so it has {key.ModKey.FileName}'s, and nothing has this one: where the game's " +
+                        $"{editorId} was meant, this file is a second {entry.Type} the game holds for nothing — one call deletes it: " +
+                        $"{ToolCalls.Delete(pluginDir, relative)}; where this one was meant, name {name} there")));
         }
         return changes;
     }
+
+    /// <summary>
+    /// A line of a record file whose value is this editor ID: a link by it — `Object: Gold001`, `- Gold001`. A quest's script
+    /// properties named the game's gold and sword by editor ID while the model wrote a gold and a sword of the project's own
+    /// under those IDs, which the build renamed: the links reached the game's, and the copies nothing (eval round 127's
+    /// quest+detailed #4).
+    /// </summary>
+    private static Regex LinkBy(string editorId) =>
+        new($@"^[ \t]*(?:-[ \t]*)?(?:(?!EditorID[ \t]*:)[A-Za-z_]\w*[ \t]*:[ \t]*)?{Regex.Escape(editorId)}[ \t]*(?:#[^\r\n]*)?\r?$",
+            RegexOptions.Multiline | RegexOptions.IgnoreCase);
 
     /// <summary>
     /// Gives one of two new records of different types written under one editor ID an editor ID of its own: the one a link

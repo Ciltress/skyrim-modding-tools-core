@@ -251,15 +251,22 @@ public static class RecordEdits
     /// Configuration.CalcMinLevel — and a field the top level lacks, of the one part RecordFiles names — an NPC's Level
     /// is Configuration's, a weapon's Damage BasicStats'. Sent Level.CalcMinLevel and told an NPC's level is "three lines
     /// under Configuration", the model sent Configuration.Level.CalcMinLevel, then the level whole with a brace too many,
-    /// which Ollama dropped, and the run ended (eval round 60's npc+detailed #3).
+    /// which Ollama dropped, and the run ended (eval round 60's npc+detailed #3). And a field of a list item's one part, sent
+    /// at the item: an NPC's Items[6].Count is Items[6].Item.Count — told "move it under Item", the model set Items[6].Data,
+    /// then Items[6].Data.Quantity, and answered the gold unchanged (eval round 127's quest #1).
     /// </summary>
     private static List<Step> Place(Type record, List<Step> sent)
     {
         var steps = sent.ToList();
-        while (FirstUnknown(record, steps) is var (at, above) && at >= 0)
+        while (FirstUnknown(record, steps) is var (at, above, holder) && at >= 0)
         {
             if (at == 0 && RecordFiles.PartFor(record, steps[0].Key, "") is { } part && Property(record, part) is not null)
                 steps.Insert(0, new Step(part, null));
+            else if (at > 0 && steps[at - 1].Index is not null && holder is not null
+                     && Regex.Match(RecordFiles.HintFor(holder, steps[at].Key), @"^ \(move it under (?<part>\w+)\)$") is { Success: true } under
+                     && Property(holder, under.Groups["part"].Value) is { } inner
+                     && Property(Nullable.GetUnderlyingType(inner.PropertyType) ?? inner.PropertyType, steps[at].Key) is not null)
+                steps.Insert(at, new Step(under.Groups["part"].Value, null));
             // Only below a part: BasicStats.Damage.Value, Damage a number, was set as BasicStats.Value — the price, not the damage.
             else if (at > 0 && steps[at - 1].Index is null && above is not null && Property(above, steps[at].Key) is not null
                      && Property(above, steps[at - 1].Key) is { } before && IsPart(Nullable.GetUnderlyingType(before.PropertyType) ?? before.PropertyType))
@@ -269,22 +276,25 @@ public static class RecordEdits
         return steps;
     }
 
-    /// <summary>The first step of a path whose part has no field for it, and the part holding the step before it; -1 for none.</summary>
-    private static (int At, Type? Above) FirstUnknown(Type record, List<Step> steps)
+    /// <summary>
+    /// The first step of a path whose part has no field for it, the part holding the step before it, and the part that lacks
+    /// it; -1 for none.
+    /// </summary>
+    private static (int At, Type? Above, Type? Holder) FirstUnknown(Type record, List<Step> steps)
     {
         var current = record;
         Type? above = null;
         for (var i = 0; i < steps.Count; i++)
         {
             if (steps[i].Key == "MutagenObjectType" || Translated(current)) break;
-            if (Property(current, steps[i].Key) is not { } property) return (i, above);
+            if (Property(current, steps[i].Key) is not { } property) return (i, above, current);
             above = current;
             current = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
             if (steps[i].Index is null) continue;
             if (Items(current) is not { } item) break;
             current = item;
         }
-        return (-1, null);
+        return (-1, null, null);
     }
 
     /// <summary>

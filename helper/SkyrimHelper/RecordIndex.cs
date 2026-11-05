@@ -110,8 +110,10 @@ public sealed class RecordIndex
         ["Note"] = "Book", ["Letter"] = "Book", ["Journal"] = "Book", ["Tome"] = "Book", ["SpellTome"] = "Book",
         ["Potion"] = "Ingestible", ["Poison"] = "Ingestible", ["Food"] = "Ingestible", ["Drink"] = "Ingestible",
         ["Recipe"] = "ConstructibleObject", ["Crafting"] = "ConstructibleObject",
-        ["Clutter"] = "MiscItem",
-        ["Arrow"] = "Ammunition",
+        // MiscObject is Papyrus's word for one: a quest's script gives the player gold as one, and the model wrote its gold into
+        // MiscObjects/, then Misc/ or Items/, refused as no group folder, and never built (eval round 127's quest+detailed #2 and #3).
+        ["Clutter"] = "MiscItem", ["MiscObject"] = "MiscItem", ["Misc"] = "MiscItem",
+        ["Arrow"] = "Ammunition", ["Ammo"] = "Ammunition",
         ["Shield"] = "Armor", ["Clothing"] = "Armor", ["Jewelry"] = "Armor",
         ["Character"] = "Npc", ["Actor"] = "Npc",
         ["Effect"] = "MagicEffect",

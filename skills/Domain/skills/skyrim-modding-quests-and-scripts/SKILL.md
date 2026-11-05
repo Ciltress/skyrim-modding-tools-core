@@ -67,6 +67,9 @@ Event OnInit()
 EndEvent
 ```
 
+- The mod is these two files. The gold and the sword are the game's own records — `Gold001` is the gold every
+  merchant pays, `SteelSword` the game's Steel Sword — which the quest names by editor ID: write no file for them. A
+  record file of the project is a new record, another gold or sword beside the game's.
 - Each property's type is its record's script type: gold (`Gold001`, a MISC) is a `MiscObject`, a weapon a `Weapon`,
   armor `Armor`, a potion `Potion`, a spell `Spell`, a perk `Perk` (REFERENCE, *Property types*).
 - `Object:` names the record by its editor ID or its FormID; the build writes the FormID.
