@@ -302,12 +302,16 @@ public static class MisplacedFields
     /// kinds by its first field. An NPC's level written with `LevelMult: 1` above its kind was refused "cannot be read as a
     /// record: Object reference not set to an instance of an object", which names nothing, and the model wrote the file four
     /// times before it built (eval round 110's npc #5); editRecord writes the kind first since round 109. A kind on a line of
-    /// its own, or in braces on one line; any other is left to the refusal.
+    /// its own, or in braces on one line; any other is left to the refusal. A cell's references too, whose kind is their
+    /// file's: a chest's reference written again with its FormKey line above `MutagenObjectType: PlacedObject` was refused
+    /// so twice, and its run ended unbuilt (the mini-round after eval round 128, world+detailed #2).
     /// </summary>
     public static List<(string File, string Change)> KindFirst(string pluginDir)
     {
         var changes = new List<(string File, string Change)>();
-        foreach (var (file, relative, _) in RecordFiles.FlatRecords(pluginDir))
+        var files = RecordFiles.FlatRecords(pluginDir).Select(f => (f.File, f.Relative))
+            .Concat(RecordFiles.CellRecords(pluginDir).Select(c => (c.File, c.Relative)));
+        foreach (var (file, relative) in files)
         {
             var written = File.ReadAllText(file);
             var text = written.Replace("\r\n", "\n");

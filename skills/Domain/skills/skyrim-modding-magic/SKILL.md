@@ -231,7 +231,9 @@ Effects:
 
 A shout like Frost Breath, frost at three strengths: one `Shout`, three `WordsOfPower`, three spells
 of `Type: Voice`, mirroring the game's `FrostBreathShout`, `WordFo` and `VoiceFrostBreath1`. Each word
-casts its own spell: the first word the weakest, all three the strongest.
+casts its own spell: the first word the weakest, all three the strongest. Each word has a name and a
+meaning of its own — the shouts menu shows the three side by side — and each spell is cast as the
+example's are, `FireAndForget` with the effect's `FF` version.
 
 ```yaml
 # <project>/plugin/Shouts/WintersBite.yaml

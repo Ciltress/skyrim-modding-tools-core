@@ -163,6 +163,9 @@ public static class RecordFiles
         }
     }
 
+    /// <summary>A cell's folder as Spriggit names it: `WhiterunBreezehome - 0165A8_Skyrim.esm`, its editor ID, FormID and plugin.</summary>
+    private static readonly Regex CellFolder = new(@"^.+ - (?<id>[0-9A-Fa-f]{6})_(?<plugin>.+\.(?:esm|esp|esl))$", RegexOptions.IgnoreCase);
+
     /// <summary>The folders of a cell's references: Spriggit writes each placed reference of a cell as a file in one of them.</summary>
     internal static readonly HashSet<string> PlacedFolders = new(StringComparer.Ordinal) { "Temporary", "Persistent" };
 
@@ -191,11 +194,25 @@ public static class RecordFiles
     /// reference's file that names no placed kind. Eval round 125's world #4 wrote a chest into Breezehome's file as `Items`,
     /// then a kind and a Base of no record, and each build answered success; four more world runs wrote such fields.
     /// </summary>
-    private static string? CellProblem(string relative, string text, string[] parts)
+    private static string? CellProblem(string relative, string text, string[] parts, string pluginDir)
     {
         var placed = parts.Length == 6 && PlacedFolders.Contains(parts[4]);
         Type? type = parts.Length == 5 && parts[4] == "RecordData.yaml" ? typeof(Cell) : placed ? PlacedKind(text) : null;
         var cellFolder = string.Join('/', parts.Take(4));
+        // A reference in the folder of a cell the project has no copy of: the reader answered "RecordData.yaml cannot be read as
+        // a record: Could not find file …", and the run never copied the cell (the mini-round after eval round 128,
+        // world+detailed #1).
+        if (placed && parts.Length >= 4 && !File.Exists(Path.Combine(pluginDir, cellFolder, "RecordData.yaml")))
+        {
+            var cell = CellFolder.Match(parts[3]);
+            var copy = cell.Success
+                ? $"one call copies it in, and this file stays where it is: addPatch {{\"project\": {ToolCalls.Quoted(ToolCalls.ProjectOf(pluginDir))}, " +
+                  $"\"records\": [\"{cell.Groups["id"].Value.ToUpperInvariant()}:{cell.Groups["plugin"].Value}\"]}} — where its answer names " +
+                  "another folder for the cell, move this file into that folder's Temporary/ with moveRecord; then build again"
+                : "copy the cell in with addPatch, whose answer names its folder, and move this file into that folder's Temporary/ with moveRecord";
+            return $"{relative}: {cellFolder}/ holds no RecordData.yaml — its cell is no record of the project yet, and the build reads a " +
+                $"reference only beside the copy of the cell it is placed in: {copy}";
+        }
         const string written = "`MutagenObjectType: PlacedObject` for an object — a container, a door, furniture, a static — or `PlacedNpc` for " +
             "an NPC; `EditorID:` with a name of its own; `Base:` with the record placed, by its editor ID or FormID; and `Placement:` with " +
             "`Position: x, y, z` and `Rotation: x, y, z` below it, two spaces in";
@@ -1081,7 +1098,7 @@ public static class RecordFiles
                 else
                     (formKeys.TryGetValue(formKey, out var holders) ? holders : formKeys[formKey] = []).Add(relative);
             }
-            if (parts[0] == "Cells" && CellProblem(relative, text, parts) is { } cellProblem) problems.Add(cellProblem);
+            if (parts[0] == "Cells" && CellProblem(relative, text, parts, pluginDir) is { } cellProblem) problems.Add(cellProblem);
             if (type is null || parts.Length != 2) continue;
             if (Identity(text) is { EditorId: { } recordId } identity)
                 (editorIds.TryGetValue(recordId, out var sharing) ? sharing : editorIds[recordId] = []).Add((relative, identity.FormKey, type));

@@ -61,6 +61,26 @@ internal static class MadeNotes
         return notes;
     }
 
+    /// <summary>The player's own NPC record, Skyrim.esm's Player.</summary>
+    private static readonly Mutagen.Bethesda.Plugins.FormKey Player = Mutagen.Bethesda.Plugins.FormKey.Factory("000007:Skyrim.esm");
+
+    /// <summary>
+    /// A copy of the Player, the player's NPC: what it holds reaches a new game's player only, never one already saved, and a
+    /// start or race mod that copies the player too takes one of the two. Asked for 500 gold when a game starts, eval round
+    /// 128's quest #3 never read the quests skill, copied the Player and set its gold to 500, and the build answered success.
+    /// </summary>
+    public static List<string> PlayerCopy(ISkyrimModGetter mod, string pluginDir)
+    {
+        if (!mod.Npcs.Any(n => n.FormKey == Player)) return [];
+        if (EffectCasting.Files(pluginDir).GetValueOrDefault(Player) is not { } relative) return [];
+        return [$"{relative}: a copy of the Player (000007:Skyrim.esm), the player's own NPC — what it holds reaches the player of a " +
+            "new game only, never one already saved, and a start or race mod that copies the player too takes one of the two " +
+            "copies. To give the player gold, items, spells or perks, a quest that starts with the game gives them once from its " +
+            "script: the quests skill's *Give the player something when a new game starts* writes one, readSkill " +
+            "{\"skill\": \"skyrim-modding-quests-and-scripts\"}; then delete this copy, " + ToolCalls.Delete(pluginDir, relative) +
+            ". Keep it only where the player's own record is what the user asked to change"];
+    }
+
     /// <summary>
     /// A recipe of the project's making a new record that has the in-game name of the load order's record of its type: at the
     /// workbench the player gets the copy, not the game's. Asked for the Ancient Nord Sword at the forge, eval round 126's

@@ -80,6 +80,8 @@ public static class EffectCasting
             problems.Add($"{files.GetValueOrDefault(enchantmentKey) ?? files.GetValueOrDefault(weapon.FormKey) ?? name}: {name} is cast ConstantEffect on " +
                 $"{enchantment.TargetType}, and {Carried(name, weapon)}");
         }
+        var wornBy = mod.Armors.Where(a => a.FormKey.ModKey == mod.ModKey && !a.ObjectEffect.IsNull)
+            .GroupBy(a => a.ObjectEffect.FormKey).ToDictionary(g => g.Key, g => g.First());
         // An armor's enchantment is cast ConstantEffect on Self while it is worn: one cast on each hit, a weapon's, does nothing
         // there, and an iron cuirass carrying EnchWeaponFireDamage01 built with no word (refusal probes of 2026-10-31, A14, F14).
         foreach (var armor in mod.Armors.Where(a => a.FormKey.ModKey == mod.ModKey && !a.ObjectEffect.IsNull))
@@ -114,6 +116,27 @@ public static class EffectCasting
                 if (caster.Kind == "Scroll" && effect.CastType == CastType.FireAndForget && effect.TargetType == caster.Target)
                 {
                     problems.Add(said + "write CastType: 3 in the scroll, the cast type every scroll of the game has");
+                    continue;
+                }
+                // Nor for an armor's, the other way: a frost helmet's enchantment naming a weapon's frost damage was told to be cast
+                // as the weapon's is, then that an armor's is constant, and went from one to the other until its turns ran out
+                // (the mini-round after eval round 128, armor #1). The enchantment stays as an armor's; its effect is the one to change.
+                if (caster.Kind == "ObjectEffect" && wornBy.TryGetValue(caster.Record.FormKey, out var wearer)
+                    && !(effect.CastType == CastType.ConstantEffect && effect.TargetType == TargetType.Self))
+                {
+                    var wearerName = wearer.EditorID ?? Session.FormKeyText(wearer.FormKey);
+                    // The armor by its names alone: its file's HeavyArmor and ArmorHeavy would match Fortify Heavy Armor.
+                    var written = relative is null ? "" : File.ReadAllText(Path.Combine(pluginDir, relative));
+                    var worn = WornEffect($"{effectName}\n{written}\n{wearerName} {wearer.Name?.String}", index);
+                    problems.Add($"{where}: Effects[{i}].BaseEffect {effectName} is cast {effect.CastType} on {effect.TargetType}, as a weapon's " +
+                        $"or a spell's effect is, and {name} is carried by {wearerName}, an armor, whose enchantment is cast ConstantEffect on " +
+                        "Self while it is worn — an effect cast otherwise does nothing there. Keep the enchantment as an armor's, and name an " +
+                        $"effect cast ConstantEffect on Self in Effects[{i}].BaseEffect: " + (worn is { } game && relative is not null
+                            ? $"one call names the game's {game.Id} ({game.Name}) and builds again: " +
+                              ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, $"{{\"path\": \"Effects[{i}].BaseEffect\", \"value\": {ToolCalls.Quoted(game.Id)}}}", build: true) +
+                              " — or another of the game's Ench…ConstantSelf effects"
+                            : "one of the game's Ench…ConstantSelf effects, as EnchFortifyHealthConstantSelf — findRecords " +
+                              "{\"types\": [\"MGEF\"], \"text\": \"ConstantSelf\"} lists them"));
                     continue;
                 }
                 // Never "cast the enchantment as its effect is" for a weapon's: a constant one does nothing on a weapon.
@@ -195,6 +218,25 @@ public static class EffectCasting
                     $"`MutagenObjectType: MagicEffectArchetype` and `ActorValue: Health` for damage or healing ({official})"));
         }
         return problems;
+    }
+
+    /// <summary>
+    /// The five masters' effect of an armor's enchantment, Ench…ConstantSelf, most like a text: most of its words in the text,
+    /// then fewest not — EnchResistFrostConstantSelf before EnchRobesResistFrostConstantSelf for a frost helmet; null where
+    /// none shares a word, or two are alike.
+    /// </summary>
+    private static (string Id, string? Name)? WornEffect(string said, RecordIndex index)
+    {
+        var upper = said.ToUpperInvariant();
+        var best = index.ByFormKey.Values
+            .Where(e => e.Signature == "MGEF" && e.EditorId is { } id && id.StartsWith("Ench", StringComparison.Ordinal)
+                && id.EndsWith("ConstantSelf", StringComparison.Ordinal)
+                && KindParts.Masters.Contains(e.FormKey.ModKey.FileName.String, StringComparer.OrdinalIgnoreCase))
+            .Select(e => RecordLinks.WordsOf(e.EditorId!).Where(w => w is not ("ENCH" or "CONSTANT" or "SELF") && w.Length >= 4).ToList() is var words
+                ? (Entry: e, Score: words.Count(upper.Contains), Missing: words.Count(w => !upper.Contains(w))) : default)
+            .Where(c => c.Score >= 1).GroupBy(c => (c.Score, -c.Missing)).OrderByDescending(g => g.Key).FirstOrDefault()?
+            .DistinctBy(c => c.Entry.EditorId, StringComparer.OrdinalIgnoreCase).ToList();
+        return best is [var one] ? (one.Entry.EditorId!, one.Entry.Name) : null;
     }
 
     /// <summary>

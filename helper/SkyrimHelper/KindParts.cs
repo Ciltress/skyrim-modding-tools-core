@@ -38,7 +38,7 @@ internal static class KindParts
     };
 
     /// <summary>The game's own plugins, whose records are offered before a Creation Club plugin's.</summary>
-    private static readonly string[] Masters = ["Skyrim.esm", "Update.esm", "Dawnguard.esm", "HearthFires.esm", "Dragonborn.esm"];
+    internal static readonly string[] Masters = ["Skyrim.esm", "Update.esm", "Dawnguard.esm", "HearthFires.esm", "Dragonborn.esm"];
 
     /// <summary>The keywords that say which part of the body an armor or a piece of clothing is for.</summary>
     private static readonly string[] SlotKeywords = ["ArmorHelmet", "ArmorCuirass", "ArmorGauntlets", "ArmorBoots", "ArmorShield",
