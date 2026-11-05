@@ -59,7 +59,10 @@ public static class RecordLinks
                 && string.Equals(entry.EditorId, editorId, StringComparison.OrdinalIgnoreCase)
                 ? new Target(pin, entry.EditorId!, entry.GetterType) : null;
 
-        foreach (var (file, relative, type) in RecordFiles.FlatRecords(pluginDir))
+        // An interior cell's own file and the references placed in it as well: a chest placed by its editor ID, `Base: HuntersChest`,
+        // was refused by the reader as a malformed FormKey, naming the cell's file (the eval's hand-made world mods, 2026-11-04).
+        var cellRecords = RecordFiles.CellRecords(pluginDir).Where(c => c.Type is not null).Select(c => (c.File, c.Relative, Type: c.Type!));
+        foreach (var (file, relative, type) in RecordFiles.FlatRecords(pluginDir).Concat(cellRecords))
         {
             var text = File.ReadAllText(file);
             var yaml = new YamlStream();
@@ -1008,9 +1011,10 @@ public static class RecordLinks
     /// <summary>
     /// The link fields a refusal never offers to delete: an NPC's race, which it cannot go without (RecordNeeds), and a weapon's
     /// or armor's enchantment, written for its own sake — the Iron Sword a Flame Blade follows has none, and its enchantment
-    /// named by a typo is to be named right (refusal probe W20).
+    /// named by a typo is to be named right (refusal probe W20); and a placed reference's Base, the record it places, without
+    /// which it is no reference.
     /// </summary>
-    private static readonly HashSet<string> Kept = new(["Race", "ObjectEffect"], StringComparer.Ordinal);
+    private static readonly HashSet<string> Kept = new(["Race", "ObjectEffect", "Base"], StringComparer.Ordinal);
 
     /// <summary>
     /// What is wrong with a FormKey a link field holds, as words after it — "which is IronSword, a Weapon",

@@ -94,5 +94,6 @@ there before installing a mod or a requirement twice.
 - Record families, one skill each: `skyrim-modding-items-and-crafting`, `skyrim-modding-magic`, `skyrim-modding-npcs`, `skyrim-modding-leveled-lists`.
 - `skyrim-modding-quests-and-scripts` — a mod that does something: a quest started with the game, Papyrus scripts on
   quests, items, effects and NPCs, their properties and events.
+- `skyrim-modding-world` — cells and what is placed in them: a chest, an NPC or furniture put into a room.
 - `skyrim-modding-game-versions` — mods whose SKSE plugins do not fit the game: finding them, and fixing each.
 - `skyrim-modding-crash-analysis` — a game that crashed: its crash log read, the mod behind it, the fix.

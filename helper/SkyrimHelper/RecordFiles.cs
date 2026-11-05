@@ -156,6 +156,62 @@ public static class RecordFiles
         }
     }
 
+    /// <summary>The folders of a cell's references: Spriggit writes each placed reference of a cell as a file in one of them.</summary>
+    internal static readonly HashSet<string> PlacedFolders = new(StringComparer.Ordinal) { "Temporary", "Persistent" };
+
+    /// <summary>
+    /// The records a project keeps in an interior cell's folder, <c>Cells/&lt;block&gt;/&lt;sub-block&gt;/&lt;cell&gt;/</c>: the cell's own
+    /// RecordData.yaml, and each reference placed in it, a file in its Temporary or Persistent folder of the kind its
+    /// MutagenObjectType names — PlacedObject, PlacedNpc… — or null where it names no placed kind. Read apart from the
+    /// groups' records (FlatRecords): eval round 125's world runs wrote a chest into a cell's file under fields of their own,
+    /// and placed by its editor ID it was refused by the reader as a malformed FormKey. A worldspace's are left to the reader.
+    /// </summary>
+    public static IEnumerable<(string File, string Relative, Type? Type)> CellRecords(string pluginDir)
+    {
+        var cells = Path.Combine(pluginDir, "Cells");
+        if (!Directory.Exists(cells)) yield break;
+        foreach (var file in Directory.EnumerateFiles(cells, "*.yaml", SearchOption.AllDirectories).Order(StringComparer.Ordinal))
+        {
+            var relative = Path.GetRelativePath(pluginDir, file).Replace('\\', '/');
+            var parts = relative.Split('/');
+            if (parts.Length == 5 && parts[4] == "RecordData.yaml") yield return (file, relative, typeof(Cell));
+            else if (parts.Length == 6 && PlacedFolders.Contains(parts[4])) yield return (file, relative, PlacedKind(File.ReadAllText(file)));
+        }
+    }
+
+    /// <summary>
+    /// What the reader skips in an interior cell's files without a word: fields a cell or a placed reference has not, and a
+    /// reference's file that names no placed kind. Eval round 125's world #4 wrote a chest into Breezehome's file as `Items`,
+    /// then a kind and a Base of no record, and each build answered success; four more world runs wrote such fields.
+    /// </summary>
+    private static string? CellProblem(string relative, string text, string[] parts)
+    {
+        var placed = parts.Length == 6 && PlacedFolders.Contains(parts[4]);
+        Type? type = parts.Length == 5 && parts[4] == "RecordData.yaml" ? typeof(Cell) : placed ? PlacedKind(text) : null;
+        var cellFolder = string.Join('/', parts.Take(4));
+        const string written = "`MutagenObjectType: PlacedObject` for an object — a container, a door, furniture, a static — or `PlacedNpc` for " +
+            "an NPC; `EditorID:` with a name of its own; `Base:` with the record placed, by its editor ID or FormID; and `Placement:` with " +
+            "`Position: x, y, z` and `Rotation: x, y, z` below it, two spaces in";
+        if (placed && type is null)
+            return $"{relative}: a reference placed in a cell names its kind on its first line, and the build reads none here — write {written}";
+        if (type is null || Empty(text)) return null;
+        var known = FieldsOf(type);
+        var unknown = TopLevelKey.Matches(text).Select(m => m.Groups[1].Value).Where(key => !known.Contains(key)).Distinct().ToList();
+        if (unknown.Count == 0) return null;
+        var fields = unknown.Count == 1 ? unknown[0] : $"{string.Join(", ", unknown.Take(unknown.Count - 1))} and {unknown[^1]}";
+        var them = unknown.Count == 1 ? "it" : "them";
+        return type == typeof(Cell)
+            ? $"{relative}: a Cell has no field {fields} — delete {them}. What is placed in a cell is no field of its file: each reference " +
+              $"is a file of its own in {cellFolder}/Temporary/, as readRecord of the cell lists them — write {written}"
+            : $"{relative}: {Article(type.Name)} has no field {fields} — delete {them}; a placed reference is written with {written}";
+    }
+
+    /// <summary>The placed kind a reference's file names — PlacedObject, PlacedNpc… — or null.</summary>
+    internal static Type? PlacedKind(string text) =>
+        ObjectTypeLine.Match(text) is { Success: true } named
+            && typeof(Cell).Assembly.GetType($"Mutagen.Bethesda.Skyrim.{named.Groups[1].Value}") is { } kind
+            && typeof(IPlaced).IsAssignableFrom(kind) && !kind.IsInterface ? kind : null;
+
     /// <summary>The kind a file of a group of several kinds names — GlobalFloat in Globals — or null.</summary>
     private static Type? KindIn(Type group, string text) =>
         ObjectTypeLine.Match(text) is { Success: true } objectType ? KindOf(group, objectType.Groups[1].Value) : null;
@@ -952,6 +1008,7 @@ public static class RecordFiles
                 else
                     (formKeys.TryGetValue(formKey, out var holders) ? holders : formKeys[formKey] = []).Add(relative);
             }
+            if (parts[0] == "Cells" && CellProblem(relative, text, parts) is { } cellProblem) problems.Add(cellProblem);
             if (type is null || parts.Length != 2) continue;
             if (Identity(text) is { EditorId: { } recordId } identity)
                 (editorIds.TryGetValue(recordId, out var sharing) ? sharing : editorIds[recordId] = []).Add((relative, identity.FormKey, type));

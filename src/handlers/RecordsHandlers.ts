@@ -31,7 +31,7 @@ export class RecordsHandlers extends BaseHandler {
                         'FormIDs and editor IDs. Each row says which plugin defines the record, which one wins, ' +
                         'and how many override it. Use `records` to turn the FormIDs in project text into names ' +
                         '(and back) before reasoning about them. Placed references, landscape and navmesh are ' +
-                        'not searched. `total` counts matches before the limit.',
+                        'not searched: readRecord of a cell lists what is placed in it. `total` counts matches before the limit.',
                     inputSchema: {
                         type: 'object',
                         properties: {
@@ -88,7 +88,8 @@ export class RecordsHandlers extends BaseHandler {
                         'would sit in a project\'s plugin folder; to change a record, copy it in with addPatch rather ' +
                         'than writing this text yourself. Links inside are FormIDs, each followed by the editor ID ' +
                         'of the record it names as a comment (`Race: 013746:Skyrim.esm  # NordRace`); a project ' +
-                        'file may link by either.',
+                        'file may link by either. A cell comes with `placed`: what the load order places in it, and ' +
+                        'the file and lines a new reference placed there is written with.',
                     inputSchema: {
                         type: 'object',
                         properties: {

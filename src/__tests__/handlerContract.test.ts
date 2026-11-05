@@ -357,13 +357,13 @@ describe('every tool takes an argument sent as text for its declared type', () =
  * Sword of Embers, a Weapon — took it for the enchantment and answered the sword built (eval rounds 97, 108 and 111).
  */
 describe("addPatch's note says what each copy is", () => {
-    async function answer(added: { formId: string; editorId: string | null; type: string; text?: string }[],
+    async function answer(added: { formId: string; editorId: string | null; type: string; text?: string; files?: { path: string; text?: string }[] }[],
         already: { formId: string; file: string; text?: string }[] = []) {
         const backend = new InMemorySkyrimBackend();
         vi.spyOn(backend, 'addPatch').mockResolvedValue({
             project: { project: 'FlameBlade', plugin: 'FlameBlade.esp', light: true, path: 'p', pluginFolder: 'p/plugin', created: false },
             added: added.map(a => ({ formId: a.formId, editorId: a.editorId, type: a.type, from: 'Skyrim.esm',
-                files: [{ path: `p/plugin/Weapons/${a.editorId}.yaml`, text: a.text }] })),
+                files: a.files ?? [{ path: `p/plugin/Weapons/${a.editorId}.yaml`, text: a.text }] })),
             alreadyInProject: already.map(a => ({ formId: a.formId, files: [{ path: `p/plugin/${a.file}`, text: a.text }] }))
         } as any);
         const handler = createHandlers(backend, CORE_PRODUCT).find(h => h.getTools().some(t => t.name === 'addPatch'))!;
@@ -371,6 +371,18 @@ describe("addPatch's note says what each copy is", () => {
         return JSON.parse(result.content[0].text) as { note: string; nextStep: string };
     }
     const note = async (added: Parameters<typeof answer>[0]) => (await answer(added)).note;
+
+    // The first of a cell's files is the GroupRecordData.yaml of its sub-block, and was named as the record to edit (eval round 125).
+    it('names a cell\'s own file as its copy, and where a reference placed in it goes', async () => {
+        const cell = 'Cells/0/6/WhiterunBreezehome - 0165A8_Skyrim.esm';
+        const said = await note([{ formId: '0165A8:Skyrim.esm', editorId: 'WhiterunBreezehome', type: 'Cell', files: [
+            { path: 'p/plugin/Cells/0/6/GroupRecordData.yaml', text: 'BlockNumber: 6\n' },
+            { path: `p/plugin/${cell}/RecordData.yaml`, text: 'FormKey: 0165A8:Skyrim.esm\nEditorID: WhiterunBreezehome\n' },
+            { path: 'p/plugin/Cells/0/GroupRecordData.yaml', text: 'GroupType: InteriorCellBlock\n' }] }]);
+        expect(said).toContain(`"record": "${cell}/RecordData.yaml"`);
+        expect(said).not.toContain('"record": "Cells/0/6/GroupRecordData.yaml"');
+        expect(said).toContain(`each reference is a file of its own in ${cell}/Temporary/ — readRecord {"record": "WhiterunBreezehome"}`);
+    });
 
     it('names an enchanted weapon as a Weapon with its enchantment, and the enchantment as the record to copy', async () => {
         const said = await note([{ formId: '049BB8:Skyrim.esm', editorId: 'EnchIronSwordFire01', type: 'Weapon',

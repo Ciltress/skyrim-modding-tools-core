@@ -43,6 +43,7 @@ Workflows and the error model: [`MCP-Tools.md`](./MCP-Tools.md). The vocabulary:
 | Add a record (a new sword, spell, NPC…) | Write a YAML file into the project, without `FormKey`; mirror a vanilla record |
 | Change fields of a record file — a sword's damage, a copy's value | `editRecord` with the fields by path, `set: [{"path": "BasicStats.Damage", "value": 12}]` — no old text to match; `"build": true` builds after |
 | Turn the text into a plugin | `buildProject` — it also checks every link, and turns links written as editor IDs into FormIDs |
+| Place something in a room — a chest in Breezehome, an NPC | `readRecord` of the cell → `placed` lists what stands there and gives the lines of a new reference; `addPatch` the cell, then write the reference as a file of its own in the cell's `Temporary` folder — skill `skyrim-modding-world` |
 | Put a record file where the build reads it, or drop one | `moveRecord`, `deleteRecord` — a build's answer names each misplaced or left-over file with its call |
 | Put the mod into the game | `deployProject` — enables it in the mod manager; with Amethyst, also deploys or says to |
 | Bring back what you did in the Creation Kit or xEdit | `pullProject` — commit first, review with `git diff` after |

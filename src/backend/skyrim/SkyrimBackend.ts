@@ -566,4 +566,16 @@ export interface RecordVersions {
     /** Every plugin that carries the record, in load order — the last one wins. */
     plugins: string[];
     versions: RecordVersion[];
+    /** A cell's: what the load order places in it, and the lines a new reference is written with (CellContents.cs). */
+    placed?: CellPlaced;
+}
+
+/** What is placed in a cell, gathered from every plugin's version of it. */
+export interface CellPlaced {
+    count: number;
+    /** The references by the type of record each places. */
+    byKind: Record<string, number>;
+    /** Those one places a new object beside — containers, furniture, doors, activators, NPCs, items — at most 40. */
+    references: { formId: string; editorId: string | null; base: string; position: string; rotation: string; persistent: boolean }[];
+    newReference: { pathInPluginFolder: string; text: string; note: string };
 }

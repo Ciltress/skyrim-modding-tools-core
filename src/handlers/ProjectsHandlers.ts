@@ -1,6 +1,6 @@
 import { BaseHandler } from './BaseHandler.js';
 import type { ToolSpec } from './BaseHandler.js';
-import type { BuildResult } from '../backend/index.js';
+import type { BuildResult, ProjectFile } from '../backend/index.js';
 import { asRequestError, optionalBoolean, optionalFieldValues, optionalString, optionalStringList, recordRef, requireString } from './args.js';
 import { ToolError, ToolErrorCode } from './errors.js';
 import { FAMILY_SKILLS } from '../lib/skills.js';
@@ -149,7 +149,11 @@ export class ProjectsHandlers extends BaseHandler {
                         // enchantment, a model copied EnchIronSwordFire01 — the Iron Sword of Embers, a Weapon — renamed it for
                         // the enchantment and set a magnitude on it, then answered the sword built (eval rounds 97, 108 and 111's
                         // sword+detailed).
-                        const enchanted = result.added.map(record => enchantmentIn(record.files[0]?.text));
+                        // A record's own file among those its copy wrote: a cell's is its folder's RecordData.yaml, beside the
+                        // GroupRecordData.yaml of each block it sits in, the first of which was named as the record to edit (eval
+                        // round 125's world runs).
+                        const ownFile = (files: ProjectFile[]) => files.find(f => !/(^|[\\/])GroupRecordData\.yaml$/i.test(f.path)) ?? files[0];
+                        const enchanted = result.added.map(record => enchantmentIn(ownFile(record.files)?.text));
                         const folder = result.project.pluginFolder;
                         const inPlugin = (file: string | undefined) =>
                             file?.startsWith(folder) ? file.slice(folder.length + 1).replace(/\\/g, '/') : undefined;
@@ -157,8 +161,8 @@ export class ProjectsHandlers extends BaseHandler {
                         // as an override" with the IronSword of an answer that copied nothing, a model sent addPatch for the
                         // same enchantment four more times and ran out of turns (eval round 113's sword+detailed #3).
                         const kept = result.alreadyInProject.map(record => {
-                            const relative = inPlugin(record.files[0]?.path);
-                            const text = record.files[0]?.text;
+                            const relative = inPlugin(ownFile(record.files)?.path);
+                            const text = ownFile(record.files)?.text;
                             const named = /^(.+?) - [0-9A-Fa-f]{6}_/.exec(relative?.split('/').pop() ?? '')?.[1];
                             const editorId = /^EditorID:[ \t]*['"]?([^\s'"#]+)/m.exec(text ?? '')?.[1] ?? named;
                             // The copy's file is found by its name: made a new record since, it holds no FormKey of the record's.
@@ -181,7 +185,7 @@ export class ProjectsHandlers extends BaseHandler {
                             Weapon: '{"path": "BasicStats.Damage", "value": 12}', Armor: '{"path": "ArmorRating", "value": 30}',
                             Spell: '{"path": "BaseCost", "value": 60}', Npc: '{"path": "AIData.Aggression", "value": "Unaggressive"}'
                         } as Record<string, string>)[first?.type ?? shown?.type ?? 'Weapon'] ?? '{"path": "<the field>", "value": <its new value>}';
-                        const record = inPlugin(first?.files[0]?.path) ?? shown?.relative ?? example;
+                        const record = (first ? inPlugin(ownFile(first.files)?.path) : undefined) ?? shown?.relative ?? example;
                         // The copy made new by one call, its changes kept: told to write a new file and delete the copy, a model
                         // deleted the copy that held the price of 150 it had set, and wrote the new sword at 25 (eval round 89's
                         // sword+detailed #1); 7 of 33 renamed copies of rounds 87–105 went that way.
@@ -215,8 +219,17 @@ export class ProjectsHandlers extends BaseHandler {
                                 `name of its own first, moveRecord {"project": ${JSON.stringify(result.project.project)}, "from": ` +
                                 `${JSON.stringify(k.relative)}, "to": ${JSON.stringify(`${k.relative?.split('/')[0]}/${k.editorId}.yaml`)}}, then send addPatch again.`;
                         }).join(' ');
+                        // What is placed in a cell is no field of its copy: five of eval round 125's world runs wrote a chest into the
+                        // cell's own file under fields of their own (Items, PlacedRecords, References), and no run placed one.
+                        const cellNote = result.added.filter(record => record.type === 'Cell').map(cell => {
+                            const at = inPlugin(ownFile(cell.files)?.path)?.replace(/\/RecordData\.yaml$/i, '');
+                            const name = cell.editorId ?? cell.formId;
+                            return `What is placed in ${name} is no field of the cell's file: each reference is a file of its own in ` +
+                                `${at ? `${at}/Temporary/` : 'the cell\'s folder\'s Temporary folder'} — readRecord {"record": ${JSON.stringify(name)}} ` +
+                                'lists what the game places there, and the lines a new one is written with.';
+                        }).join(' ');
                         return {
-                            note: [copiedNote, keptNote, remadeNote].filter(Boolean).join(' '),
+                            note: [copiedNote, keptNote, remadeNote, cellNote].filter(Boolean).join(' '),
                             nextStep: `Change a copy's fields with editRecord, which needs no old text to match — {"record": ` +
                                 `"${example}", "set": [${field}]} — then run buildProject.`,
                             ...result

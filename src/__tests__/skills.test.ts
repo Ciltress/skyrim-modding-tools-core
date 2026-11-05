@@ -98,6 +98,9 @@ describe('resolveSkill', () => {
         expect(named('quest')).toBe('skyrim-modding-quests-and-scripts');
         expect(named('papyrus')).toBe('skyrim-modding-quests-and-scripts');
         expect(named('script')).toBe('skyrim-modding-quests-and-scripts');
+        expect(named('cell')).toBe('skyrim-modding-world');
+        expect(named('world')).toBe('skyrim-modding-world');
+        expect(named('container')).toBe('skyrim-modding-world');
     });
 
     it('answers nothing for a word no skill has', () => {

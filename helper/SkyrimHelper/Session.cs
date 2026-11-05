@@ -271,7 +271,7 @@ public sealed class Session : IDisposable
         }
 
         var winner = contexts[0].Record;
-        return new JsonObject
+        var answer = new JsonObject
         {
             ["formId"] = FormKeyText(formKey),
             ["editorId"] = winner.EditorID,
@@ -282,6 +282,11 @@ public sealed class Session : IDisposable
             ["plugins"] = new JsonArray(contexts.AsEnumerable().Reverse().Select(c => (JsonNode)c.ModKey.FileName.String).ToArray()),
             ["versions"] = versions
         };
+        // A cell with what is placed in it, from every plugin's version, and the lines of a new reference (CellContents).
+        var cellFile = versions.OfType<JsonObject>().SelectMany(v => v["files"]!.AsArray().OfType<JsonObject>())
+            .Select(f => f["path"]!.GetValue<string>()).FirstOrDefault(f => f.StartsWith("Cells/", StringComparison.Ordinal) && f.EndsWith("/RecordData.yaml", StringComparison.Ordinal));
+        if (CellContents.Of(contexts, Index, cellFile) is { } placed) answer["placed"] = placed;
+        return answer;
     }
 
     private static readonly Regex LinkLine = new(@"^(?!FormKey:)([ \t]*(?:- )?(?:\w+:[ \t]*)?)([0-9A-Fa-f]{6}:\S+\.es[mpl])[ \t]*$",
