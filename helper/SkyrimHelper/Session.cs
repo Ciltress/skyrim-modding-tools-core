@@ -601,6 +601,7 @@ public sealed class Session : IDisposable
             .Concat(RecordNeeds.ListNotes(mod, dir)).Concat(BookTexts.Notes(mod, lookup, Index, dir))
             .Concat(EffectCasting.GivenBackNotes(mod, lookup, Index, dir)).Concat(MadeNotes.Shouts(mod, lookup, dir))
             .Concat(MadeNotes.CopiedNames(mod, Index, dir)).Concat(MadeNotes.RecipePerks(mod, lookup, dir))
+            .Concat(CellContents.PlacedNotes(mod, Contexts, Index, dir))
             .Select(n => (JsonNode)n).ToArray();
         return new JsonObject
         {

@@ -140,7 +140,8 @@ helper/SkyrimHelper/       the C# plugin helper: Session.cs (the methods), Recor
                            Archives.cs (downloaded files, through SharpCompress), Fomod.cs (ModuleConfig.xml as data),
                            RecordFiles.cs (a project's record files checked before a build: folders, fields,
                            copied FormKeys), RecordLinks.cs (links written as editor IDs made FormIDs), CellContents.cs
-                           (what is placed in a cell, for readRecord), MadeNotes.cs (a shout's words with no spell or
+                           (what is placed in a cell, for readRecord; a reference of the project placed under its floor
+                           or outside its walls, for the build), MadeNotes.cs (a shout's words with no spell or
                            spells that are no Voice spells, a recipe's copy of a game record, a recipe's perk condition
                            turned around), AttachedScripts.cs (each record's scripts, for the build's script checks)
 skills/Domain              the modding skills — ours, edit freely

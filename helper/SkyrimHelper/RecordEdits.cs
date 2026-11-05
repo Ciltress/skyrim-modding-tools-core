@@ -374,13 +374,22 @@ public static class RecordEdits
         return types;
     }
 
-    /// <summary>A field of the type — of any of its kinds, for a field of several kinds.</summary>
+    /// <summary>
+    /// A field of the type — of any of its kinds, for a field of several kinds; of an interface, of those it extends too: an
+    /// armor's WorldModel, an IGenderedItem, has its Male and Female from IGenderedItemGetter, and `WorldModel.Male.Model.File`
+    /// was refused as a list's (refusal probe after eval round 128's armor+detailed #1).
+    /// </summary>
     private static PropertyInfo? Property(Type type, string key) =>
-        Kinds(type).SelectMany(t => t.GetProperties(Public)).Where(p => p.Name == key).OrderBy(p => p.DeclaringType == type ? 0 : 1).FirstOrDefault();
+        Kinds(type).SelectMany(t => t.GetProperties(Public).Concat(t.IsInterface ? t.GetInterfaces().SelectMany(i => i.GetProperties(Public)) : []))
+            .Where(p => p.Name == key).OrderBy(p => p.DeclaringType == type ? 0 : 1).FirstOrDefault();
 
-    private static IEnumerable<Type> Kinds(Type type) => type.IsAbstract
-        ? type.Assembly.GetTypes().Where(t => !t.IsAbstract && !t.IsInterface && type.IsAssignableFrom(t))
-        : [type];
+    // An interface no class of its assembly takes as it is — IGenderedItem<ArmorModel>, whose GenderedItem<> is open — is its own kind.
+    private static IEnumerable<Type> Kinds(Type type)
+    {
+        if (!type.IsAbstract) return [type];
+        var kinds = type.Assembly.GetTypes().Where(t => !t.IsAbstract && !t.IsInterface && type.IsAssignableFrom(t)).ToList();
+        return kinds.Count > 0 ? kinds : [type];
+    }
 
     private static IEnumerable<string> Fields(Type type) =>
         Kinds(type).SelectMany(t => t.GetProperties(Public)).Where(p => p.CanWrite).Select(p => p.Name).Distinct().Order(StringComparer.Ordinal);
@@ -594,7 +603,7 @@ public static class RecordEdits
             var keys = fields.Select(f => f.Key).Where(k => k != "MutagenObjectType").ToList();
             if (keys.Count == 0 || keys.Any(k => Property(part, k) is null)) return null;
             if (part.IsAbstract && !fields.ContainsKey("MutagenObjectType")
-                && Kinds(part).Where(k => keys.All(key => k.GetProperty(key, Public) is not null)).ToList() is [var kind])
+                && Kinds(part).Where(k => !k.IsInterface && keys.All(key => k.GetProperty(key, Public) is not null)).ToList() is [var kind])
                 fields["MutagenObjectType"] = kind.Name;
             return new JsonObject(KindFirst(fields).Select(f => KeyValuePair.Create(f.Key, f.Value?.DeepClone()))).ToJsonString();
         }
@@ -930,7 +939,7 @@ public static class RecordEdits
         {
             var part = new JsonObject();
             // A part of several kinds names the one whose field this is: an NPC's Level with Level is an NpcLevel.
-            if (types[i - 1].IsAbstract && Kinds(types[i - 1]).Where(k => k.GetProperty(steps[i].Key, Public) is not null).ToList() is [var kind])
+            if (types[i - 1].IsAbstract && Kinds(types[i - 1]).Where(k => !k.IsInterface && k.GetProperty(steps[i].Key, Public) is not null).ToList() is [var kind])
                 part["MutagenObjectType"] = kind.Name;
             part[steps[i].Key] = inner;
             inner = part;

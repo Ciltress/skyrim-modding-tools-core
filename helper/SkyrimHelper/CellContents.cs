@@ -85,6 +85,71 @@ internal static class CellContents
         };
     }
 
+    /// <summary>How far below the lowest container, furniture, door or activator a cell places a reference may be, in game units.</summary>
+    private const float Below = 32;
+    /// <summary>How far beyond them across the floor.</summary>
+    private const float Beyond = 96;
+
+    /// <summary>
+    /// The project's references placed in a load-order cell away from what the cell's own plugins place there — below its lowest
+    /// container, furniture, door or activator, or beyond them across the floor: under the floor, or outside the walls, where the
+    /// player never finds it — as notes beside a build that succeeds, each with the call that places it beside the first container.
+    /// Eval round 128's world #4 placed its chest at 0, 0, 0 in Breezehome, 64 units below its ground floor and 110 east of the
+    /// easternmost thing placed there, and its build was a plain success.
+    /// </summary>
+    public static List<string> PlacedNotes(ISkyrimModGetter mod,
+        Func<FormKey, List<IModContext<ISkyrimMod, ISkyrimModGetter, IMajorRecord, IMajorRecordGetter>>> contexts, RecordIndex index, string pluginDir)
+    {
+        var notes = new List<string>();
+        var files = RecordFiles.CellRecords(pluginDir).Where(c => c.Type is not null && c.Type != typeof(Cell))
+            .Select(c => (c.Relative, Identity: RecordFiles.Identity(File.ReadAllText(c.File)))).ToList();
+        foreach (var cell in mod.EnumerateMajorRecords<ICellGetter>())
+        {
+            var own = cell.Persistent.Concat(cell.Temporary).Where(r => r.FormKey.ModKey == mod.ModKey).ToList();
+            if (own.Count == 0) continue;
+            var seen = new HashSet<FormKey>();
+            var points = new List<(P3Float At, string Name, string Type)>();
+            foreach (var context in contexts(cell.FormKey).Where(c => c.ModKey != mod.ModKey))
+            {
+                if (context.Record is not ICellGetter version) continue;
+                foreach (var reference in version.Persistent.Concat(version.Temporary))
+                    if (seen.Add(reference.FormKey) && BaseOf(reference) is { } key && index.ByFormKey.TryGetValue(key, out var entry)
+                        && Array.IndexOf(Shown, entry.Type) is >= 0 and < 4 && PlacementOf(reference) is { } placement)
+                        points.Add((placement.Position, entry.EditorId ?? Session.FormKeyText(entry.FormKey), entry.Type));
+            }
+            if (points.Count < 5) continue;
+            var (minX, maxX) = (points.Min(p => p.At.X), points.Max(p => p.At.X));
+            var (minY, maxY) = (points.Min(p => p.At.Y), points.Max(p => p.At.Y));
+            var minZ = points.Min(p => p.At.Z);
+            var near = points.FirstOrDefault(p => p.Type == "Container") is { Name: not null } container ? container : points[0];
+            var beside = Triple(new P3Float(near.At.X + 64, near.At.Y, near.At.Z));
+            var cellName = cell.EditorID ?? Session.FormKeyText(cell.FormKey);
+            foreach (var reference in own)
+            {
+                var at = PlacementOf(reference)?.Position ?? new P3Float(0, 0, 0);
+                var under = at.Z < minZ - Below;
+                var outside = at.X < minX - Beyond || at.X > maxX + Beyond || at.Y < minY - Beyond || at.Y > maxY + Beyond;
+                if (!under && !outside) continue;
+                var file = files.FirstOrDefault(f => f.Identity.FormKey == reference.FormKey
+                    || reference.EditorID is { } id && string.Equals(f.Identity.EditorId, id, StringComparison.OrdinalIgnoreCase)).Relative;
+                var name = reference.EditorID ?? Session.FormKeyText(reference.FormKey);
+                var where = under && outside ? "under the floor and outside the walls" : under ? "under the floor" : "outside the walls";
+                notes.Add($"{file ?? name}: {name} is placed at {Triple(at)}, and {cellName}'s containers, furniture, doors and activators lie " +
+                    $"between x {Whole(minX)} and {Whole(maxX)}, y {Whole(minY)} and {Whole(maxY)}, the lowest at z {Whole(minZ)} — in game it is " +
+                    $"{where}, where the player never finds it. " +
+                    (file is not null
+                        ? $"One call places it beside {near.Name}, 64 units along x, and builds again: " +
+                          ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), file, $"{{\"path\": \"Placement.Position\", \"value\": \"{beside}\"}}", build: true)
+                        : $"Write its Position as one beside a reference of the cell — {beside} is beside {near.Name}") +
+                    "; where it is meant to be hidden, nothing to change, and this warning stays");
+            }
+        }
+        return notes;
+    }
+
+    /// <summary>A coordinate rounded to a whole unit, for a note.</summary>
+    private static string Whole(float value) => Math.Round(value).ToString(CultureInfo.InvariantCulture);
+
     private static FormKey? BaseOf(IPlacedGetter reference) => reference switch
     {
         IPlacedObjectGetter o => o.Base.FormKeyNullable,
