@@ -328,7 +328,10 @@ public static class MisplacedFields
         {
             case YamlMappingNode mapping:
                 var keys = mapping.Children.Keys.ToList();
+                // An archetype's kind at a magic effect's margin is no kind of the record: moved first, it read as the file's, and the
+                // refusal's "move it under Archetype" was undone (refusal probe after eval round 128's effect+detailed #5).
                 if (keys.FindIndex(k => k is YamlScalarNode { Value: "MutagenObjectType" }) is var at and > 0
+                    && !(path.Length == 0 && mapping.Children[keys[at]] is YamlScalarNode { Value: { } named } && named.EndsWith("Archetype", StringComparison.Ordinal))
                     && KindFirstIn(mapping, keys[0], keys[at], path, lines) is { } moved)
                     return moved;
                 foreach (var (key, value) in mapping.Children)

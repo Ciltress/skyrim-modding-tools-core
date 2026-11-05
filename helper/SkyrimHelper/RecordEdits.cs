@@ -187,9 +187,17 @@ public static class RecordEdits
     private static (string File, string Relative, Type Type) Find(string pluginDir, string record, out string? found)
     {
         found = null;
-        var flat = RecordFiles.FlatRecords(pluginDir).ToList();
+        // An interior cell's copy and what is placed in it too: told "No record file" for the cell addPatch had just copied, eval
+        // round 128's world runs sent the edit again and again, 12 calls in 5 runs.
+        var flat = RecordFiles.FlatRecords(pluginDir)
+            .Concat(RecordFiles.CellRecords(pluginDir).Where(c => c.Type is not null).Select(c => (c.File, c.Relative, Type: c.Type!))).ToList();
         var wanted = (Path.IsPathRooted(record) ? Path.GetRelativePath(pluginDir, record) : record).Replace('\\', '/').Trim();
         var hit = flat.FirstOrDefault(f => f.Relative.Equals(wanted, StringComparison.OrdinalIgnoreCase));
+        // A cell's folder, or its name before the FormID — `WhiterunBreezehome - 0165A8_Skyrim.esm` — is its RecordData.yaml.
+        if (hit == default) hit = flat.FirstOrDefault(f => f.Type == typeof(Mutagen.Bethesda.Skyrim.Cell) && f.Relative.Split('/') is { Length: 5 } cell
+            && (string.Join('/', cell.Take(4)).Equals(wanted.TrimEnd('/'), StringComparison.OrdinalIgnoreCase)
+                || cell[3].Equals(wanted, StringComparison.OrdinalIgnoreCase)
+                || cell[3].Split(" - ")[0].Equals(wanted, StringComparison.OrdinalIgnoreCase)));
         if (hit == default) hit = flat.FirstOrDefault(f => Path.GetFileName(f.Relative).Equals(wanted, StringComparison.OrdinalIgnoreCase)
             || Path.GetFileNameWithoutExtension(f.Relative).Equals(wanted, StringComparison.OrdinalIgnoreCase));
         if (hit == default) hit = flat.FirstOrDefault(f => string.Equals(RecordFiles.Identity(File.ReadAllText(f.File)).EditorId, wanted, StringComparison.OrdinalIgnoreCase));
@@ -776,9 +784,29 @@ public static class RecordEdits
                     all.Insert(LastLine(text, after) + 1, new string(' ', dash) + "- " + Scalar(value, dash + 2));
                     return string.Join('\n', all);
                 }
+                // The item after the last, one with fields — a leveled list's entry — sent as its fields: added (one sent as a text is
+                // answered with its fields as the call to send, Unwritable). Refused, eval round 128's leveled runs set Entries whole as
+                // one escaped text, which Ollama's parser dropped, or wrote over an entry the list had.
+                if (last && child is YamlSequenceNode { Style: not YamlDotNet.Core.Events.SequenceStyle.Flow, Children.Count: > 0 } extended
+                    && n == extended.Children.Count && extended.Children.All(c => c is YamlMappingNode) && value is JsonObject entry)
+                {
+                    var after = extended.Children[^1];
+                    var dash = DashColumn(text, after);
+                    var lines = Render("", entry, dash).Skip(1).ToList();
+                    lines[0] = new string(' ', dash) + "- " + lines[0].TrimStart();
+                    changes.Add($"added {path}: {Shown(entry)}, after the {n} item{(n == 1 ? "" : "s")} {step.Key} had");
+                    var all = text.Split('\n').ToList();
+                    all.InsertRange(LastLine(text, after) + 1, lines);
+                    return string.Join('\n', all);
+                }
                 if (child is not YamlSequenceNode list || n >= list.Children.Count)
-                    throw new HelperException("badRequest", $"{path}: {step.Key} has {(child as YamlSequenceNode)?.Children.Count ?? 0} item(s), so [{n}] is none — " +
+                {
+                    var count = (child as YamlSequenceNode)?.Children.Count ?? 0;
+                    throw new HelperException("badRequest", $"{path}: {step.Key} has {count} item(s), so [{n}] is none — " +
+                        (count > 0 && n > count && child is YamlSequenceNode { Style: not YamlDotNet.Core.Events.SequenceStyle.Flow }
+                            ? $"{step.Key}[{count}] adds one after the last, every item kept; or " : "") +
                         $"set {step.Key} whole, as a list. Nothing was written.");
+                }
                 var item = list.Children[n];
                 if (last && list.Style == YamlDotNet.Core.Events.SequenceStyle.Flow)
                     throw new HelperException("badRequest", $"{path}: {step.Key} is written on one line, [a, b], so no item has a line of its own — " +

@@ -857,6 +857,25 @@ describe('the Skyrim backend', () => {
             'Npcs/Helga', 'HildaTheNord/Npcs/Helga.yaml']);
     });
 
+    it('takes a record file by its bare name, its group folder left out, where one file has it (round 128\'s leveled+detailed #3)', () => {
+        const projects = fs.mkdtempSync(path.join(os.tmpdir(), 'projects-bare-'));
+        try {
+            const paths = projectPaths(projects, 'BanditSilver');
+            const name = 'LCharBanditMelee1H - 039CFC_Skyrim.esm.yaml';
+            const list = path.join(paths.plugin, 'LeveledNpcs', name);
+            fs.mkdirSync(path.dirname(list), { recursive: true });
+            fs.writeFileSync(list, 'FormKey: 039CFC:Skyrim.esm\n');
+            expect(projectsFile(projects, paths, name)).toBe(list);
+            // Two files of that name: neither is guessed.
+            const other = path.join(paths.plugin, 'LeveledItems', name);
+            fs.mkdirSync(path.dirname(other), { recursive: true });
+            fs.writeFileSync(other, 'FormKey: 039CFC:Skyrim.esm\n');
+            expect(projectsFile(projects, paths, name)).toBe(path.join(paths.plugin, name));
+        } finally {
+            fs.rmSync(projects, { recursive: true, force: true });
+        }
+    });
+
     it('takes a file of a projects folder reached through a link: one not there is missing, not outside', () => {
         // Windows CI's temp folder has a short 8.3 name: the projects folder resolved to its long name, a missing file's
         // path kept the short one, and the file was refused as outside the projects folder.

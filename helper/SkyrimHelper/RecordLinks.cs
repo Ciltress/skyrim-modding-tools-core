@@ -157,8 +157,24 @@ public static class RecordLinks
             // What to write for a link to a record of another type, the same however the link was written: by FormID the magic effect
             // named as a sword's enchantment got the short text, the model wrote the same effect by its editor ID, and was told only
             // then that an enchantment names the effects it casts (eval round 104's sword #4, which failed).
+            // An item in a leveled NPC list: the list its NPCs carry it from named, and the copy's deletion. Asked for bandits
+            // carrying a sword, eval round 128's 5 detailed runs copied LCharBanditMelee1H and added the sword there; told only "takes
+            // a NpcSpawn", none found the item list, and the copy left kept each later build refused.
+            string? ItemInNpcList(string wanted, string kind, string editorId)
+            {
+                if (wanted != "NpcSpawn" || !ItemKinds.Contains(kind)) return null;
+                var lists = CarriedLists(text, index, lookup);
+                var word = kind is "Weapon" ? "Weapon" : kind is "Armor" ? "Armor" : null;
+                var named = lists.OrderByDescending(l => word is not null && l.Contains(word, StringComparison.OrdinalIgnoreCase)).Take(4).ToList();
+                return $" — {editorId} is {RecordFiles.Article(kind)}, and this is a leveled NPC list: its entries are NPCs. What its NPCs carry " +
+                    "comes from the leveled item lists their Items name" +
+                    (named.Count > 0 ? $" — {string.Join(", ", named)}" : " — readRecord one of its NPCs and its template to find them") +
+                    $": addPatch the one meant and add {editorId} to its Entries there, every entry kept; and where this list was copied only " +
+                    $"for it, delete the copy, which nothing else needs: {ToolCalls.Delete(pluginDir, relative)}";
+            }
             string WrongType(string field, string wanted, string kind, string editorId, FormKey? key) =>
                 BaseAsEffect(field, wanted, kind, editorId) is { } baseText ? baseText
+                    : ItemInNpcList(wanted, kind, editorId) is { } npcListText ? npcListText
                     : CasterAsEffect(field, wanted, editorId, key) is { } casterText ? casterText
                     : wanted == "ObjectEffect" && kind == "MagicEffect"
                         ? $" — an enchantment, whose Effects name the magic effects it casts: name one, such as {RecordFiles.ExampleName("ObjectEffect")}, " +
@@ -956,6 +972,11 @@ public static class RecordLinks
                 // A value without a name is written as a number — 0x4 for an unnamed flag.
                 if (names.Contains(name, StringComparer.Ordinal) || long.TryParse(name, NumberStyles.Integer, invariant, out _)
                     || name.StartsWith("0x", StringComparison.OrdinalIgnoreCase) && long.TryParse(name[2..], NumberStyles.HexNumber, invariant, out _)) continue;
+                // The quest's own flag written among a stage's: told only what a stage's take, a model replaced the quest's
+                // StartGameEnabled with AllowRepeatedStages, and its quest never started (eval round 128's quest #1).
+                if (type == typeof(QuestStage.Flag) && Enum.GetNames<Quest.Flag>().Contains(name, StringComparer.OrdinalIgnoreCase))
+                    return $"{name} is the quest's own flag, among the Flags at the margin of the quest's file — keep it there, and delete it " +
+                        $"here; a stage's Flags take {string.Join(", ", names)}";
                 return names.FirstOrDefault(n => n.Equals(name, StringComparison.OrdinalIgnoreCase)) is { } spelled
                     ? $"it is spelled {spelled}"
                     : Listed(type, name, key) is var listed && listed.Length > 0
@@ -1005,7 +1026,11 @@ public static class RecordLinks
         var meant = ShortNames.TryGetValue(raw.Trim(), out var name) && names.Contains(name) ? [name] : Array.Empty<string>();
         var closest = names.Select(n => (Name: n, Score: Closeness(raw.Trim(), n))).Where(c => c.Score < int.MaxValue)
             .OrderBy(c => c.Score).Select(c => c.Name);
-        return meant.Concat(closest).Concat(names).Distinct().ToArray();
+        // A value sharing one long word of a name of more words: `ActorValue: CarryCapacityIncrease` was offered the first 16
+        // values, CarryWeight not among them, and the model took HeavyArmor (eval round 128's effect #1).
+        var words = WordsOf(raw.Trim());
+        var sharing = names.Where(n => SharedWords(words, WordsOf(n)).Any(word => word.Length >= 5));
+        return meant.Concat(closest).Concat(sharing).Concat(names).Distinct().ToArray();
     }
 
     /// <summary>
@@ -1015,6 +1040,47 @@ public static class RecordLinks
     /// which it is no reference.
     /// </summary>
     private static readonly HashSet<string> Kept = new(["Race", "ObjectEffect", "Base"], StringComparer.Ordinal);
+
+    /// <summary>The kinds of record an NPC carries: what a leveled item list holds, and an NPC list never.</summary>
+    private static readonly HashSet<string> ItemKinds = new(["Weapon", "Armor", "Ammunition", "MiscItem", "Ingestible", "Ingredient", "Book",
+        "Scroll", "SoulGem", "Key", "Light", "LeveledItem"], StringComparer.Ordinal);
+
+    /// <summary>
+    /// The leveled item lists the NPCs of a leveled NPC list's text carry from, by editor ID in their order: each NPC's Items, or
+    /// its template's where it takes its inventory from one, through nested NPC lists a few levels down — for LCharBanditMelee1H,
+    /// EncBandit01TemplateMelee's LItemBanditWeapon1H among them.
+    /// </summary>
+    private static List<string> CarriedLists(string text, RecordIndex index, ILinkCache? lookup)
+    {
+        var found = new List<string>();
+        if (lookup is null) return found;
+        var seen = new HashSet<FormKey>();
+        var queue = new Queue<(FormKey Key, int Depth)>();
+        foreach (Match reference in Regex.Matches(text, @"\bReference:[ \t]*([^\s#]+)"))
+        {
+            var raw = reference.Groups[1].Value;
+            if (FormKey.TryFactory(raw, out var formKey)) queue.Enqueue((formKey, 0));
+            else if (index.ByEditorId.TryGetValue(raw, out var byId)) queue.Enqueue((byId, 0));
+        }
+        while (queue.Count > 0 && found.Count < 8)
+        {
+            var (key, depth) = queue.Dequeue();
+            if (depth > 3 || !seen.Add(key)) continue;
+            if (lookup.TryResolve<INpcGetter>(key, out var npc))
+            {
+                if (!npc.Template.IsNull && npc.Configuration.TemplateFlags.HasFlag(NpcConfiguration.TemplateFlag.Inventory))
+                    queue.Enqueue((npc.Template.FormKey, depth + 1));
+                else
+                    foreach (var item in npc.Items ?? [])
+                        if (lookup.TryResolve<ILeveledItemGetter>(item.Item.Item.FormKey, out var list) && list.EditorID is { } id && !found.Contains(id))
+                            found.Add(id);
+            }
+            else if (lookup.TryResolve<ILeveledNpcGetter>(key, out var npcs))
+                foreach (var entry in npcs.Entries ?? [])
+                    if (entry.Data?.Reference.FormKeyNullable is { } inner) queue.Enqueue((inner, depth + 1));
+        }
+        return found;
+    }
 
     /// <summary>
     /// What is wrong with a FormKey a link field holds, as words after it — "which is IronSword, a Weapon",
@@ -1246,14 +1312,22 @@ public static class RecordLinks
     /// <summary>Up to five records a link may have meant: of a type the field takes, with an editor ID close to the one written.</summary>
     private static List<string> Near(string editorId, Type takes, Dictionary<string, Target> own, RecordIndex index)
     {
-        var candidates = own.Values.Where(t => takes.IsAssignableFrom(t.Type)).Select(t => (t.EditorId, t.FormKey))
+        var candidates = own.Values.Where(t => takes.IsAssignableFrom(t.Type)).Select(t => (t.EditorId, t.FormKey, t.Type, Name: (string?)null))
             .Concat(index.ByFormKey.Values.Where(e => e.EditorId is not null && takes.IsAssignableFrom(e.GetterType))
-                .Select(e => (EditorId: e.EditorId!, FormKey: (FormKey?)e.FormKey)));
+                .Select(e => (EditorId: e.EditorId!, FormKey: (FormKey?)e.FormKey, Type: e.GetterType, e.Name)));
+        // Its in-game name with the spaces out first: `AncientNordSword` is DraugrSword, "Ancient Nord Sword", which the closest editor
+        // IDs left out (eval round 128's recipe #1). Each with its kind: offered among the close names for SteelArrows, a leveled list,
+        // BaseArrowSteel75, was taken for ten arrows (eval round 128's world+detailed #3).
+        static string Bare(string text) => Regex.Replace(text, "[^A-Za-z0-9]", "");
+        var bare = Bare(editorId);
         return candidates
-            .Select(c => (c.EditorId, c.FormKey, Score: Closeness(editorId, c.EditorId)))
+            .Select(c => (c.EditorId, c.FormKey, c.Type, c.Name,
+                Score: c.Name is { Length: > 0 } inGame && Bare(inGame).Equals(bare, StringComparison.OrdinalIgnoreCase) ? -1 : Closeness(editorId, c.EditorId)))
             .Where(c => c.Score < int.MaxValue)
             .OrderBy(c => c.Score).ThenBy(c => c.EditorId.Length).ThenBy(c => c.EditorId, StringComparer.Ordinal)
-            .Select(c => $"{c.EditorId} ({(c.FormKey is { } key ? Session.FormKeyText(key) : "new in this project")})")
+            .Select(c => $"{c.EditorId} ({(c.Name is { Length: > 0 } shown ? $"\"{shown}\", " : "")}" +
+                $"{(typeof(ILeveledItemGetter).IsAssignableFrom(c.Type) ? "a leveled list, one picked at random" : RecordFiles.Article(Kind(c.Type)))}, " +
+                $"{(c.FormKey is { } key ? Session.FormKeyText(key) : "new in this project")})")
             .Distinct()
             .Take(5)
             .ToList();

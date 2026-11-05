@@ -91,6 +91,15 @@ describe('scriptWarnings', () => {
         expect(warn([quest()], GOOD.replace('extends Quest', 'extends ObjectReference'))[0]).toContain('extends ObjectReference, which is no Quest');
     });
 
+    it('names a script with no code, nothing but its ScriptName line and comments (round 128\'s quest #1)', () => {
+        const [warning, ...rest] = warn([quest([])], 'Scriptname StarterGoldScript extends Quest\n; gives the player 500 gold\n{ at the start }\n');
+        expect(rest).toEqual([]);
+        expect(warning).toContain('StarterGoldScript has no code — no event, no function, no property, nothing but its ScriptName line');
+        expect(warning).toContain('`Event OnInit()`');
+        // A script of properties alone, which other scripts read, is left alone.
+        expect(warn([quest()], 'Scriptname StarterGoldScript extends Quest\nMiscObject Property Gold001 Auto\n')).toEqual([]);
+    });
+
     it('names a property filled that the script has as a variable (round 125\'s quest+detailed #5)', () => {
         const [warning, ...rest] = warn([quest()], GOOD.replace('MiscObject Property Gold001 Auto', 'MiscObject Gold001'));
         expect(rest).toEqual([]);

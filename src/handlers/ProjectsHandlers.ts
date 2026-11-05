@@ -221,17 +221,26 @@ export class ProjectsHandlers extends BaseHandler {
                         }).join(' ');
                         // What is placed in a cell is no field of its copy: five of eval round 125's world runs wrote a chest into the
                         // cell's own file under fields of their own (Items, PlacedRecords, References), and no run placed one.
-                        const cellNote = result.added.filter(record => record.type === 'Cell').map(cell => {
-                            const at = inPlugin(ownFile(cell.files)?.path)?.replace(/\/RecordData\.yaml$/i, '');
+                        // Its full path: written by the path in the plugin folder alone, three of eval round 128's world runs' references
+                        // landed outside the project, cut down to plugin/Temporary/ by the plugin's write guard.
+                        const cells = result.added.filter(record => record.type === 'Cell');
+                        const cellNote = cells.map(cell => {
+                            const file = ownFile(cell.files)?.path;
+                            const folder = file?.replace(/[\\/]RecordData\.yaml$/i, '');
+                            const sep = file?.includes('\\') ? '\\' : '/';
                             const name = cell.editorId ?? cell.formId;
                             return `What is placed in ${name} is no field of the cell's file: each reference is a file of its own in ` +
-                                `${at ? `${at}/Temporary/` : 'the cell\'s folder\'s Temporary folder'} — readRecord {"record": ${JSON.stringify(name)}} ` +
-                                'lists what the game places there, and the lines a new one is written with.';
+                                `${folder ? `${folder}${sep}Temporary${sep}` : 'the cell\'s folder\'s Temporary folder'}, written at that full path ` +
+                                `with your file tools — readRecord {"record": ${JSON.stringify(name)}} lists what the game places there, and the ` +
+                                'lines a new one is written with.';
                         }).join(' ');
                         return {
                             note: [copiedNote, keptNote, remadeNote, cellNote].filter(Boolean).join(' '),
-                            nextStep: `Change a copy's fields with editRecord, which needs no old text to match — {"record": ` +
-                                `"${example}", "set": [${field}]} — then run buildProject.`,
+                            nextStep: cells.length === result.added.length && cells.length > 0
+                                ? 'Write what is placed in the cell as a file of its own in its Temporary folder, at the full path the note names, ' +
+                                  'then run buildProject.'
+                                : `Change a copy's fields with editRecord, which needs no old text to match — {"record": ` +
+                                  `"${example}", "set": [${field}]} — then run buildProject.`,
                             ...result
                         };
                     });

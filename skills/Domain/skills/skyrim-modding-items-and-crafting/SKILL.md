@@ -256,6 +256,23 @@ The smithing perks are `SteelSmithing`, `ElvenSmithing`, `AdvancedArmors`, `Orci
 `DwarvenSmithing`, `GlassSmithing`, `EbonySmithing`, `DaedricSmithing` and `DragonArmor`;
 `ArcaneBlacksmith` lets enchanted items be tempered.
 
+A perk a recipe needs is a condition, as `RecipeWeaponSteelSword` carries it — no `RequiredPerk:`
+field. With no `CompareOperator` line it is `EqualTo`: shown when the player has the perk.
+
+```yaml
+Conditions:
+- MutagenObjectType: ConditionFloat
+  Data:
+    MutagenObjectType: HasPerkConditionData
+    Perk: SteelSmithing
+  ComparisonValue: 1
+```
+
+A recipe for an item the game has already — a forge recipe for its Forsworn Axe — names that item
+as its `CreatedObject` by its editor ID (`ForswornAxe`, found by its in-game name with
+`findRecords`; an editor ID is often not the name), and is the mod's only file: no weapon file is
+written for it, or the forge makes the copy, not the game's item.
+
 A tempering recipe mirrors `TemperWeaponIronSword`: one ingot of the item's material at the
 grindstone (a weapon) or the workbench (armor), the item as `CreatedObject`, and its conditions as
 they are.

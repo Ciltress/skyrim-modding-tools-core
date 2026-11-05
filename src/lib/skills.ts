@@ -41,11 +41,15 @@ export interface Skill {
  */
 export const FAMILY_SKILLS = [
     { skill: 'skyrim-modding-items-and-crafting', covers: 'weapons, armor, other items, their enchantments and recipes' },
-    { skill: 'skyrim-modding-magic', covers: 'spells, magic effects and enchantments' },
+    { skill: 'skyrim-modding-magic', covers: 'spells, magic effects, enchantments, shouts' },
     { skill: 'skyrim-modding-npcs', covers: 'NPCs' },
-    { skill: 'skyrim-modding-leveled-lists', covers: 'leveled lists' },
-    { skill: 'skyrim-modding-quests-and-scripts', covers: 'quests and Papyrus scripts' },
-    { skill: 'skyrim-modding-world', covers: 'cells and what is placed in them' },
+    // Asked for bandits carrying a sword, eval round 128's 5 runs of the plain prompt read the NPC and item skills, never
+    // this one, and changed the bandit NPCs.
+    { skill: 'skyrim-modding-leveled-lists', covers: 'leveled lists: what NPCs carry, loot, merchant stock' },
+    { skill: 'skyrim-modding-quests-and-scripts', covers: 'quests and Papyrus scripts: anything given or done when a game starts' },
+    // Asked for a chest like the player houses', 3 of round 128's detailed world runs read the items skill and made a
+    // HearthFires recipe.
+    { skill: 'skyrim-modding-world', covers: 'cells and what is placed in them: a chest, furniture or NPC put in a house or room' },
     { skill: 'skyrim-modding-perks', covers: 'perks' }
 ] as const;
 

@@ -225,6 +225,17 @@ export function scriptWarnings(records: readonly ScriptedRecord[], context: Scri
 
             if (!checkedScripts.has(script.name.toLowerCase())) {
                 checkedScripts.add(script.name.toLowerCase());
+                // Nothing but its ScriptName line and comments: eval round 128's quest #1 attached two such scripts, and its build
+                // was a plain success.
+                if (own.events.length === 0 && !own.body.trim() && own.properties.length === 0 && own.variables.length === 0) {
+                    warnings.push(`${scriptFile(script.name)}: ${script.name} has no code — no event, no function, no property, nothing ` +
+                        `but its ScriptName line — so it does nothing in game` +
+                        (base === 'Quest'
+                            ? ': a quest\'s script does its work in `Event OnInit()`, which runs when the quest starts, with the records it ' +
+                              'uses as properties the quest fills — the skyrim-modding-quests-and-scripts skill writes one whole'
+                            : ': write what it does in an event the game sends it') +
+                        ', and build again.');
+                }
                 // What it extends: nothing, or a chain that never reaches what its record runs.
                 if (base && known && !chain.some(c => c.name.toLowerCase() === base.toLowerCase() || (base === 'Alias' && /^(reference|location)alias$/i.test(c.name)))) {
                     warnings.push(`${scriptFile(script.name)}: ${script.name} ${own.extends ? `extends ${own.extends}, which is no ${base}` : 'extends nothing'}, ` +

@@ -44,7 +44,10 @@ public static class RecordFiles
     private static readonly Dictionary<string, string> Examples = new(StringComparer.Ordinal)
     {
         ["Weapon"] = "IronSword", ["Armor"] = "ArmorIronCuirass", ["Spell"] = "Firebolt",
-        ["MagicEffect"] = "FireDamageFFAimed", ["ObjectEffect"] = "EnchWeaponFireDamage01", ["Npc"] = "HousecarlWhiterun"
+        ["MagicEffect"] = "FireDamageFFAimed", ["ObjectEffect"] = "EnchWeaponFireDamage01", ["Npc"] = "HousecarlWhiterun",
+        // The load order's first of these were a tempering recipe, whose perk condition is NotEqualTo, and a dragon's shout of one
+        // word, L_DragonFrostIceStormShout: eval round 128's recipe and shout runs copied both.
+        ["ConstructibleObject"] = "RecipeWeaponSteelSword", ["Shout"] = "FrostBreathShout", ["WordOfPower"] = "WordFo"
     };
 
     /// <summary>The skill whose tables hold a record type's lines — the server's FAMILY_SKILLS — or null.</summary>
@@ -210,6 +213,24 @@ public static class RecordFiles
             : $"{relative}: {Article(type.Name)} has no field {fields} — delete {them}; a placed reference is written with {written}";
     }
 
+    /// <summary>
+    /// A placed reference's file outside a cell's folder, which the reader takes for no record: the move into the project's
+    /// cell copy, or the cell's addPatch first. Eval round 128's world runs wrote a chest's reference as plugin/Temporary/,
+    /// then MiscItems/, References/ and World/, each refused as no group folder or as a line of no MiscItem, and never built.
+    /// </summary>
+    private static string PlacedOutside(string relative, Type kind, string pluginDir)
+    {
+        var name = relative.Split('/')[^1];
+        var cells = CellRecords(pluginDir).Where(c => c.Type == typeof(Cell)).Select(c => c.Relative[..c.Relative.LastIndexOf('/')]).ToList();
+        var said = $"{relative} is {Article(kind.Name)}, a reference placed in a cell: the build reads one only in the folder of the cell " +
+            "it is placed in, beside the cell's RecordData.yaml, in its Temporary/ folder — ";
+        return said + (cells.Count == 1
+            ? $"one call moves it there: {ToolCalls.Move(pluginDir, relative, $"{cells[0]}/Temporary/{name}")}"
+            : cells.Count > 1
+                ? $"move it into the Temporary/ folder of the cell meant, one of {string.Join(", ", cells.Select(c => c + "/Temporary/"))}, with moveRecord"
+                : "copy the cell in first with addPatch, whose answer names the cell's folder, then move this file into that folder's Temporary/ with moveRecord");
+    }
+
     /// <summary>The placed kind a reference's file names — PlacedObject, PlacedNpc… — or null.</summary>
     internal static Type? PlacedKind(string text) =>
         ObjectTypeLine.Match(text) is { Success: true } named
@@ -262,7 +283,19 @@ public static class RecordFiles
         // Told "delete it" for a `Mult: 1` below a level that follows the player's, a model deleted it: the level was 0 times the
         // player's, held at its CalcMinLevel, and the model answered it as made (eval round 114's npc #4).
         (["PcLevelMult"], ["Mult", "Multiplier", "LevelMultiplier", "PlayerLevelMult", "PcMult", "PcLevelMult"], "LevelMult",
-            "the multiple of the player's level is LevelMult — 1 is the player's own level, and without it the level stays at CalcMinLevel")
+            "the multiple of the player's level is LevelMult — 1 is the player's own level, and without it the level stays at CalcMinLevel"),
+        // Told "delete it" for `RequiredPerk: SteelSmithing`, all five of eval round 128's recipe+detailed runs deleted it, and three
+        // built their recipe with no perk at all.
+        (["ConstructibleObject"], ["RequiredPerk", "RequiredPerks", "RequiresPerk", "PerkRequired", "PerkCondition", "Perk", "Perks", "SkillPerk"], null,
+            "a perk a recipe needs is a condition, under Conditions: `- MutagenObjectType: ConditionFloat`, then, two spaces in, `Data:` with " +
+            "`MutagenObjectType: HasPerkConditionData` and `Perk: SteelSmithing` below it, and `ComparisonValue: 1` beside Data — as the game's " +
+            "RecipeWeaponSteelSword has it, readRecord {\"record\": \"RecipeWeaponSteelSword\"}; with no CompareOperator line it is EqualTo, " +
+            "the player has the perk"),
+        // Its cell found by editRecord, a model would set `Placed[0]` on it (eval round 128's world+detailed #4).
+        (["Cell"], ["Placed", "References", "Refs", "Objects", "Items", "Containers", "Contents", "Chest", "Chests", "PlacedObjects"], null,
+            "what is placed in a cell is no field of its file: each reference is a file of its own in the cell's Temporary/ folder, beside " +
+            "its RecordData.yaml, written with your file tools — `MutagenObjectType: PlacedObject`, `EditorID:`, `Base:` and `Placement:` — " +
+            "as the skyrim-modding-world skill shows")
     ];
 
     /// <summary>Where a spell's school is: in its magic effects, not in the spell — a field to delete there.</summary>
@@ -295,6 +328,33 @@ public static class RecordFiles
         var flow = Regex.Replace(block.Split('\n')[0][(key.Length + 1)..], "#.*$", "").Trim().Length > 0;
         return theirs + (flow ? ": write each there on a line of its own, and delete the `Data:` line"
             : ": delete the `Data:` line and take two spaces out in front of each line below it");
+    }
+
+    /// <summary>
+    /// The value a magic effect changes, written as a field of its own — `CarryWeight: 100`, `FortifyCarryWeight`, or a
+    /// `Data:` holding `CarryWeightIncrease` — answered with where it goes: the ActorValue under Archetype, the amount in the
+    /// spell. Told only "delete it", 5 of eval round 128's 10 effect runs wrote it elsewhere, field by field, until the turns
+    /// ran out or they took a game effect in its place.
+    /// </summary>
+    private static string? ActorValueHint(Type type, string key, string text)
+    {
+        if (type.Name != "MagicEffect") return null;
+        var named = new[] { key }.Concat(key == "Data" && BlockOf(text, key) is { Length: > 0 } block
+            ? KeyIn.Matches(block[(key.Length + 1)..]).Select(m => m.Groups[1].Value) : []);
+        if (named.Select(ActorValueIn).FirstOrDefault(v => v is not null) is not { } value) return null;
+        return $"the value an effect changes is the ActorValue under Archetype: `Archetype:` at the margin, and below it, two spaces in, " +
+            $"`MutagenObjectType: MagicEffectPeakValueModArchetype` and `ActorValue: {value}` — as the game's Fortify effects have it " +
+            "(readRecord AlchFortifyCarryWeight); how much and how long are Magnitude and Duration under Data, in the Effects item of the " +
+            "spell that names this effect";
+    }
+
+    /// <summary>The actor value a field's name names, with a word around it — FortifyCarryWeight, CarryWeightIncrease — or null.</summary>
+    private static string? ActorValueIn(string field)
+    {
+        var bare = Regex.Replace(field, @"^(Fortify|Increase|Raise|Boost|Restore|Damage)|(Increase|Increased|Bonus|Boost|Amount|Mod|Modifier|Change|Value)$", "",
+            RegexOptions.IgnoreCase);
+        return bare.Length > 2 && !int.TryParse(bare, out _) && Enum.TryParse<ActorValue>(bare, true, out var value)
+            && value != ActorValue.None && Enum.IsDefined(value) ? value.ToString() : null;
     }
 
     /// <summary>A top-level field's lines — its own, and those indented or listed below it; empty where the file has none.</summary>
@@ -527,7 +587,7 @@ public static class RecordFiles
 
     /// <summary>What a top-level field its type lacks is likely meant to be, as the file writes it — the value on its line, the fields below it — or null.</summary>
     private static string? HintIn(Type type, HashSet<string> known, string key, string text) =>
-        DataHint(type, key, text) ?? TextHint(type, key, text) ?? Hint(type, known, key, ValueOf(text, key), ValuesOf(text, key), FieldsBelow(text, key));
+        ActorValueHint(type, key, text) ?? DataHint(type, key, text) ?? TextHint(type, key, text) ?? Hint(type, known, key, ValueOf(text, key), ValuesOf(text, key), FieldsBelow(text, key));
 
     /// <summary>
     /// A field at the margin written with a text, where the one of its name, a part down, takes a number: `Value: Flame Blade`
@@ -958,6 +1018,11 @@ public static class RecordFiles
             records++;
 
             var parts = relative.Split('/');
+            if (parts[0] is not ("Cells" or "Worldspaces") && PlacedKind(File.ReadAllText(file)) is { } placedKind)
+            {
+                problems.Add(PlacedOutside(relative, placedKind, pluginDir));
+                continue;
+            }
             if (parts.Length == 1)
             {
                 problems.Add($"{relative} is in no group folder: move it into its type's, as {ToolCalls.Move(pluginDir, relative, $"Weapons/{relative}")} does for a weapon");
@@ -1033,7 +1098,12 @@ public static class RecordFiles
             // MiscItem" for a note's file (refusal probes of 2026-10-31, B14).
             if (Regex.Match(text, @"^MutagenObjectType:[ \t]*(?<kind>\w+)", RegexOptions.Multiline) is { Success: true } named && kind is null
                 && named.Groups["kind"].Value is var said && !said.Equals(type.Name, StringComparison.OrdinalIgnoreCase))
-                problems.Add($"{relative}: `MutagenObjectType: {said}` is no line of {Article(type.Name)}'s file, whose type is its folder's — delete it" +
+                // An archetype's kind written at the margin, told "delete it", was deleted with the actor value the model meant
+                // to write below it (eval round 128's effect+detailed #5).
+                problems.Add(type.Name == "MagicEffect" && said.EndsWith("Archetype", StringComparison.OrdinalIgnoreCase)
+                    ? $"{relative}: `MutagenObjectType: {said}` names the kind of the effect's Archetype: move it under `Archetype:`, two spaces in, " +
+                      "with the `ActorValue:` the effect changes beside it"
+                    : $"{relative}: `MutagenObjectType: {said}` is no line of {Article(type.Name)}'s file, whose type is its folder's — delete it" +
                     (Groups.FirstOrDefault(g => g.Value?.Name.Equals(said, StringComparison.OrdinalIgnoreCase) == true).Key is { } folder
                         ? $"; {Article(said)} is written in {folder}/" : ""));
             foreach (var key in BlockFields.Matches(text).Select(m => m.Groups[1].Value).Where(known.Contains).Distinct())

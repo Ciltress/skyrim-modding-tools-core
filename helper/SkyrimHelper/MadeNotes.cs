@@ -1,3 +1,4 @@
+using System.Globalization;
 using Mutagen.Bethesda.Plugins.Aspects;
 using Mutagen.Bethesda.Plugins.Cache;
 using Mutagen.Bethesda.Plugins.Records;
@@ -23,6 +24,25 @@ internal static class MadeNotes
         foreach (var shout in mod.Shouts.Where(s => s.FormKey.ModKey == mod.ModKey))
         {
             if (files.GetValueOrDefault(shout.FormKey) is not { } relative) continue;
+            // A shout with no words, or a word that casts no spell, does nothing when shouted: eval round 128's shout runs wrote a
+            // spell's fields into the shout, deleted them as refused, and built a shout of no words, or of one word naming no
+            // spell — each build a plain success.
+            // `Spell: 000000:Skyrim.esm`, round 128's shout #3, is no spell either.
+            static bool None(Mutagen.Bethesda.Plugins.IFormLinkGetter link) => link.IsNull || link.FormKey.ID == 0;
+            var hollow = shout.WordsOfPower.Select((w, i) => (Word: w, Index: i)).Where(w => None(w.Word.Spell) || None(w.Word.Word)).ToList();
+            if (shout.WordsOfPower.Count == 0 || hollow.Count > 0)
+            {
+                var said = shout.WordsOfPower.Count == 0
+                    ? $"{shout.EditorID ?? Session.FormKeyText(shout.FormKey)} has no WordsOfPower, so shouting it does nothing"
+                    : $"{shout.EditorID ?? Session.FormKeyText(shout.FormKey)}'s " + string.Join(" and ", hollow.Select(w =>
+                        $"WordsOfPower[{w.Index}] names {(None(w.Word.Spell) && None(w.Word.Word) ? "no Word and no Spell" : None(w.Word.Spell) ? "no Spell" : "no Word")}")) +
+                      (hollow.Count == 1 ? ", so that word does nothing" : ", so those words do nothing");
+                notes.Add($"{relative}: {said} — a shout is three words, each a `Word:` (a WordOfPower of the mod's own, in WordsOfPower/), " +
+                    "its `Spell:` (a spell of `Type: Voice`, in Spells/, its effect with the word's strength) and its `RecoveryTime:`: " +
+                    "the magic skill's *A shout* writes one whole, readSkill {\"skill\": \"skyrim-modding-magic\"}, as the game's Frost Breath has it, " +
+                    "readRecord {\"record\": \"FrostBreathShout\"}");
+                continue;
+            }
             var spells = shout.WordsOfPower.Where(w => !w.Spell.IsNull)
                 .Select(w => mod.Spells.FirstOrDefault(s => s.FormKey == w.Spell.FormKey)
                     ?? (lookup.TryResolve<ISpellGetter>(w.Spell.FormKey, out var found) ? found : null))
@@ -66,7 +86,42 @@ internal static class MadeNotes
                 $"the copy, not the game's. Where the game's {game.Name} was meant, one call makes the recipe make it and builds again: " +
                 ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, $"{{\"path\": \"CreatedObject\", \"value\": {ToolCalls.Quoted(game.EditorId!)}}}", build: true) +
                 (copyFile is null ? "" : $", and {copyFile} is then named by nothing: delete it, {ToolCalls.Delete(pluginDir, copyFile)}") +
-                $"; where a {type} of its own was meant, nothing to change, and this warning stays");
+                $"; only where the user asked for a new {type} of its own beside the game's is the copy meant — then nothing to change, and this warning stays");
+        }
+        return notes;
+    }
+
+    /// <summary>
+    /// A recipe of the project's whose perk condition is turned around — HasPerk NotEqualTo 1, LessThan 1, EqualTo 0 — so it is
+    /// shown only to a player without the perk. Copied from a tempering recipe's, eval round 128's recipe+detailed #3 had it, and
+    /// its build was a plain success.
+    /// </summary>
+    public static List<string> RecipePerks(ISkyrimModGetter mod, ILinkCache lookup, string pluginDir)
+    {
+        var files = EffectCasting.Files(pluginDir);
+        var notes = new List<string>();
+        foreach (var recipe in mod.ConstructibleObjects.Where(c => c.FormKey.ModKey == mod.ModKey))
+        {
+            if (files.GetValueOrDefault(recipe.FormKey) is not { } relative) continue;
+            for (var i = 0; i < recipe.Conditions.Count; i++)
+            {
+                if (recipe.Conditions[i] is not IConditionFloatGetter condition || condition.Data is not IHasPerkConditionDataGetter has) continue;
+                var value = condition.ComparisonValue;
+                var without = condition.CompareOperator switch
+                {
+                    CompareOperator.NotEqualTo or CompareOperator.LessThan => value == 1,
+                    CompareOperator.EqualTo or CompareOperator.LessThanOrEqualTo => value == 0,
+                    _ => false
+                };
+                if (!without) continue;
+                var perk = lookup.TryResolve<IPerkGetter>(has.Perk.Link.FormKey, out var found) && found.EditorID is { } id ? id : Session.FormKeyText(has.Perk.Link.FormKey);
+                notes.Add($"{relative}: Conditions[{i}] is HasPerk {perk} {condition.CompareOperator} {value.ToString(CultureInfo.InvariantCulture)}, so the " +
+                    $"recipe is shown only to a player without {perk} — where it needs the perk, one call makes it EqualTo 1, as the game's " +
+                    "RecipeWeaponSteelSword has it, and builds again: " +
+                    ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative,
+                        $"{{\"path\": \"Conditions[{i}].CompareOperator\", \"value\": \"EqualTo\"}}, {{\"path\": \"Conditions[{i}].ComparisonValue\", \"value\": 1}}", build: true) +
+                    "; where it is meant for a player without it, nothing to change, and this warning stays");
+            }
         }
         return notes;
     }

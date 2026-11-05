@@ -181,14 +181,18 @@ public static class EffectCasting
             var written = relative is not null && Regex.IsMatch(File.ReadAllText(Path.Combine(pluginDir, relative)), @"^Archetype:", RegexOptions.Multiline);
             var official = $"the official plugins' {effect.Archetype.Type} effects name Health most often: {usual} — each of their {ModifierCount} " +
                 "modifier and absorb effects names an actor value";
-            var use = offered.Contains(effect.FormKey) ? null : Uses(effect, mod).Select(u => ((Caster Caster, int Item)?)u).FirstOrDefault();
-            var instead = use is { } found ? InPlace(effect, found.Caster, found.Item, mod, lookup, index, pluginDir, files) : null;
+            // No game effect in its place: with no actor value, the one most like it was matched on its casting alone — Candlelight's
+            // light, a flame cloak, Oakflesh's armor for a carry weight raised — and three of eval round 128's effect runs took it and
+            // deleted their own. Its one example, Health, was taken for a carry weight in a fourth.
+            var buff = "for a buff that raises a value for a time, as the game's Fortify effects (AlchFortifyCarryWeight), " +
+                "`MutagenObjectType: MagicEffectPeakValueModArchetype` and the value — `ActorValue: CarryWeight`, `Stamina`, `Magicka`, " +
+                "`SpeedMult` or a skill such as `OneHanded`";
             problems.Add($"{relative ?? name}: " + (written
                 ? $"{name} is a {effect.Archetype.Type} that names no actor value, so it changes nothing — write the one it changes under " +
-                    $"Archetype, as deep as its other lines: `ActorValue: Health` for damage ({official})"
+                    $"Archetype, as deep as its other lines: {buff}; `ActorValue: Health` for damage or healing ({official})"
                 : $"{name} has no Archetype, so it is a ValueModifier that names no actor value, and changes nothing — write `Archetype:` " +
-                    $"at the margin with `MutagenObjectType: MagicEffectArchetype` and the actor value it changes below it, two spaces in: " +
-                    $"`ActorValue: Health` for damage ({official})") + (instead is null ? "" : $"; or {instead}"));
+                    $"at the margin, and below it, two spaces in, the kind and the actor value it changes: {buff}; " +
+                    $"`MutagenObjectType: MagicEffectArchetype` and `ActorValue: Health` for damage or healing ({official})"));
         }
         return problems;
     }
@@ -256,6 +260,9 @@ public static class EffectCasting
     /// carry weight raised for 60 s stays raised for good. Eval round 126's effect task — a spell raising carry weight by an
     /// effect of the mod's own — went 0 of 10, nine of its effects built so, with no school: the build's line said "no
     /// school", and nothing more. Each note names the game's effect on the same value that recovers, and its school.
+    /// The school is the spell's own first — its half-cost perk, its menu art: in round 128 the game's effect named was Extra
+    /// Pockets', a Restoration ability, and both runs given it wrote Restoration into an Alteration spell's effect. An effect a
+    /// spell gives no magnitude raises nothing (round 128's effect #3 and #5), and is noted too.
     /// </summary>
     public static List<string> GivenBackNotes(ISkyrimModGetter mod, ILinkCache lookup, RecordIndex index, string pluginDir)
     {
@@ -267,27 +274,40 @@ public static class EffectCasting
         {
             var uses = Uses(effect, mod).Select(u => (u.Caster, u.Item, Data: u.Caster.Effects[u.Item].Data)).ToList();
             var timed = uses.FirstOrDefault(u => u.Data is { Duration: > 0, Magnitude: > 0 });
+            var empty = uses.FirstOrDefault(u => u.Data is null || u.Data.Magnitude == 0);
             var cast = uses.FirstOrDefault(u => u.Caster.Kind == "Spell" && u.Caster.Type == "Spell");
-            var unrecovered = timed.Caster is not null && !effect.Flags.HasFlag(MagicEffect.Flag.Recover);
+            var recovers = effect.Flags.HasFlag(MagicEffect.Flag.Recover);
+            var unrecovered = !recovers && (timed.Caster is not null || empty.Caster is not null && empty.Caster.Cast != CastType.ConstantEffect);
             var schoolless = cast.Caster is not null && effect.MagicSkill == ActorValue.None;
-            if ((!unrecovered && !schoolless) || files.GetValueOrDefault(effect.FormKey) is not { } relative) continue;
+            var nothing = empty.Caster is not null;
+            if ((!unrecovered && !schoolless && !nothing) || files.GetValueOrDefault(effect.FormKey) is not { } relative) continue;
 
             var name = effect.EditorID ?? Session.FormKeyText(effect.FormKey);
             var value = effect.Archetype.ActorValue.ToString();
             var game = Recovering(effect, lookup, index, mod.ModKey);
-            var school = game?.MagicSkill is { } skill && skill != ActorValue.None ? skill.ToString() : null;
+            var spellSchool = cast.Caster is not null ? SchoolOf(cast.Caster.Record, lookup) : null;
+            var gameSchool = game is not null && game.CastType == effect.CastType && game.MagicSkill != ActorValue.None ? game.MagicSkill.ToString() : null;
+            var school = spellSchool?.School ?? gameSchool;
             var said = new List<string>();
+            if (nothing)
+                said.Add($"{empty.Caster!.Record.EditorID ?? Session.FormKeyText(empty.Caster.Record.FormKey)}'s Effects[{empty.Item}] gives {name} no Magnitude, " +
+                    $"so it raises {value} by nothing — write how much as `Magnitude:` and how many seconds as `Duration:` under that item's `Data:`, " +
+                    "as Oakflesh's has `Magnitude: 40` and `Duration: 60`");
             if (unrecovered)
-                said.Add($"{name} raises {value} by {timed.Data!.Magnitude.ToString(CultureInfo.InvariantCulture)} for {timed.Data.Duration} s and " +
-                    $"has no Recover among its Flags, so when the effect ends the game never takes it back: the {value} stays raised for good");
+                said.Add(timed.Caster is not null
+                    ? $"{name} raises {value} by {timed.Data!.Magnitude.ToString(CultureInfo.InvariantCulture)} for {timed.Data.Duration} s and " +
+                      $"has no Recover among its Flags, so when the effect ends the game never takes it back: the {value} stays raised for good"
+                    : $"{name} has no Recover among its Flags, so when the effect ends the game never takes back what it raised: the {value} stays raised for good");
             if (schoolless)
-                said.Add($"{(unrecovered ? "it" : name)} names no MagicSkill, so {cast.Caster.Record.EditorID ?? Session.FormKeyText(cast.Caster.Record.FormKey)} " +
-                    "belongs to no school: casting it trains no skill, and no skill lowers its cost");
+                said.Add($"{(said.Count > 0 ? "it" : name)} names no MagicSkill, so {cast.Caster!.Record.EditorID ??Session.FormKeyText(cast.Caster.Record.FormKey)} " +
+                    "belongs to no school: casting it trains no skill, and no skill lowers its cost" +
+                    (spellSchool is { } own ? $" — {own.From} is {own.School}'s" : ""));
             var set = new List<string>();
             if (unrecovered)
                 set.Add($"{{\"path\": \"Flags\", \"value\": [{string.Join(", ", FlagNames(effect).Append("Recover").Distinct().Select(ToolCalls.Quoted))}]}}");
             if (schoolless && school is not null) set.Add($"{{\"path\": \"MagicSkill\", \"value\": \"{school}\"}}");
-            var has = new[] { unrecovered ? "Recover" : null, schoolless && school is not null ? $"MagicSkill {school}" : null }.OfType<string>().ToList();
+            var has = new[] { unrecovered ? "Recover" : null, schoolless && spellSchool is null && gameSchool is not null ? $"MagicSkill {gameSchool}" : null }
+                .OfType<string>().ToList();
             var like = game is not null && has.Count > 0 ? $"{Shown(game)}, the game's effect on {value}, has {string.Join(" and ", has)}: " : "";
             var write = set.Count > 0
                 ? $"one call writes {(set.Count == 1 ? "it" : "both")} and builds again: " +
@@ -296,9 +316,36 @@ public static class EffectCasting
             var named = schoolless && school is null
                 ? (write.Length > 0 ? "; and write " : "write ") + "`MagicSkill:` with its school at the margin — Alteration, Conjuration, Destruction, Illusion or Restoration"
                 : "";
-            notes.Add($"{relative}: {string.Join("; and ", said)} — {like}{write}{named}");
+            notes.Add($"{relative}: {string.Join("; and ", said)}" + (like.Length + write.Length + named.Length > 0 ? $" — {like}{write}{named}" : ""));
+        }
+        // A script effect with no script does nothing: one copied from the game's, its script left behind, built as a plain
+        // success (eval round 128's effect+detailed #2).
+        foreach (var effect in mod.MagicEffects.Where(m => m.FormKey.ModKey == mod.ModKey && m.Archetype.Type == MagicEffectArchetype.TypeEnum.Script
+            && (m.VirtualMachineAdapter?.Scripts.Count ?? 0) == 0))
+        {
+            if (!Uses(effect, mod).Any() || files.GetValueOrDefault(effect.FormKey) is not { } relative) continue;
+            var name = effect.EditorID ?? Session.FormKeyText(effect.FormKey);
+            notes.Add($"{relative}: {name} is a Script effect with no script attached, so it does nothing — an effect that raises a value is " +
+                "`Archetype:` with `MutagenObjectType: MagicEffectPeakValueModArchetype` and the `ActorValue:` it raises, as the magic skill's " +
+                "*A magic effect of the mod's own* shows; a script effect names its script under VirtualMachineAdapter");
         }
         return notes;
+    }
+
+    /// <summary>
+    /// A spell's school as its own lines say it: its half-cost perk (AlterationNovice00), else its menu art (MAGINVAlteration),
+    /// with the words that say where it was read; null where neither names one.
+    /// </summary>
+    private static (string School, string From)? SchoolOf(IMajorRecordGetter record, ILinkCache lookup)
+    {
+        if (record is not ISpellGetter spell) return null;
+        string[] schools = ["Alteration", "Conjuration", "Destruction", "Illusion", "Restoration"];
+        string? In(string? editorId) => editorId is null ? null : schools.FirstOrDefault(s => editorId.Contains(s, StringComparison.OrdinalIgnoreCase));
+        if (!spell.HalfCostPerk.IsNull && lookup.TryResolve<IPerkGetter>(spell.HalfCostPerk.FormKey, out var perk) && In(perk.EditorID) is { } byPerk)
+            return (byPerk, $"its HalfCostPerk, {perk.EditorID},");
+        if (!spell.MenuDisplayObject.IsNull && lookup.TryResolve<IStaticGetter>(spell.MenuDisplayObject.FormKey, out var art) && In(art.EditorID) is { } byArt)
+            return (byArt, $"its menu art, {art.EditorID},");
+        return null;
     }
 
     /// <summary>
@@ -313,8 +360,9 @@ public static class EffectCasting
         Enum.GetValues<MagicEffect.Flag>().Where(f => Convert.ToInt64(f) != 0 && effect.Flags.HasFlag(f)).Select(f => f.ToString());
 
     /// <summary>
-    /// The load order's effect on the same value that recovers and harms nothing: one with a school first, then one cast as
-    /// this one is — for a carry weight raised for a time, the potion's Fortify Carry Weight, not Extra Pockets' constant effect.
+    /// The load order's effect on the same value that recovers and harms nothing: one cast as this one is first, then one with
+    /// a school — for a carry weight raised for a time, the potion's Fortify Carry Weight, not Extra Pockets' constant effect,
+    /// which the school first had named in eval round 128.
     /// </summary>
     private static IMagicEffectGetter? Recovering(IMagicEffectGetter own, ILinkCache lookup, RecordIndex index, ModKey mine)
     {
@@ -326,7 +374,12 @@ public static class EffectCasting
                 || !effect.Flags.HasFlag(MagicEffect.Flag.Recover) || effect.Flags.HasFlag(MagicEffect.Flag.Detrimental)) continue;
             found.Add(effect);
         }
-        return found.OrderByDescending(e => e.MagicSkill != ActorValue.None).ThenByDescending(e => e.CastType == own.CastType).FirstOrDefault();
+        // The five masters' before a Creation Club plugin's: ranked by its school, a Creation Club perk's effect was named for a carry
+        // weight in place of the potion's (refusal probe after eval round 128).
+        string[] masters = ["Skyrim.esm", "Update.esm", "Dawnguard.esm", "HearthFires.esm", "Dragonborn.esm"];
+        return found.OrderByDescending(e => e.CastType == own.CastType)
+            .ThenByDescending(e => masters.Contains(e.FormKey.ModKey.FileName.String, StringComparer.OrdinalIgnoreCase))
+            .ThenByDescending(e => e.MagicSkill != ActorValue.None).FirstOrDefault();
     }
 
     /// <summary>The project's record files by the FormKey each writes.</summary>

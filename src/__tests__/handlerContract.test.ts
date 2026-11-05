@@ -381,7 +381,16 @@ describe("addPatch's note says what each copy is", () => {
             { path: 'p/plugin/Cells/0/GroupRecordData.yaml', text: 'GroupType: InteriorCellBlock\n' }] }]);
         expect(said).toContain(`"record": "${cell}/RecordData.yaml"`);
         expect(said).not.toContain('"record": "Cells/0/6/GroupRecordData.yaml"');
-        expect(said).toContain(`each reference is a file of its own in ${cell}/Temporary/ — readRecord {"record": "WhiterunBreezehome"}`);
+        // At its full path: by the path in the plugin folder alone, round 128's references landed outside the project.
+        expect(said).toContain(`each reference is a file of its own in p/plugin/${cell}/Temporary/, written at that full path with your file tools ` +
+            '— readRecord {"record": "WhiterunBreezehome"}');
+    });
+
+    it('sends a cell copied alone on to the reference\'s file, not to editRecord', async () => {
+        const { nextStep } = await answer([{ formId: '0165A8:Skyrim.esm', editorId: 'WhiterunBreezehome', type: 'Cell', files: [
+            { path: 'p/plugin/Cells/0/6/WhiterunBreezehome - 0165A8_Skyrim.esm/RecordData.yaml', text: 'FormKey: 0165A8:Skyrim.esm\n' }] }]);
+        expect(nextStep).toMatch(/^Write what is placed in the cell as a file of its own in its Temporary folder/);
+        expect(nextStep).not.toContain('editRecord');
     });
 
     it('names an enchanted weapon as a Weapon with its enchantment, and the enchantment as the record to copy', async () => {

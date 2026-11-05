@@ -329,8 +329,13 @@ export function projectsFile(projectsDir: string, paths: ProjectPaths, given: st
     const byEditorId = /[\\/]|\.\w+$/.test(name) ? undefined : recordFiles(paths.plugin).find(file =>
         new RegExp(`^EditorID:[ \\t]*['"]?${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"]?[ \\t]*$`, 'mi').test(fs.readFileSync(file, 'utf8')));
     const inPlugin = path.resolve(paths.plugin, name);
+    // A file's bare name, without its group folder, is the one record file of that name: deleteRecord of
+    // `LCharBanditMelee1H - 039CFC_Skyrim.esm.yaml` was refused twice for the folder left out (eval round 128's leveled+detailed #3).
+    const byName = /[\\/]/.test(name) || !/\.ya?ml$/i.test(name) ? [] : recordFiles(paths.plugin)
+        .filter(file => path.basename(file).toLowerCase() === name.toLowerCase());
     const file = byEditorId ?? [inPlugin, path.resolve(projectsDir, name)]
-        .find(candidate => candidate !== besides && fs.existsSync(candidate) && fs.statSync(candidate).isFile()) ?? inPlugin;
+        .find(candidate => candidate !== besides && fs.existsSync(candidate) && fs.statSync(candidate).isFile())
+        ?? (byName.length === 1 && byName[0] !== besides ? byName[0] : undefined) ?? inPlugin;
     // A path not there yet resolved through the nearest folder that is: Windows CI's temp folder has a short 8.3 name,
     // and a missing file's path kept it while the projects folder resolved to the long one.
     const real = (target: string): string => {

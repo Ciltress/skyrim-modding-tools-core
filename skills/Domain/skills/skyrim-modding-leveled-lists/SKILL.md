@@ -14,7 +14,10 @@ Fundamentals — overrides, patches — are in the `skyrim-modding-basics` skill
 The loop in `skyrim-modding-basics` — look up, get the text, edit, build, deploy — with these for lists:
 
 - **Look up** with `types` from `LVLI`, `LVLN`, `LVSP`. To find the list that hands out a kind of
-  thing, search by its editor-ID words (`text: "LItemWeapon"`, `"LCharBandit"`) and read candidates.
+  thing, search by its editor-ID words (`text: "LItemWeapon"`, `"LItemBandit"`) and read candidates.
+  `LItem…` lists hold items, `LChar…` lists hold NPCs: an item never goes into an `LChar…` list.
+- **What NPCs of a kind carry** comes from the leveled item list their template's `Items` name: add an
+  item to that list, not to the NPCs — *Where a new record goes* below names the bandits'.
 - **Adding to an existing list**: `addPatch` the list, then append your entries to the copy, every
   entry already in it kept. A new item or NPC goes into a list once a build has given it its FormID.
 - **Other mods changing the same list**: `readRecord` with `allVersions: true` shows every version.
@@ -47,7 +50,11 @@ player's level, and in blacksmiths' stock. All are Skyrim.esm's records, spelled
 | heavy helmet, light helmet | `LItemArmorHelmetHeavy`, `LItemArmorHelmetLight` | `LItemArmorHelmetHeavyBlacksmith`, `LItemArmorHelmetLightBlacksmith` |
 | heavy shield, light shield | `LItemArmorShieldHeavy`, `LItemArmorShieldLight` | `LitemArmorShieldHeavyBlacksmith`, `LItemArmorShieldLightBlacksmith` |
 | potion of healing, of magicka, of stamina | `LItemPotionRestoreHealth`, `LItemPotionRestoreMagicka`, `LItemPotionRestoreStamina` | |
-| bandit: melee, archer, mage | `LCharBanditMelee1H`, `LCharBanditMissile`, `LCharBanditWizard` | |
+| weapon bandits carry: one-handed, two-handed, bow | `LItemBanditWeapon1H`, `LItemBanditWeapon2H`, `LItemBanditWeaponBow` | |
+
+A new bandit — an NPC, not an item — goes into the leveled NPC lists the bandits come from:
+`LCharBanditMelee1H`, `LCharBanditMissile`, `LCharBanditWizard`. What bandits wear is in `LItemBandit…`
+lists too (`LItemBanditCuirass`, `LItemBanditBoots`); another kind's are found with `text: "LItem<Kind>"`.
 
 A spell tome goes into its school's list of its level — `LItemSpellTomes00Destruction` for a novice
 Destruction tome, then `25`, `50`, `75`, `100` for apprentice to master, and likewise for

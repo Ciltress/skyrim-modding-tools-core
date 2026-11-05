@@ -20,9 +20,12 @@ The loop in `skyrim-modding-basics` — look up, get the text, edit, build, depl
 - **A new spell names a vanilla effect** from the tables below, as it is. The effect is *what* the
   spell does, shared by every spell that names it; *how strongly* is the spell's own `Magnitude`,
   `Area` and `Duration`, under each effect's `Data`: a 40-point frost bolt names `FrostDamageFFAimed`
-  with `Magnitude: 40`. A new `MGEF` is only for what no vanilla effect does: write it, and name it in
+  with `Magnitude: 40`. A new `MGEF` is only for what no vanilla effect does, or when the user asks for
+  an effect of the mod's own: write it as *A magic effect of the mod's own* below shows, and name it in
   the spell by its editor ID. A vanilla `MGEF` itself changes only when every spell, potion and
   enchantment using it should change with it.
+- **A shout** is three kinds of record: the `Shout`, its three `WordsOfPower`, and a spell of
+  `Type: Voice` for each word — *A shout* below. The shout itself has no effects and no casting.
 - **A script effect's** `.psc` goes into `scripts/`; `buildProject` compiles it and fails on a
   compile error.
 - **Done** when the spell is built, every effect's cast type and delivery match the spell's, and
@@ -167,3 +170,119 @@ Skyrim.esm's records: write them as they are, with no search.
 
 `InvisibillityFFSelf` is spelled as Skyrim.esm spells it. Weapon and armor enchantments are in the
 `skyrim-modding-items-and-crafting` skill.
+
+## A magic effect of the mod's own
+
+A Restoration spell that raises the caster's Stamina by 50 for 30 seconds, by an effect of its own: two
+files, the effect mirroring the game's `AlchFortifyStamina` and the spell mirroring `Oakflesh`.
+
+```yaml
+# <project>/plugin/MagicEffects/SecondWindEffect.yaml
+EditorID: SecondWindEffect
+Name:
+  TargetLanguage: English
+  Value: Second Wind
+MenuDisplayObject: MAGINVHealSpellArt
+Flags:
+- Recover
+- PowerAffectsMagnitude
+BaseCost: 5
+MagicSkill: Restoration
+Archetype:
+  MutagenObjectType: MagicEffectPeakValueModArchetype
+  ActorValue: Stamina
+CastType: FireAndForget
+Description:
+  TargetLanguage: English
+  Value: Stamina is increased by <mag> points for <dur> seconds.
+```
+
+```yaml
+# <project>/plugin/Spells/SecondWind.yaml
+EditorID: SecondWind
+Name:
+  TargetLanguage: English
+  Value: Second Wind
+MenuDisplayObject: MAGINVHealSpellArt
+EquipmentType: EitherHand
+BaseCost: 40
+CastType: FireAndForget
+TargetType: Self
+HalfCostPerk: RestorationNovice00
+Effects:
+- BaseEffect: SecondWindEffect
+  Data:
+    Magnitude: 50
+    Duration: 30
+```
+
+- **What it changes** is `Archetype`: the `ActorValue` under it, two spaces in — `CarryWeight`,
+  `Health`, `Magicka`, `Stamina`, `SpeedMult`, or a skill (`OneHanded`, `Sneak`). A buff that raises
+  the value for a time is a `MagicEffectPeakValueModArchetype`, as the game's Fortify effects are;
+  damage and healing are a `MagicEffectArchetype` with `Type: ValueModifier` on `Health`. An effect has
+  no field of its own for the value or the amount: no `CarryWeight:`, no `Data:` on the effect.
+- **How much and how long** is the spell's: `Magnitude` and `Duration` under its effect's `Data`.
+- **`Recover`** gives the value back when the effect ends; without it a buff stays for good.
+- **`MagicSkill`** is the school — the spell's, as its `HalfCostPerk` (`RestorationNovice00`) and menu
+  art are; an Alteration spell's effect is `MagicSkill: Alteration`.
+- **`CastType`** and the spell's `TargetType` are the same as the spell's: `FireAndForget`, `Self`.
+
+## A shout
+
+A shout like Frost Breath, frost at three strengths: one `Shout`, three `WordsOfPower`, three spells
+of `Type: Voice`, mirroring the game's `FrostBreathShout`, `WordFo` and `VoiceFrostBreath1`. Each word
+casts its own spell: the first word the weakest, all three the strongest.
+
+```yaml
+# <project>/plugin/Shouts/WintersBite.yaml
+EditorID: WintersBite
+Name:
+  TargetLanguage: English
+  Value: Winter's Bite
+MenuDisplayObject: MAGINVShoutFrost
+Description:
+  TargetLanguage: English
+  Value: Your voice bites like the northern winter.
+WordsOfPower:
+- Word: WordBrom
+  Spell: VoiceWintersBite1
+  RecoveryTime: 20
+- Word: WordGrov
+  Spell: VoiceWintersBite2
+  RecoveryTime: 40
+- Word: WordSiir
+  Spell: VoiceWintersBite3
+  RecoveryTime: 60
+```
+
+```yaml
+# <project>/plugin/WordsOfPower/WordBrom.yaml — and WordGrov, WordSiir likewise
+EditorID: WordBrom
+Name:
+  TargetLanguage: English
+  Value: Brom
+Translation:
+  TargetLanguage: English
+  Value: Cold
+```
+
+```yaml
+# <project>/plugin/Spells/VoiceWintersBite1.yaml — and 2 and 3 with Magnitude 30 and 45
+EditorID: VoiceWintersBite1
+Name:
+  TargetLanguage: English
+  Value: Winter's Bite
+EquipmentType: EitherHand
+Type: Voice
+CastType: FireAndForget
+TargetType: Aimed
+Effects:
+- BaseEffect: FrostDamageFFAimed
+  Data:
+    Magnitude: 15
+```
+
+A word's spell names the effect of what it does — a damage spell's `BaseEffect` from *A damage spell's
+lines* — with the strength of its word. Words of the game's own (`WordFo`) are words the player may
+already know: a new shout has words of its own. The player learns a word at a word wall, or by the
+console's `player.teachword`, and the shout by `player.addshout`.
