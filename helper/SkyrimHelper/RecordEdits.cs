@@ -532,6 +532,15 @@ public static class RecordEdits
                 "lines a file writes them in, each item from `- `. Nothing was written.");
             label += " (a list, sent as a text)";
         }
+        // Links inside the parts sent, each with the comment a file writes after it — a leveled list's Entries with
+        // `"Reference": "037C18:Skyrim.esm # LItemBanditMace"` — are the links alone: written in quotes, comment and all, the
+        // build refused all four, and the refused call the build's note handed back held them so again (the mini-round after
+        // eval round 128, leveled+detailed #1).
+        if (UncommentedLinks(value, types[^1]) is { } bareParts)
+        {
+            value = bareParts;
+            label += " (each link sent with a `# comment` after it, left out)";
+        }
         // A value the field cannot hold, refused before it is written: "twelve" for a damage, 12 for BasicStats, null — each was
         // written, and the build after it refused the file the tool had made (refusal probes of 2026-10-31, E06, E20, E23).
         if (Unwritable(types[^1], value, path) is { } unwritable)
@@ -564,6 +573,34 @@ public static class RecordEdits
             default:
                 return null;
         }
+    }
+
+    /// <summary>
+    /// Parts sent — a list of them, or one — with each link inside them that has a `# comment` after it as the link alone, by
+    /// the type of the field it is sent for; null where no link inside them has one.
+    /// </summary>
+    private static JsonNode? UncommentedLinks(JsonNode? value, Type type)
+    {
+        if (value is not (JsonArray or JsonObject)) return null;
+        var changed = false;
+        JsonNode? Walk(JsonNode? node, Type at)
+        {
+            switch (node)
+            {
+                case JsonArray items when Items(at) is { IsEnum: false } item:
+                    return new JsonArray(items.Select(i => Walk(i, item)).ToArray());
+                case JsonObject fields:
+                    return new JsonObject(fields.Select(f => KeyValuePair.Create(f.Key,
+                        f.Key != "MutagenObjectType" && Property(at, f.Key)?.PropertyType is { } field ? Walk(f.Value, field) : f.Value?.DeepClone())));
+                case JsonValue one when RecordLinks.LinkTarget(at) is not null && Uncommented(one) is { } bare:
+                    changed = true;
+                    return bare;
+                default:
+                    return node?.DeepClone();
+            }
+        }
+        var walked = Walk(value, type);
+        return changed ? walked : null;
     }
 
     /// <summary>What is wrong with a value for a field of a type, as words, or null where it can hold it.</summary>
