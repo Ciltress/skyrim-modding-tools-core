@@ -95,6 +95,9 @@ describe('resolveSkill', () => {
         expect(named('game version')).toBe('skyrim-modding-game-versions');
         expect(named('crash')).toBe('skyrim-modding-crash-analysis');
         expect(named('crash log')).toBe('skyrim-modding-crash-analysis');
+        expect(named('quest')).toBe('skyrim-modding-quests-and-scripts');
+        expect(named('papyrus')).toBe('skyrim-modding-quests-and-scripts');
+        expect(named('script')).toBe('skyrim-modding-quests-and-scripts');
     });
 
     it('answers nothing for a word no skill has', () => {

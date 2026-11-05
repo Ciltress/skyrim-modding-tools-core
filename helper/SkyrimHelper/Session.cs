@@ -604,6 +604,7 @@ public sealed class Session : IDisposable
             ["resolvedLinks"] = resolvedLinks,
             ["built"] = new JsonArray(BuiltRecords.Lines(written, lookup).Select(l => (JsonNode)l).ToArray()),
             ["models"] = ModelFiles.Unknown(mod, lookup, Index, dir),
+            ["scripts"] = AttachedScripts.List(mod, dir),
             ["notes"] = new JsonArray(notes),
             ["fixes"] = new JsonArray(fixes.Select(f => (JsonNode)f).ToArray())
         };

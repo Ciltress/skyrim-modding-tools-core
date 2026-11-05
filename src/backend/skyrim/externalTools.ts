@@ -78,10 +78,7 @@ export async function papyrusCommand(options: CompileOptions): Promise<{ executa
             `${options.compiler ? '' : ', or SKYRIM_PAPYRUS_COMPILER to a compiler'}.`);
     }
 
-    const modSources = mods
-        .filter(mod => mod.enabled && mod.managed)
-        .flatMap(mod => MOD_SOURCE_FOLDERS.map(folder => findCaseInsensitive(path.join(instance.modsDir, mod.name), folder)))
-        .filter((dir): dir is string => !!dir);
+    const modSources = modSourceFolders(instance, mods);
 
     if (/^papyruscompiler(\.exe)?$/i.test(path.basename(compiler))) {
         const problem = await platform.creationKitCompilerProblem();
@@ -98,6 +95,23 @@ export async function papyrusCommand(options: CompileOptions): Promise<{ executa
         executable: compiler,
         args: ['compile', '-nocache', '-i', scriptsDir, '-o', outputDir, ...[...modSources, vanilla].flatMap(dir => ['-h', dir])]
     };
+}
+
+/** Every enabled mod's script sources, in mod order: what the compiler imports before the vanilla sources. */
+export function modSourceFolders(instance: Instance, mods: readonly ModEntry[]): string[] {
+    return mods
+        .filter(mod => mod.enabled && mod.managed)
+        .flatMap(mod => MOD_SOURCE_FOLDERS.map(folder => findCaseInsensitive(path.join(instance.modsDir, mod.name), folder)))
+        .filter((dir): dir is string => !!dir);
+}
+
+/**
+ * The folders a script's source is read from, in the compiler's order of precedence: the project's own, every enabled
+ * mod's, then the vanilla sources the Creation Kit unpacked — those of them that exist.
+ */
+export function scriptSourceFolders(scriptsDir: string, creationKitDir: string, instance: Instance, mods: readonly ModEntry[]): string[] {
+    const vanilla = SOURCE_FOLDERS.map(folder => findCaseInsensitive(creationKitDir, folder)).find(Boolean);
+    return [scriptsDir, ...modSourceFolders(instance, mods), ...(vanilla ? [vanilla] : [])].filter(dir => fs.existsSync(dir));
 }
 
 /**

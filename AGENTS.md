@@ -110,6 +110,8 @@ src/
   backend/skyrim/installer.ts       what installMod decides before writing: a plain file's Data folder, a
                                     FOMOD installer's questions and the files its choices install
   backend/skyrim/externalTools.ts   the Papyrus compilers (the Creation Kit's, russo-2025's) and git
+  backend/skyrim/scriptChecks.ts    a build's Papyrus scripts held against their sources and the game's scripts:
+                                    what compiles and builds, and does nothing in game
   backend/skyrim/platform.ts        everything that differs by operating system (ADR-0007) — the only
                                     place that asks; Windows and Linux side by side
   backend/skyrim/pathSettings.ts    the settings that name a path, read once: `~` and variables expanded

@@ -43,7 +43,8 @@ export const FAMILY_SKILLS = [
     { skill: 'skyrim-modding-items-and-crafting', covers: 'weapons, armor, other items, their enchantments and recipes' },
     { skill: 'skyrim-modding-magic', covers: 'spells, magic effects and enchantments' },
     { skill: 'skyrim-modding-npcs', covers: 'NPCs' },
-    { skill: 'skyrim-modding-leveled-lists', covers: 'leveled lists' }
+    { skill: 'skyrim-modding-leveled-lists', covers: 'leveled lists' },
+    { skill: 'skyrim-modding-quests-and-scripts', covers: 'quests and Papyrus scripts' }
 ] as const;
 
 /** URI prefix for the resource form of a skill, as a product serves it. */

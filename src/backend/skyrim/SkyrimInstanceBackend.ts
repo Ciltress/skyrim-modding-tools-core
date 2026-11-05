@@ -4,13 +4,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { PermanentBackendError, SessionExpiredError } from '../Backend.js';
 import type { HealthReport } from '../Backend.js';
-import { compileScripts, hasUncommittedChanges } from './externalTools.js';
+import { compileScripts, hasUncommittedChanges, scriptSourceFolders } from './externalTools.js';
+import { PapyrusSources, scriptWarnings, type ScriptedRecord } from './scriptChecks.js';
 import { HelperError, HelperUnavailableError } from './helperClient.js';
 import {
     FomodInstaller, InstallError, checkRoot, defaultModName, findDataRoot, folderName, modMetaIni, placeInLoadOrder, plainLayout, pluginOrder,
     topFolders, type ArchiveListing, type InstallEnvironment, type PluginHeader, type UnpackedFile
 } from './installer.js';
-import type { Instance } from './modManager.js';
+import type { Instance, ModEntry } from './modManager.js';
 import { ModError, findMod, listedMods, nexusRecord, ownerOf, pluginFiles } from './modList.js';
 import { checkGameVersion, myGamesDir } from './gameVersion.js';
 import { Attributor, dataPath } from './crash/attribution.js';
@@ -512,6 +513,7 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
         fs.rmSync(paths.build, { recursive: true, force: true });
 
         const instance = this.engine.modManager.readInstance();
+        const mods = this.engine.modManager.readModList(instance);
         const compiled = await compileScripts({
             platform: this.engine.platform,
             compiler: this.engine.papyrusCompiler,
@@ -520,7 +522,7 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
             scriptsDir: paths.scripts,
             outputDir: path.join(paths.build, 'Scripts'),
             instance,
-            mods: this.engine.modManager.readModList(instance)
+            mods
         });
 
         const output = path.join(paths.build, plugin);
@@ -529,7 +531,7 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
         const giveBack = keepRecordTexts(paths.plugin);
         let built: {
             records: number; masters: string[]; headerVersion: number; resolvedLinks: BuildResult['resolvedLinks']; built?: string[]; notes?: string[];
-            models?: UnknownModel[]; fixes?: EditFix[];
+            models?: UnknownModel[]; scripts?: ScriptedRecord[]; fixes?: EditFix[];
         };
         try {
             built = await afterLocalWrites(this.engine.helper.call<typeof built>('build', {
@@ -562,6 +564,7 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
         warnings.push(...built.notes ?? []);
         const models = await this.missingModels(paths, built.models ?? []);
         warnings.push(...models.map(model => model.warning));
+        warnings.push(...await this.scriptWarnings(paths, built.scripts ?? [], instance, mods));
         warnings.push(...await this.refusedEditWarnings(paths));
 
         // A file keeps the name its author gave it, the build's FormID written in: renamed the way Spriggit names
@@ -1050,6 +1053,24 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
      * Blade on a mesh path of their own making, which the game draws nothing for, and each build answered success. A model of
      * "" is a record with none at all (round 93's note #1, round 94's sword #5).
      */
+    /**
+     * The project's scripted records held against the scripts' sources and the game's scripts (scriptChecks.ts): what builds
+     * and does nothing in game. A script the project has no source of is looked up where the game finds it, as a mesh is.
+     */
+    private async scriptWarnings(paths: ProjectPaths, records: ScriptedRecord[], instance: Instance, mods: ModEntry[]): Promise<string[]> {
+        const hasSources = fs.existsSync(paths.scripts) && fs.readdirSync(paths.scripts).some(f => f.toLowerCase().endsWith('.psc'));
+        if (records.length === 0 && !hasSources) return [];
+        const names = [...new Set(records.flatMap(r => [...r.scripts, ...(r.aliases ?? []).flatMap(a => a.scripts)].map(s => s.name)))];
+        const unwritten = names.filter(name => !findCaseInsensitive(paths.scripts, `${name}.psc`));
+        const found = unwritten.length > 0 ? await this.findGameFiles(unwritten.map(name => `scripts\\${name}.pex`)) : {};
+        return scriptWarnings(records, {
+            scriptsDir: paths.scripts,
+            sources: new PapyrusSources(scriptSourceFolders(paths.scripts, this.engine.creationKitDir, instance, mods)),
+            gameHas: name => !!found[`scripts\\${name}.pex`],
+            recordTexts: hasSources ? recordFiles(paths.plugin).map(file => fs.readFileSync(file, 'utf8')).join('\n') : ''
+        });
+    }
+
     private async missingModels(paths: ProjectPaths, models: UnknownModel[]): Promise<{ warning: string; fix?: EditFix }[]> {
         if (models.length === 0) return [];
         const found = await this.findGameFiles([...new Set(models.flatMap(m => [m.model, ...m.like.map(l => l.model)]).filter(Boolean))]);
