@@ -23,6 +23,8 @@ from mathutils import Euler
 ROOT = "Skyrim Cell"
 MESHES = "Skyrim Meshes"
 TAU = 2 * math.pi
+# The parts of a mesh the game never draws, by the names PyNifly gives them: culling volumes and editor markers.
+HIDDEN_PARTS = ("MultiBound", "BSBound", "EditorMarker", "bhkCollision", "bhkRigidBody")
 
 
 def game_to_blender_rotation(rotation):
@@ -67,6 +69,11 @@ def _model_collection(model, folder, meshes, library, failed):
     except Exception as error:  # a mesh PyNifly cannot read: the reference stays an empty where it stands
         failed.append(f"{model}: {error}")
     for obj in [o for o in bpy.data.objects if o not in before]:
+        # What the game never draws: the bounding volumes it culls with (a tree's BSMultiBoundOBB, a box taller than the tree)
+        # and the markers only the Creation Kit shows.
+        if any(word in obj.name for word in HIDDEN_PARTS):
+            bpy.data.objects.remove(obj, do_unlink=True)
+            continue
         for other in list(obj.users_collection):
             if other != collection:
                 other.objects.unlink(obj)
@@ -95,6 +102,9 @@ def _ground(ground, collection):
     mesh = bpy.data.meshes.new("Ground")
     mesh.from_pydata(verts, [], faces)
     mesh.update()
+    earth = bpy.data.materials.new("Ground")
+    earth.diffuse_color = (0.22, 0.2, 0.14, 1)
+    mesh.materials.append(earth)
     obj = bpy.data.objects.new("Ground (not exported)", mesh)
     obj["skyrim_ground"] = True
     obj.hide_select = True

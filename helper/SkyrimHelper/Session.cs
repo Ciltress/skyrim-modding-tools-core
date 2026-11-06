@@ -24,6 +24,8 @@ public sealed class Session : IDisposable
 
     private SkyrimRelease release = SkyrimRelease.SkyrimSE;
     private readonly List<LoadedPlugin> plugins = [];
+    /// <summary>Where the load order places each record (PlacedIndex), built on first use and dropped with the load order.</summary>
+    private PlacedIndex? placedIndex;
     private ILinkCache<ISkyrimMod, ISkyrimModGetter>? cache;
     /// <summary>Started as soon as a load order arrives, so the first search rarely waits for it.</summary>
     private Task<RecordIndex>? indexing;
@@ -310,7 +312,22 @@ public sealed class Session : IDisposable
         {
             var files = new JsonArray();
             foreach (var (path, text) in await Render([context], context.ModKey))
+            {
+                // An exterior cell's worldspace is its frame: its own file stands without its text — Tamriel's is 92 KB, the
+                // most of it OffsetData — which filled a small model's prompts to 60k tokens (the outdoor task's first
+                // mini-round). addPatch of the cell copies it as it is.
+                if (context.Record is ICellGetter && path.Split('/') is ["Worldspaces", _, "RecordData.yaml"])
+                {
+                    files.Add(new JsonObject
+                    {
+                        ["path"] = path,
+                        ["text"] = $"# The worldspace's own record, {text.Length / 1024} KB, left out: the frame of its cells, which addPatch " +
+                            "of a cell copies as it is — nothing in it is the cell's.\n"
+                    });
+                    continue;
+                }
                 files.Add(new JsonObject { ["path"] = path, ["text"] = Annotated(text) });
+            }
             versions.Add(new JsonObject
             {
                 ["plugin"] = context.ModKey.FileName.String,
@@ -335,6 +352,12 @@ public sealed class Session : IDisposable
         var cellFile = versions.OfType<JsonObject>().SelectMany(v => v["files"]!.AsArray().OfType<JsonObject>())
             .Select(f => f["path"]!.GetValue<string>()).FirstOrDefault(f => RecordFiles.IsCellFile(f.Split('/')));
         if (CellContents.Of(contexts, Index, cellFile) is { } placed) answer["placed"] = placed;
+        // A thing that can be placed: where the load order places it (PlacedIndex).
+        else if (winner is IPlaceableObjectGetter or INpcGetter)
+        {
+            placedIndex ??= PlacedIndex.Build(plugins.Select(x => (ISkyrimModGetter)x.Mod).ToList());
+            if (placedIndex.Of(formKey, p["in"]?.GetValue<string>()) is { } placedIn) answer["placedIn"] = placedIn;
+        }
         return answer;
     }
 
@@ -1009,6 +1032,7 @@ public sealed class Session : IDisposable
         plugins.Clear();
         cache = null;
         indexing = null;
+        placedIndex = null;
     }
 
     public void Dispose() => DisposePlugins();

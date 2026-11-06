@@ -81,9 +81,13 @@ reference.
 An exterior cell — a town's streets, the wilderness — is a square of 4096 units of a worldspace, by its grid. A
 reference is placed there as indoors, in the cell's folder inside its worldspace's.
 
-1. `findRecords` with `types: ["CELL"]` and the place's name — a town's cells are named after it: `Riverwood`,
-   `Riverwood01`, `Riverwood02`… — and readRecord the one whose `placed` lists what the new object goes beside. Its
-   `newReference` names the cell's folder and its square: the x and y a reference placed in it stands between.
+1. Find where the thing it goes beside stands. Beside something the game places — a well, a grindstone, a shrine —
+   `findRecords` its name (`{"text": "Well", "types": ["ACTI", "STAT", "FURN"]}`) and readRecord it with `in`, the place's
+   name: `{"record": "<its editor ID>", "in": "Riverwood"}`. Its `placedIn` lists each place it stands — the cell, its grid
+   outdoors, the position. Otherwise `findRecords` with `types: ["CELL"]` and the place's name — a town's cells are named
+   after it: `Riverwood`, `Riverwood01`, `Riverwood02`… — and readRecord the one whose `placed` lists it.
+   readRecord of the cell gives its `newReference`: the cell's folder and its square, the x and y a reference placed in it
+   stands between.
 2. `addPatch` the cell: `{"project": "RiverwoodCamp", "records": ["Riverwood"]}` copies the worldspace's file, its
    blocks' and the cell's.
 3. The reference in the cell's `Temporary` folder —
@@ -100,8 +104,9 @@ reference is placed there as indoors, in the cell's folder inside its worldspace
 
 4. `buildProject`. A reference whose position lies in another cell's square is warned, with the cell it lies in.
 
-- **Position**: inside the cell's square, beside an object `placed` lists, at that object's z — the ground rises and
-  falls, so a z from across the cell sinks it into a hill or leaves it floating.
+- **Position**: inside the cell's square, beside the object `placedIn` or `placed` gives, at that object's z — the
+  ground rises and falls, so a z from across the cell sinks it into a hill or leaves it floating. A thing near a cell's
+  edge has its neighbour beside it: the new reference goes in the folder of the cell its own position lies in.
 - **Navmesh and LOD** are the Creation Kit's: a large object placed on a road blocks the NPCs' paths there, and nothing
   placed is seen from afar. A chest, a bedroll, a barrel beside a house need neither.
 

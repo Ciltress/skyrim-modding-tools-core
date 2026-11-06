@@ -104,6 +104,11 @@ export class RecordsHandlers extends BaseHandler {
                             allVersions: {
                                 type: 'boolean',
                                 description: 'Every plugin\'s version, winning first. Defaults to false.'
+                            },
+                            in: {
+                                type: 'string',
+                                description: 'For a thing the game places — a grindstone, a chest, a statue — where it stands only in the cells ' +
+                                    'whose editor ID or name holds this text: a town or a place, e.g. "Riverwood".'
                             }
                         },
                         required: ['record']
@@ -114,7 +119,8 @@ export class RecordsHandlers extends BaseHandler {
                 run: args => asRequestError(this.backend.readRecord({
                     record: recordRef(requireString(args, 'record', `Pass a FormID or an editor ID. ${FORM_ID_HINT}`)),
                     plugin: optionalString(args, 'plugin'),
-                    allVersions: optionalBoolean(args, 'allVersions')
+                    allVersions: optionalBoolean(args, 'allVersions'),
+                    in: optionalString(args, 'in')
                 }))
             }
         ];

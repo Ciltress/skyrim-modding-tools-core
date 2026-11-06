@@ -512,6 +512,8 @@ export interface RecordRequest {
     plugin?: string;
     /** Every plugin's version, winning first. */
     allVersions?: boolean;
+    /** For a placeable record: its places only in the cells whose editor ID or name holds this text (`placedIn`). */
+    in?: string;
 }
 
 export interface RecordFile {
