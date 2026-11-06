@@ -104,6 +104,76 @@ public static class RecordEdits
         return new JsonObject { ["file"] = relative, ["differs"] = differs };
     }
 
+    /// <summary>
+    /// The fields a call sent as a text beside a copy — addPatch's records with an `input` it has not — written into the copy as
+    /// editRecord writes them: a list's items after the copy's own, one the copy holds already left out, any other field set. The
+    /// text may be a patch's (`*** Begin Patch`, lines from a `+`) or fenced. Eval round 130's leveled runs sent addPatch the
+    /// Silver Sword's entry so four times, `Entries:` and `- Data: {Level: 1, Reference: SilverSword, Count: 1}`, dropped without
+    /// a word: each answer said "copied", and no run that sent it passed. Answers editRecord's answer and what was left out —
+    /// `kept` — or `unread` where the text reads as no fields.
+    /// </summary>
+    public static JsonObject Input(string pluginDir, string record, string input, RecordIndex? index = null)
+    {
+        var (file, relative, type) = Find(pluginDir, record, out _);
+        var text = File.ReadAllText(file).Replace("\r\n", "\n");
+        if (Unread(text) is not null || Root(text) is not { } root || InputFields(input) is not { } sent)
+            return new JsonObject { ["file"] = relative, ["unread"] = true };
+        var set = new JsonObject();
+        var kept = new JsonArray();
+        // Items alone go into the copy's one list of items with fields — a leveled list's Entries, a container's Items.
+        var lists = root.Children.Where(f => f.Value is YamlSequenceNode { Style: not YamlDotNet.Core.Events.SequenceStyle.Flow } l
+                && l.Children.Count > 0 && l.Children.All(c => c is YamlMappingNode))
+            .Select(f => ((YamlScalarNode)f.Key).Value ?? "").ToList();
+        var into = lists.Contains("Entries") ? "Entries" : lists.Contains("Items") ? "Items" : lists is [var only] ? only : null;
+        if (sent is YamlSequenceNode alone)
+        {
+            if (into is null) return new JsonObject { ["file"] = relative, ["unread"] = true };
+            Append(into, alone);
+        }
+        else if (sent is YamlMappingNode fields)
+            foreach (var (keyNode, value) in fields.Children)
+            {
+                var key = (keyNode as YamlScalarNode)?.Value ?? "";
+                if (key is "" or "FormKey" or "EditorID") continue;
+                if (value is YamlSequenceNode add && root.Children.TryGetValue(new YamlScalarNode(key), out var had) && had is YamlSequenceNode)
+                    Append(key, add);
+                else set[key] = FromYaml(value);
+            }
+        if (set.Count == 0) return new JsonObject { ["file"] = relative, ["changed"] = new JsonArray(), ["kept"] = kept };
+        var edited = Edit(pluginDir, relative, set, null, index);
+        edited["kept"] = kept;
+        return edited;
+
+        void Append(string key, YamlSequenceNode add)
+        {
+            var list = root.Children.TryGetValue(new YamlScalarNode(key), out var had) ? had as YamlSequenceNode : null;
+            var held = (list?.Children ?? []).Select(c => Normal(Unwrapped(FromYaml(c)), index)).ToList();
+            var n = list?.Children.Count ?? 0;
+            foreach (var item in add.Children)
+            {
+                var json = FromYaml(item);
+                if (held.Any(h => JsonNode.DeepEquals(h, Normal(Unwrapped(json), index)))) { kept.Add($"{key}: {Shown(json)}, which it holds already"); continue; }
+                held.Add(Normal(Unwrapped(json), index));
+                set[$"{key}[{n++}]"] = json;
+            }
+        }
+    }
+
+    /// <summary>A text of fields as YAML — a patch's markers and its lines' `+`, a markdown fence left out — or null.</summary>
+    private static YamlNode? InputFields(string input)
+    {
+        var lines = input.Replace("\r\n", "\n").Split('\n')
+            .Where(l => !Regex.IsMatch(l, @"^(?:\*\*\*|@@|```)")).ToList();
+        if (lines.Where(l => l.Trim().Length > 0).All(l => l.StartsWith('+'))) lines = lines.Select(l => l.StartsWith('+') ? l[1..] : l).ToList();
+        try
+        {
+            var stream = new YamlStream();
+            stream.Load(new StringReader(string.Join('\n', lines)));
+            return stream.Documents.FirstOrDefault()?.RootNode is { } node and (YamlMappingNode or YamlSequenceNode) ? node : null;
+        }
+        catch (Exception e) when (e is YamlException or ArgumentException) { return null; }
+    }
+
     /// <summary>Whether a path names a field the record type has — where it is placed, as editRecord places it.</summary>
     private static bool HasField(Type type, string path)
     {

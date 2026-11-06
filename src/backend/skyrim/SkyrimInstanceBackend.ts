@@ -21,7 +21,7 @@ import { CRASH_RULES } from './crash/rules/index.js';
 import { setIniValue } from './gameIni.js';
 import { findCaseInsensitive } from './paths.js';
 import {
-    ProjectError, assignFormIds, belongsAt, combinedFixes, correctCopiedEscapes, createProject, type CopiedEscape, deleteCall, deleteRecordFile, editCall, editedRecord, fencedRecordFiles, fileHash,
+    ProjectError, assignFormIds, belongsAt, combinedFixes, orderedWarnings, correctCopiedEscapes, createProject, type CopiedEscape, deleteCall, deleteRecordFile, editCall, editedRecord, fencedRecordFiles, fileHash,
     keepRecordTexts, misnamedRecordFiles, looseRecordFiles, moveCall, moveRecordFile, nearRecordFile, newestSourceTime, outsideRecordCalls, placeCall,
     projectExists, projectInfo, projectPaths, readDeployState, readProjectHeader, recordFileList, recordFiles, strayRecordFiles, syncFolder, syncYaml,
     whereRecordsGo, writeDeployState, type EditFix, type ProjectPaths
@@ -30,7 +30,7 @@ import type { SkyrimEngine } from './engine.js';
 import { NexusCatalogue, markDownloadInstalled, readDownloadMeta } from './nexus.js';
 import type {
     AddPatchRequest, AddPatchResult, BuildResult, DeleteRecordRequest, DeleteRecordResult, DeployResult, DisableModRequest, DisableModResult,
-    EditIniRequest, EditIniResult, EditRecordRequest, GameFile, EditRecordResult, EnableModRequest, EnableModResult, InstallModQuestions, InstallModRequest, ReadCrashLogRequest,
+    EditIniRequest, EditIniResult, EditRecordRequest, GameFile, EditRecordResult, EditInputRequest, EditInputResult, EnableModRequest, EnableModResult, InstallModQuestions, InstallModRequest, ReadCrashLogRequest,
     InstallModResult, GameVersionCheck, ModList, ModListQuery, MoveRecordRequest, MoveRecordResult,
     NewProjectRequest, NexusAccount, NexusDownload, NexusMod, NexusSearchQuery, NexusSearchResult, ProjectFile, ProjectInfo,
     PullResult, RecordQuery, RecordRequest, RecordSearchResult, RecordVersion, RecordVersions, SkyrimBackend
@@ -46,6 +46,8 @@ interface UnknownModel {
     file: string;
     editorId: string;
     model: string;
+    /** The field the model is in: `Model.File`, or an armor's ground model, `WorldModel.Male.Model.File`. */
+    field?: string;
     like: { editorId: string; model: string }[];
 }
 
@@ -282,6 +284,18 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
                 `call again for its changes — ${editCall(paths, request)}`);
         });
         return { ...edited, file: path.resolve(paths.plugin, edited.file) };
+    }
+
+    async editInput(request: EditInputRequest): Promise<EditInputResult> {
+        await this.engine.ensureFresh();
+        const paths = projectPaths(this.engine.projectsDir, request.project);
+        readProjectHeader(paths);
+        const edited = await this.engine.helper.call<{ file: string; changed?: string[]; kept?: string[]; unread?: boolean }>('editInput', {
+            projectPluginDir: paths.plugin,
+            record: editedRecord(this.engine.projectsDir, paths, request.record),
+            input: request.input
+        });
+        return { file: path.resolve(paths.plugin, edited.file), changed: edited.changed ?? [], kept: edited.kept ?? [], unread: edited.unread ?? false };
     }
 
     /** A call refused for want of its file, kept with the record files the project had then; the same call sent again replaces it. */
@@ -575,7 +589,12 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
         // for warnings to fix, wrote its NPC again from memory with the lines among her Flags, and answered unbuilt (eval
         // round 113's npc #3). The file's name ends at the first ": " — a drive's colon has none after it.
         const done = corrected.map(entry => entry.replace(': ', ', done by the build: '));
-        const combined = combinedFixes(paths, [...checked.fixes ?? [], ...built.fixes ?? [], ...models.flatMap(model => model.fix ? [model.fix] : [])]);
+        // In the order they are to be fixed, a copy's own fixes waiting while the recipe that makes it is warned.
+        const order = orderedWarnings(warnings);
+        warnings.splice(0, warnings.length, ...order.warnings);
+        const waits = (fix: EditFix) => order.waiting.some(copy => copy.toLowerCase() === fix.file.replace(/\\/g, '/').toLowerCase());
+        const combined = combinedFixes(paths, [...checked.fixes ?? [], ...built.fixes ?? [], ...models.flatMap(model => model.fix ? [model.fix] : [])]
+            .filter(fix => !waits(fix)));
         return {
             project, plugin, output,
             ...(done.length > 0 ? { corrected: done } : {}),
@@ -1077,18 +1096,22 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
         const has = (model: string) => model !== '' && (!!found[model] || !!findCaseInsensitive(paths.assets, dataPath(model)));
         return models.filter(m => !has(m.model)).map(m => {
             const like = m.like.find(l => has(l.model));
+            const field = m.field ?? 'Model.File';
+            // An armor's ground model draws it where it lies; worn, its armor addons do (eval round 130's armor #3).
+            const ground = field.startsWith('WorldModel.');
             const warning = (m.model
-                ? `${m.file}: ${m.editorId}'s model, ${m.model}, is a mesh the game does not have — in no archive it loads, no mod ` +
-                  `and not this project's assets folder — so the game draws nothing for ${m.editorId}`
+                ? `${m.file}: ${m.editorId}'s ${ground ? `ground model, ${field.replace(/\.Model\.File$/, '')}'s` : 'model'}, ${m.model}, is a mesh the ` +
+                  `game does not have — in no archive it loads, no mod and not this project's assets folder — so the game draws nothing for ${m.editorId}`
                 : `${m.file}: ${m.editorId} has no Model, so the game draws nothing for it`) +
-                ': not in the world, in a hand or in the inventory. ' +
+                (ground ? ' where it lies: dropped, on a shelf or in the inventory (worn, it is drawn by its Armature\'s armor addons). '
+                    : ': not in the world, in a hand or in the inventory. ') +
                 (like
                     ? `${like.editorId} is the record of the load order most like it: one call gives it ${like.editorId}'s model, ` +
-                      `${like.model}, and builds again: ${editCall(paths, { record: m.file, set: { 'Model.File': like.model } })}`
+                      `${like.model}, and builds again: ${editCall(paths, { record: m.file, set: { [field]: like.model } })}`
                     : 'Give it the Model lines of a record of the load order like it, as readRecord shows them, and build again') +
                 // Split here: Linux's path functions keep a backslash as part of a name.
                 (m.model ? `; a mesh of its own goes into the project's assets folder, as ${path.join(paths.assets, ...dataPath(m.model).split('\\'))}.` : '.');
-            return { warning, ...(like ? { fix: { file: m.file, set: [{ path: 'Model.File', value: like.model }], remove: [] } } : {}) };
+            return { warning, ...(like ? { fix: { file: m.file, set: [{ path: field, value: like.model }], remove: [] } } : {}) };
         });
     }
 

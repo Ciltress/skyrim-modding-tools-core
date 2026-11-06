@@ -207,7 +207,17 @@ public static class EffectCasting
             // No game effect in its place: with no actor value, the one most like it was matched on its casting alone — Candlelight's
             // light, a flame cloak, Oakflesh's armor for a carry weight raised — and three of eval round 128's effect runs took it and
             // deleted their own. Its one example, Health, was taken for a carry weight in a fourth.
-            var buff = "for a buff that raises a value for a time, as the game's Fortify effects (AlchFortifyCarryWeight), " +
+            // The value its own name says first: "Frost Resistance", its Archetype written `Type: Resistance`, was answered with the
+            // archetypes, then with a buff's values and Health, and eval round 130's armor+detailed #4 built a Health effect.
+            var meant = NamedActorValue(effect);
+            // An enchantment's effect for an enchantment's: the frost helmet's was offered AbResistFrost, an ability's, first.
+            var castBy = mod.ObjectEffects.Any(o => o.Effects.Any(e => e.BaseEffect.FormKey == effect.FormKey)) ? "Ench"
+                : mod.Ingestibles.Any(i => i.Effects.Any(e => e.BaseEffect.FormKey == effect.FormKey)) ? "Alch" : null;
+            var theirs = meant == ActorValue.None ? null : GameEffectOf(meant, effect, castBy, lookup, index);
+            var buff = (meant == ActorValue.None ? "" : $"`ActorValue: {meant}`, the value its name says" +
+                    (theirs is null ? "" : $", as the game's {theirs} changes it — readRecord {{\"record\": \"{theirs}\"}} shows its lines, " +
+                        $"and a caster can name {theirs} itself as its BaseEffect, in place of {name}") + "; else ") +
+                "for a buff that raises a value for a time, as the game's Fortify effects (AlchFortifyCarryWeight), " +
                 "`MutagenObjectType: MagicEffectPeakValueModArchetype` and the value — `ActorValue: CarryWeight`, `Stamina`, `Magicka`, " +
                 "`SpeedMult` or a skill such as `OneHanded`";
             problems.Add($"{relative ?? name}: " + (written
@@ -557,6 +567,40 @@ public static class EffectCasting
         var named = words.ToHashSet();
         return Elements.Where(e => e.Words.Any(named.Contains)).Select(e => e.Resist).ToList() is [var one] ? one : ActorValue.None;
     }
+
+    /// <summary>
+    /// The actor value an effect's own words name — its Name, Description and EditorID: a resistance with its element, ResistFrost
+    /// for "Frost Resistance"; else the one whose words are all among them, CarryWeight for "Fortify Carry Weight". None for none,
+    /// or two alike.
+    /// </summary>
+    private static ActorValue NamedActorValue(IMagicEffectGetter effect)
+    {
+        var words = new[] { effect.Name?.String, effect.Description?.String }.SelectMany(NameWords)
+            .Concat(RecordLinks.WordsOf(effect.EditorID ?? "")).ToHashSet();
+        if (words.Any(w => w.StartsWith("RESIST", StringComparison.Ordinal)) && ElementOf(words) is var element && element != ActorValue.None)
+            return element;
+        bool Said(string word) => words.Contains(word) || word.Length >= 4 && words.Any(w => w.Length > word.Length && w.StartsWith(word, StringComparison.Ordinal));
+        var named = Enum.GetValues<ActorValue>().Where(v => v != ActorValue.None)
+            .Select(v => (Value: v, Words: RecordLinks.WordsOf(v.ToString())))
+            .Where(c => c.Words.Count > 0 && c.Words.All(Said))
+            .GroupBy(c => c.Words.Count).OrderByDescending(g => g.Key).FirstOrDefault()?.ToList();
+        return named is [var one] ? one.Value : ActorValue.None;
+    }
+
+    /// <summary>
+    /// The five masters' magic effect that changes an actor value: of the caster's kind where its EditorID says one — Ench for an
+    /// enchantment's, Alch for a potion's — then cast as this one is: EnchResistFrostConstantSelf for a frost helmet's.
+    /// </summary>
+    private static string? GameEffectOf(ActorValue value, IMagicEffectGetter effect, string? castBy, ILinkCache lookup, RecordIndex index) =>
+        index.ByFormKey.Values
+            .Where(e => e.Signature == "MGEF" && e.EditorId is not null && KindParts.Masters.Contains(e.FormKey.ModKey.FileName.String, StringComparer.OrdinalIgnoreCase))
+            .Select(e => lookup.TryResolve<IMagicEffectGetter>(e.FormKey, out var found) ? found : null)
+            .OfType<IMagicEffectGetter>()
+            .Where(m => m.Archetype.ActorValue == value && m.EditorID is not null)
+            .OrderByDescending(m => castBy is not null && m.EditorID!.StartsWith(castBy, StringComparison.Ordinal))
+            .ThenByDescending(m => m.CastType == effect.CastType && m.TargetType == effect.TargetType)
+            .ThenBy(m => m.EditorID!.Length).ThenBy(m => m.EditorID, StringComparer.Ordinal)
+            .FirstOrDefault()?.EditorID;
 
     /// <summary>A name's words, upper-cased: "Fire Damage" → FIRE, DAMAGE.</summary>
     private static IEnumerable<string> NameWords(string? name) =>

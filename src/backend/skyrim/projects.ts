@@ -539,6 +539,38 @@ export function combinedFixes(paths: ProjectPaths, fixes: EditFix[]): { file: st
     return combined;
 }
 
+/**
+ * A build's warnings in the order they are to be fixed, and the files whose fixes wait: a recipe making a copy of a game
+ * record first, the copy's own warnings left out while it stands — they matter only where the copy is meant — and a warning
+ * that stays where the user named nothing last. Eval round 130's recipe #2 and #3 made a sword of their own named as the
+ * game's: their first build gave the sword's warnings first with the call that made them, then the recipe's, and once that
+ * call was sent, both answered on the recipe's alone. Its sword #3 answered on its first warning, a copied weight "nothing
+ * to change … answer with the build", two warnings with their call after it.
+ */
+export function orderedWarnings(warnings: string[]): { warnings: string[]; waiting: string[] } {
+    const copies = [...new Set(warnings.flatMap(w => /, and ([^\s,;]+\.yaml) is then named by nothing: delete it/.exec(w)?.[1] ?? []))];
+    const on = (copy: string) => (w: string) => w.startsWith(`${copy}: `);
+    const heldBack = warnings.filter(w => copies.some(copy => on(copy)(w)));
+    const made = (w: string) => copies.find(copy => w.includes(`, and ${copy} is then named by nothing`));
+    const shown = warnings.filter(w => !heldBack.includes(w)).map(w => {
+        const copy = made(w);
+        const n = copy ? heldBack.filter(on(copy)).length : 0;
+        return n === 0 ? w : `${w}. ${n === 1 ? 'A warning' : `${n} warnings`} on ${copy} itself ${n === 1 ? 'is' : 'are'} left out ` +
+            `until then: ${n === 1 ? 'it matters' : 'they matter'} only where the copy is meant`;
+    });
+    const stays = /nothing to change, and this warning stays — answer with the build\./;
+    const leads = shown.filter(w => made(w) !== undefined);
+    const last = shown.filter(w => stays.test(w) && !leads.includes(w));
+    const rest = shown.filter(w => !leads.includes(w) && !last.includes(w));
+    const others = leads.length + rest.length > 0;
+    return {
+        warnings: [...leads, ...rest, ...last.map(w => others
+            ? w.replace(stays, 'nothing to change, and this warning stays — answer with the build once the other warnings are fixed.')
+            : w)],
+        waiting: copies.filter(copy => heldBack.some(on(copy)))
+    };
+}
+
 /** JSON as the other calls in answers are written: a space after each colon and comma. */
 function callJson(value: unknown): string {
     if (Array.isArray(value)) return `[${value.map(callJson).join(', ')}]`;

@@ -139,7 +139,7 @@ export class ProjectsHandlers extends BaseHandler {
                         records,
                         from: optionalString(args, 'from'),
                         plugin: optionalString(args, 'plugin')
-                    })).then(result => {
+                    })).then(async result => {
                         // Asked for a new sword "like the Iron Sword", a model patched the Iron Sword and renamed it:
                         // every Iron Sword in the game became its Flame Blade (eval probe 16). Said after every copied
                         // file's text, it left the model making its "new" sword or note this way in four of six misses
@@ -234,9 +234,45 @@ export class ProjectsHandlers extends BaseHandler {
                                 `with your file tools — readRecord {"record": ${JSON.stringify(name)}} lists what the game places there, and the ` +
                                 'lines a new one is written with.';
                         }).join(' ');
+                        // Arguments addPatch has not, said so; a text among them — the fields to change in the copy, `Entries:` and the
+                        // items to add — written into the one copy as editRecord writes it. Eval round 130's leveled runs sent the Silver
+                        // Sword's entry as `input` four times, dropped without a word: each answer said "copied", and none passed.
+                        const known = new Set(['project', 'records', 'from', 'plugin']);
+                        const extra = Object.keys(args).filter(key => !known.has(key));
+                        const textKey = extra.find(key => typeof args[key] === 'string' && /\S/.test(args[key] as string));
+                        const copyFile = (first ? inPlugin(ownFile(first.files)?.path) : undefined) ?? shown?.relative;
+                        let inputNote = '';
+                        let inputWritten = false;
+                        if (textKey && records.length === 1 && copyFile) {
+                            const written = await this.backend.editInput({ project: result.project.project, record: copyFile, input: args[textKey] as string })
+                                .catch((error: unknown) => error instanceof Error ? error : new Error(String(error)));
+                            if (written instanceof Error) {
+                                inputNote = `\`${textKey}\` is no argument of addPatch's, and what it held could not be written into ${copyFile}: ` +
+                                    `${written.message} Change the copy with editRecord.`;
+                            } else if (written.unread || written.changed.length === 0) {
+                                inputNote = `\`${textKey}\` is no argument of addPatch's, and nothing of it is written: ` +
+                                    (written.unread ? 'it reads as no fields of the copy' : `the copy holds it already (${written.kept.join('; ')})`) +
+                                    `. Change ${copyFile} with editRecord.`;
+                            } else {
+                                inputWritten = true;
+                                inputNote = `\`${textKey}\` is no argument of addPatch's — what it held is written into ${copyFile}, as editRecord ` +
+                                    `writes it: ${written.changed.join('; ')}` +
+                                    (written.kept.length > 0 ? `; left out, as the copy holds them already: ${written.kept.join('; ')}` : '') + '.';
+                            }
+                        } else if (textKey) {
+                            inputNote = `\`${textKey}\` is no argument of addPatch's, and nothing of it is written: ` +
+                                `${records.length === 1 ? 'no copy was made to write it into' : `this call copied ${records.length} records`} — ` +
+                                'change each copy with editRecord.';
+                        }
+                        const ignored = extra.filter(key => key !== textKey);
+                        const ignoredNote = ignored.length === 0 ? '' :
+                            `${ignored.map(key => `\`${key}\``).join(', ')} ${ignored.length === 1 ? 'is no argument' : 'are no arguments'} of addPatch's: nothing of ${ignored.length === 1 ? 'it' : 'them'} was used.`;
                         return {
-                            note: [copiedNote, keptNote, remadeNote, cellNote].filter(Boolean).join(' '),
-                            nextStep: cells.length === result.added.length && cells.length > 0
+                            note: [inputNote, ignoredNote, copiedNote, keptNote, remadeNote, cellNote].filter(Boolean).join(' '),
+                            nextStep: inputWritten
+                                ? `The copy holds what \`${textKey}\` sent: run buildProject next — or change it further with editRecord, {"record": ` +
+                                  `${JSON.stringify(copyFile)}, "set": [${field}], "build": true}.`
+                                : cells.length === result.added.length && cells.length > 0
                                 ? 'Write what is placed in the cell as a file of its own in its Temporary folder, at the full path the note names, ' +
                                   'then run buildProject.'
                                 : `Change a copy's fields with editRecord, which needs no old text to match — {"record": ` +

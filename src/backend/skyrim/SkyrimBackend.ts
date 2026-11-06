@@ -16,6 +16,8 @@ export interface SkyrimBackend extends Backend {
     addPatch(request: AddPatchRequest): Promise<AddPatchResult>;
     /** Changes fields of one record file of a project by their paths, with no text to match (docs/adr/0008). */
     editRecord(request: EditRecordRequest): Promise<EditRecordResult>;
+    /** Writes the fields a call sent as a text beside a copy — addPatch's `input` — into that copy, as editRecord writes them. */
+    editInput(request: EditInputRequest): Promise<EditInputResult>;
     /** Moves a record file into a project's plugin folder: from a wrong folder, a wrong name, or from outside every project. */
     moveRecord(request: MoveRecordRequest): Promise<MoveRecordResult>;
     /** Deletes a record file of the projects folder: a stray copy, or a record the mod no longer needs. */
@@ -299,6 +301,25 @@ export interface EditRecordResult {
     changed: string[];
     /** The file's text after the change. */
     text: string;
+}
+
+export interface EditInputRequest {
+    project: string;
+    /** The copy's file, as EditRecordRequest's `record`. */
+    record: string;
+    /** The text sent: YAML fields — `Entries:` and the items to add — maybe as a patch's lines or fenced. */
+    input: string;
+}
+
+export interface EditInputResult {
+    /** The full path of the copy's file. */
+    file: string;
+    /** Each change made, as editRecord's. */
+    changed: string[];
+    /** The items left out, the copy holding them already. */
+    kept: string[];
+    /** The text read as no fields: nothing was written. */
+    unread: boolean;
 }
 
 export interface MoveRecordRequest {

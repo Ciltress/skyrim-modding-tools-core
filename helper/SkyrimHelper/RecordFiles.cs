@@ -616,6 +616,22 @@ public static class RecordFiles
         return hint is not null && Regex.Match(hint, @"^move it under (?<part>\w+)$") is { Success: true } move ? move.Groups["part"].Value : null;
     }
 
+    /// <summary>
+    /// The one other record type whose fields a file's are, all of them, where its own type has one of them nowhere: a copy of
+    /// the Steel Arrow — Projectile, Flags, Damage, Value, Weight at the margin — written in Weapons/. Its fields are not moved
+    /// into a weapon's parts: the refusal sends the file to that type's folder. Eval round 130's arrow+detailed #4 had its
+    /// Damage, Value and Weight moved under BasicStats and its Flags under Data, Projectile alone refused, and built a weapon.
+    /// </summary>
+    internal static Type? WrittenAsOther(Type type, string text)
+    {
+        var keys = TopLevelKey.Matches(text).Select(m => m.Groups[1].Value)
+            .Where(k => k is not ("MutagenObjectType" or "FormKey" or "EditorID" or "VersionControl" or "Version2")).Distinct().ToList();
+        var known = FieldsOf(type);
+        if (!keys.Any(k => !known.Contains(k) && HintIn(type, known, k, text) is null)) return null;
+        var owners = Groups.Values.OfType<Type>().Distinct().Where(o => !o.IsAbstract && o != type && keys.All(FieldsOf(o).Contains)).ToList();
+        return owners is [var only] ? only : null;
+    }
+
     /// <summary>What a top-level field its type lacks is likely meant to be, as the file writes it — the value on its line, the fields below it — or null.</summary>
     private static string? HintIn(Type type, HashSet<string> known, string key, string text) =>
         ActorValueHint(type, key, text) ?? DataHint(type, key, text) ?? TextHint(type, key, text) ?? Hint(type, known, key, ValueOf(text, key), ValuesOf(text, key), FieldsBelow(text, key));
@@ -1016,7 +1032,7 @@ public static class RecordFiles
     /// delete it, after it had written the record again in the right folder (eval probe 10 after round 11).
     /// With the load order's index, a FormKey of another plugin is checked against the record it names.
     /// </summary>
-    public static (int Records, List<string> Problems, List<(string File, string Copy)> LeftOut) Check(string pluginDir, RecordIndex? index = null)
+    public static (int Records, List<string> Problems, List<(string File, string Copy)> LeftOut) Check(string pluginDir, RecordIndex? index = null, Dictionary<string, string>? unneeded = null)
     {
         var problems = new List<string>();
         var leftOut = new List<(string File, string Copy)>();
@@ -1216,6 +1232,13 @@ public static class RecordFiles
                         $"there, and delete {string.Join(" and ", fresh.Select(f => f.Relative))} — {string.Join("; ", fresh.Select(f => ToolCalls.Delete(pluginDir, f.Relative)))}"
                     : "an editor ID names one record: give each new one an EditorID of its own, or delete the file of the one not needed — " +
                         string.Join(" or ", files.Select(f => ToolCalls.Delete(pluginDir, f.Relative)))));
+        }
+        // A file of a copy nothing names, its delete first, its faults after it, and those files first (RenameTakenEditorIds).
+        if (unneeded is { Count: > 0 })
+        {
+            string? Copy(string problem) => unneeded.Keys.FirstOrDefault(k => problem.StartsWith($"{k}:", StringComparison.OrdinalIgnoreCase));
+            problems = problems.Select(p => Copy(p) is { } k ? $"{k}: {unneeded[k]}{p[(k.Length + 1)..].TrimStart()}" : p)
+                .OrderByDescending(p => Copy(p) is not null).ToList();
         }
         return (records, problems, leftOut);
     }
@@ -1830,7 +1853,7 @@ public static class RecordFiles
     /// note+detailed #3); in rounds 31 and 51 a magic effect so written took its spell's link from Skyrim.esm's. A link
     /// by the old editor ID names the load order's record again.
     /// </summary>
-    public static List<(string File, string Change)> RenameTakenEditorIds(string pluginDir, RecordIndex index)
+    public static List<(string File, string Change)> RenameTakenEditorIds(string pluginDir, RecordIndex index, Dictionary<string, string>? unneeded = null)
     {
         var changes = new List<(string File, string Change)>();
         var own = OwnPlugin(pluginDir);
@@ -1849,7 +1872,14 @@ public static class RecordFiles
             var value = line.Groups[1];
             File.WriteAllText(file, text[..value.Index] + name + text[(value.Index + value.Length)..]);
             var linker = files.FirstOrDefault(f => f.File != file && LinkBy(editorId).IsMatch(f.Text)).Relative;
-            changes.Add((relative, $"wrote `EditorID: {name}` for `EditorID: {editorId}` — {editorId} is {key.ModKey.FileName}'s " +
+            // A copy nothing names: its own faults, refused, are said after its delete (Check). Eval round 130's world+detailed #4
+            // wrote the gold, the Steel Sword and steel arrows its chest holds as records of its own; refused for their fields
+            // first, it wrote them anew until its turns ran out, the "nothing has this one" said only among the corrections.
+            if (linker is not null && unneeded is not null)
+                unneeded[relative.Replace('\\', '/')] = $"a second {entry.Type} the game holds for nothing — {linker} names {editorId}, " +
+                    $"{key.ModKey.FileName}'s, and nothing of the project names this one: delete it rather than fix it, " +
+                    $"{ToolCalls.Delete(pluginDir, relative, build: true)}; only where this one was meant — then name {name} in {linker} — fix it: ";
+            changes.Add((relative,$"wrote `EditorID: {name}` for `EditorID: {editorId}` — {editorId} is {key.ModKey.FileName}'s " +
                 $"{entry.Type} ({Session.FormKeyText(key)}), and this file, with no FormKey line, is a new record of its own; a link by " +
                 $"{editorId} names {key.ModKey.FileName}'s. " + (linker is null
                     ? "To change that one instead, copy it in with addPatch and write this file empty"
@@ -1955,9 +1985,9 @@ public static class RecordFiles
         Enumerable.Range(1, 99).Select(n => n == 1 ? stem : $"{stem}{n}").First(free);
 
     /// <summary>Throws what is wrong with the files, as the request's fault; answers how many there are, and those left out.</summary>
-    public static (int Records, List<(string File, string Copy)> LeftOut) Require(string pluginDir, RecordIndex? index = null)
+    public static (int Records, List<(string File, string Copy)> LeftOut) Require(string pluginDir, RecordIndex? index = null, Dictionary<string, string>? unneeded = null)
     {
-        var (records, problems, leftOut) = Check(pluginDir, index);
+        var (records, problems, leftOut) = Check(pluginDir, index, unneeded);
         if (problems.Count > 0)
         {
             throw new HelperException("badRecord",

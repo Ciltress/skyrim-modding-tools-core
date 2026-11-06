@@ -7,7 +7,7 @@ import {
 } from '../backend/skyrim/mo2';
 import { InstallError, type FomodConfig } from '../backend/skyrim/installer';
 import { activatePlugins, enableMod } from '../backend/skyrim/mo2Profile';
-import { ProjectError, assignFormIds, copiedEscapes, projectPaths, projectsFile, readProjectHeader, syncYaml } from '../backend/skyrim/projects';
+import { ProjectError, assignFormIds, copiedEscapes, orderedWarnings, projectPaths, projectsFile, readProjectHeader, syncYaml } from '../backend/skyrim/projects';
 import { SkyrimEngine } from '../backend/skyrim/engine';
 import { SkyrimInstanceBackend } from '../backend/skyrim/SkyrimInstanceBackend';
 import { Mo2Manager } from '../backend/skyrim/mo2Manager';
@@ -1191,6 +1191,54 @@ describe('the Skyrim backend', () => {
         expect(await remove('Weapons/SilverSword.yaml', {})).toEqual({
             status: 'success', nextStep: 'Run buildProject next — the plugin has this change only once a build answers success.', deleted: extra
         });
+    });
+
+    it('writes a text sent to addPatch as `input` into its copy, and says so first', async () => {
+        // The Silver Sword's entry sent so four times, dropped without a word: each answer said "copied" (eval round 130's leveled).
+        const { backend, calls, helperAnswers } = makeBackend();
+        const handler = createHandlers(backend as unknown as AppBackend, CORE_PRODUCT).find(h => h.getTools().some(t => t.name === 'addPatch'))!;
+        const patch = async (more: object) =>
+            JSON.parse((await handler.handle('addPatch', { project: 'BanditSilver', records: ['IronSword'], ...more })).content[0].text);
+        const copy = 'Weapons/IronSword - 012EB7_Skyrim.esm.yaml';
+        const input = '*** Begin Patch\nEntries:\n- Data: { Level: 1, Reference: SilverSword, Count: 1 }\n*** End Patch';
+        helperAnswers.editInput = () => ({ file: copy, changed: ['added Entries[3]: {Data: {Level: 1, Reference: SilverSword, Count: 1}}, after the 3 items Entries had'], kept: [] });
+
+        const written = await patch({ input });
+
+        expect(calls.find(c => c.method === 'editInput')!.params).toMatchObject({ record: copy, input });
+        expect(written.note).toMatch(new RegExp(`^\`input\` is no argument of addPatch's — what it held is written into ${escape(copy)}, as editRecord ` +
+            'writes it: added Entries\\[3\\]: '));
+        expect(written.nextStep).toMatch(/^The copy holds what `input` sent: run buildProject next/);
+        // Sent again, the copy holding it: nothing written, and said so.
+        helperAnswers.editInput = () => ({ file: copy, changed: [], kept: ['Entries: {Data: …}, which it holds already'] });
+        expect((await patch({ input })).note).toMatch(/^`input` is no argument of addPatch's, and nothing of it is written: the copy holds it already/);
+        helperAnswers.editInput = () => ({ file: copy, unread: true });
+        expect((await patch({ input: 'just words' })).note).toMatch(/^`input` is no argument of addPatch's, and nothing of it is written: it reads as no fields/);
+        // An argument it has not that holds no text is named, and used for nothing.
+        expect((await patch({ build: true })).note).toMatch(/^`build` is no argument of addPatch's: nothing of it was used\./);
+    });
+
+    it('orders a build\'s warnings: a recipe\'s copy of a game record first, its own warnings held back, one that stays last', () => {
+        // Eval round 130's recipe #2 and #3 fixed the copy's warnings first, then answered on the recipe's; its sword #3 answered
+        // on a copied weight that stays, two warnings with their call after it.
+        const recipe = 'ConstructibleObjects/Recipe.yaml: Recipe makes AncientNordSword "Ancient Nord Sword", a new Weapon … — at the workbench ' +
+            'the player gets the copy, not the game\'s. Where the game\'s Ancient Nord Sword was meant, one call …, and Weapons/AncientNordSword.yaml ' +
+            'is then named by nothing: delete it, which builds again too, deleteRecord {…}; only where …';
+        const own = ['Weapons/AncientNordSword.yaml: AncientNordSword has no AlternateBlockMaterial …', 'Weapons/AncientNordSword.yaml: its model …'];
+        const stays = 'Weapons/Other.yaml: Other has its own damage, but its weight is still IronSword\'s, 9 — copied with its model. Where the ' +
+            'user named no weight, 9 is right as it is: nothing to change, and this warning stays — answer with the build. If the user asked …';
+        const other = 'Weapons/Other.yaml: Other has no FirstPersonModel …';
+
+        const ordered = orderedWarnings([stays, ...own, recipe, other]);
+
+        expect(ordered.waiting).toEqual(['Weapons/AncientNordSword.yaml']);
+        expect(ordered.warnings).toEqual([
+            `${recipe}. 2 warnings on Weapons/AncientNordSword.yaml itself are left out until then: they matter only where the copy is meant`,
+            other,
+            stays.replace('— answer with the build.', '— answer with the build once the other warnings are fixed.')
+        ]);
+        // Alone, the one that stays says to answer with the build.
+        expect(orderedWarnings([stays])).toEqual({ warnings: [stays], waiting: [] });
     });
 
     it('says at both ends of a refusal that nothing was built, and that a build again is what writes the plugin', async () => {

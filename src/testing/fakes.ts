@@ -8,7 +8,7 @@ import { NexusError } from '../backend/skyrim/nexus.js';
 import { ProjectError } from '../backend/skyrim/projects.js';
 import type {
     AddPatchRequest, AddPatchResult, BuildResult, ProjectFile, DeleteRecordRequest, DeleteRecordResult, DeployResult, DisableModRequest, DisableModResult,
-    EditRecordRequest, EditRecordResult, MoveRecordRequest, MoveRecordResult,
+    EditRecordRequest, EditRecordResult, EditInputRequest, EditInputResult, MoveRecordRequest, MoveRecordResult,
     InstallModRequest, InstallModResult,
     NewProjectRequest, NexusDownload, NexusMod, NexusModSummary,
     NexusSearchQuery, NexusSearchResult, ProjectInfo, PullResult, RecordQuery, RecordRequest, RecordSearchResult,
@@ -175,6 +175,12 @@ export class InMemorySkyrimBackend implements AppBackend {
     async moveRecord(request: MoveRecordRequest): Promise<MoveRecordResult> {
         this.existing(request.project);
         return { moved: { from: `/projects/${request.project}/plugin/${request.from}`, to: `/projects/${request.project}/plugin/${request.to}` } };
+    }
+
+    async editInput(request: EditInputRequest): Promise<EditInputResult> {
+        if (!this.projects.has(request.project)) throw new ProjectError(`There is no project '${request.project}'. Create it with newProject or addPatch.`);
+        const unread = !/^\s*[-\w]/m.test(request.input);
+        return { file: `/projects/${request.project}/plugin/${request.record}`, changed: unread ? [] : [`added ${request.input.trim()}`], kept: [], unread };
     }
 
     async deleteRecord(request: DeleteRecordRequest): Promise<DeleteRecordResult> {

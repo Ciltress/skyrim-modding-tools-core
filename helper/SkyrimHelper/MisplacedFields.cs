@@ -34,6 +34,8 @@ public static class MisplacedFields
         {
             var written = File.ReadAllText(file);
             var text = written.Replace("\r\n", "\n");
+            // A file of another type's fields alone is no record of its folder's to put in order: the refusal sends it there.
+            if (RecordFiles.WrittenAsOther(type, text) is not null) continue;
             // One move at a time, each found in the text the last one left: the lines below it have shifted.
             for (var moves = 0; moves < 16 && NextMove(text, type, copiedFrom) is { } move; moves++)
             {

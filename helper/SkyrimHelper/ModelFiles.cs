@@ -25,26 +25,27 @@ internal static class ModelFiles
     public static JsonArray Unknown(ISkyrimModGetter mod, ILinkCache lookup, RecordIndex index, string pluginDir)
     {
         var unknown = new JsonArray();
-        var drawn = mod.EnumerateMajorRecords().Where(r => r is IModeledGetter)
-            .Select(record => (Record: record, Model: Path(((IModeledGetter)record).Model?.File.GivenPath)))
+        var drawn = mod.EnumerateMajorRecords().Where(r => r is IModeledGetter or IArmorGetter)
+            .Select(record => (Record: record, Model: ModelOf(record).Model, Field: ModelOf(record).Field))
             .ToList();
         var modeled = drawn.Where(r => r.Model is not null).ToList();
-        var bare = drawn.Where(r => r.Model is null && r.Record.FormKey.ModKey == mod.ModKey).Select(r => r.Record).ToList();
+        // An armor with no WorldModel is KindParts' to say, with its slots.
+        var bare = drawn.Where(r => r.Model is null && r.Record is not IArmorGetter && r.Record.FormKey.ModKey == mod.ModKey).Select(r => r.Record).ToList();
         if (drawn.Count == 0) return unknown;
         var files = EffectCasting.Files(pluginDir);
         var loaded = new Dictionary<string, List<(IMajorRecordGetter Record, string Model)>>();
 
-        foreach (var (record, model) in modeled)
+        foreach (var (record, model, field) in modeled)
         {
             if (record.FormKey.ModKey != mod.ModKey
                 && lookup.TryResolve(record.FormKey, ((ILoquiObject)record).Registration.GetterType, out var original)
-                && string.Equals(Path((original as IModeledGetter)?.Model?.File.GivenPath), model, StringComparison.OrdinalIgnoreCase))
+                && string.Equals(ModelOf(original).Model, model, StringComparison.OrdinalIgnoreCase))
                 continue;
             var type = RecordIndex.TypeName(record);
             var ofType = loaded.TryGetValue(type, out var list) ? list : loaded[type] = OfType(type);
             if (ofType.Any(r => string.Equals(r.Model, model, StringComparison.OrdinalIgnoreCase))) continue;
             if (files.GetValueOrDefault(record.FormKey) is not { } relative) continue;
-            unknown.Add(Entry(record, relative, model, ofType));
+            unknown.Add(Entry(record, relative, model!, ofType, field));
         }
         foreach (var record in bare)
         {
@@ -52,11 +53,11 @@ internal static class ModelFiles
             var ofType = loaded.TryGetValue(type, out var list) ? list : loaded[type] = OfType(type);
             var all = index.ByFormKey.Values.Count(e => e.Type == type && e.FormKey.ModKey != mod.ModKey && !e.Unplayable);
             if (all < 5 || ofType.Count < 0.9 * all || files.GetValueOrDefault(record.FormKey) is not { } relative) continue;
-            unknown.Add(Entry(record, relative, "", ofType));
+            unknown.Add(Entry(record, relative, "", ofType, "Model.File"));
         }
         return unknown;
 
-        JsonObject Entry(IMajorRecordGetter record, string relative, string model, List<(IMajorRecordGetter Record, string Model)> ofType)
+        JsonObject Entry(IMajorRecordGetter record, string relative, string model, List<(IMajorRecordGetter Record, string Model)> ofType, string field)
         {
             // Most like it: of its kind — a one-handed sword's, not a staff's — then the most links shared — the keywords, sounds
             // and impact sets a copy keeps — then the model the most records are on, the kind's common one, then load order. Round
@@ -79,6 +80,7 @@ internal static class ModelFiles
                 ["file"] = relative.Replace('\\', '/'),
                 ["editorId"] = record.EditorID ?? Session.FormKeyText(record.FormKey),
                 ["model"] = model,
+                ["field"] = field,
                 ["like"] = new JsonArray(like)
             };
         }
@@ -88,16 +90,30 @@ internal static class ModelFiles
         {
             var records = new List<(IMajorRecordGetter, string)>();
             foreach (var entry in index.ByFormKey.Values.Where(e => e.Type == type && e.FormKey.ModKey != mod.ModKey && !e.Unplayable))
-                if (lookup.TryResolve(entry.FormKey, entry.GetterType, out var record) && Path((record as IModeledGetter)?.Model?.File.GivenPath) is { } file)
+                if (lookup.TryResolve(entry.FormKey, entry.GetterType, out var record) && ModelOf(record).Model is { } file)
                     records.Add((record, file));
             return records;
         }
     }
 
-    /// <summary>What a record is among its type, where its type tells: a weapon's animation, a sword's or a staff's.</summary>
+    /// <summary>
+    /// The model a record is drawn with where it lies, and the field that names it: an armor's ground model, WorldModel's —
+    /// worn, its armor addons draw it — else its Model. Eval round 130's armor #3 built a helmet on
+    /// `Armor\Frostguard\Male\Helm.nif`, no file of the game, and the build answered success: only a record's Model was looked up.
+    /// </summary>
+    private static (string? Model, string Field) ModelOf(IMajorRecordGetter record) => record switch
+    {
+        IArmorGetter armor when Path(armor.WorldModel?.Male?.Model?.File.GivenPath) is { } male => (male, "WorldModel.Male.Model.File"),
+        IArmorGetter armor => (Path(armor.WorldModel?.Female?.Model?.File.GivenPath), "WorldModel.Female.Model.File"),
+        IModeledGetter modeled => (Path(modeled.Model?.File.GivenPath), "Model.File"),
+        _ => (null, "Model.File")
+    };
+
+    /// <summary>What a record is among its type, where its type tells: a weapon's animation, a sword's or a staff's; an armor's slots.</summary>
     private static string? Kind(IMajorRecordGetter record) => record switch
     {
         IWeaponGetter weapon => weapon.Data?.AnimationType.ToString(),
+        IArmorGetter armor => armor.BodyTemplate?.FirstPersonFlags.ToString(),
         _ => null
     };
 
@@ -105,6 +121,7 @@ internal static class ModelFiles
     private static bool Plain(IMajorRecordGetter record) => record switch
     {
         IWeaponGetter weapon => weapon.Template.IsNull && weapon.ObjectEffect.IsNull,
+        IArmorGetter armor => armor.TemplateArmor.IsNull && armor.ObjectEffect.IsNull,
         _ => true
     };
 

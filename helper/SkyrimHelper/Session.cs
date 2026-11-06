@@ -63,6 +63,9 @@ public sealed class Session : IDisposable
         // With the load order's records where one is set: a path below a link is refused naming the record linked there.
         "editRecord" => RecordEdits.Edit(Required(p, "projectPluginDir"), Required(p, "record"), p["set"] as JsonObject, p["remove"] as JsonArray,
             indexing is null ? null : Index),
+        // The fields a call sent as a text beside a copy — addPatch's `input` — written into the copy as editRecord writes them.
+        "editInput" => RecordEdits.Input(Required(p, "projectPluginDir"), Required(p, "record"), Required(p, "input"),
+            indexing is null ? null : Index),
         // What an editRecord call refused for want of its file would still change in the file written since; nothing is written.
         "pendingEdit" => RecordEdits.Pending(Required(p, "projectPluginDir"), Required(p, "record"), p["set"] as JsonObject,
             p["remove"] as JsonArray, p["among"] as JsonArray, indexing is null ? null : Index),
@@ -495,7 +498,8 @@ public sealed class Session : IDisposable
         corrected.AddRange(MisplacedFields.OutFromUnderItems(dir));
         // Before the links are checked: a link may name the record by its file's name.
         corrected.AddRange(RecordFiles.NameFromFiles(dir, Index));
-        corrected.AddRange(RecordFiles.RenameTakenEditorIds(dir, Index));
+        var unneeded = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        corrected.AddRange(RecordFiles.RenameTakenEditorIds(dir, Index, unneeded));
         // And one of two new records of different types under one editor ID, which a link of the other names.
         corrected.AddRange(RecordFiles.RenameSharedEditorIds(dir, Index));
         // Before the moves: what is left of another record type may break the reader they use.
@@ -527,7 +531,7 @@ public sealed class Session : IDisposable
         List<(string File, string Copy)> leftOut;
         try
         {
-            (records, leftOut) = RecordFiles.Require(dir, Index);
+            (records, leftOut) = RecordFiles.Require(dir, Index, unneeded);
             RecordLinks.Resolve(dir, Index, LinkPins.Read(dir), out _, Cache);
         }
         catch (HelperException e) when (corrected.Count > 0)
@@ -643,9 +647,9 @@ public sealed class Session : IDisposable
             .Concat(KeptFromSource.Notes(mod, lookup, Index, dir, Examples(p))).Concat(LevelBounds.Notes(mod, dir))
             .Concat(WeaponEffects.Notes(mod, lookup, Index, dir)).Concat(KindParts.Notes(mod, lookup, Index, dir))
             .Concat(RecordNeeds.ListNotes(mod, dir)).Concat(BookTexts.Notes(mod, lookup, Index, dir))
-            .Concat(EffectCasting.GivenBackNotes(mod, lookup, Index, dir)).Concat(MadeNotes.Shouts(mod, lookup, dir))
+            .Concat(EffectCasting.GivenBackNotes(mod, lookup, Index, dir)).Concat(MadeNotes.Shouts(mod, lookup, Index, dir))
             .Concat(MadeNotes.CopiedNames(mod, Index, dir)).Concat(MadeNotes.RecipePerks(mod, lookup, dir)).Concat(MadeNotes.PlayerCopy(mod, dir))
-            .Concat(MadeNotes.NpcItems(mod, lookup, dir)).Concat(MadeNotes.Words(mod, dir))
+            .Concat(MadeNotes.NpcItems(mod, lookup, dir)).Concat(MadeNotes.ListEntries(mod, lookup, dir)).Concat(MadeNotes.Words(mod, dir))
             .Concat(MadeNotes.Unplayable(mod, dir))
             .Concat(CellContents.PlacedNotes(mod, Contexts, Index, dir))
             .Select(n => (JsonNode)n).ToArray();

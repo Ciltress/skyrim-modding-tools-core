@@ -78,6 +78,12 @@ internal static class KindParts
                 if (record is IArmorGetter armor && SlotNote(armor, me, Loaded("ARMO"), index, relative, project, Named) is { } slot) notes.Add(slot);
                 continue;
             }
+            // Of another weight than its keyword says: held against armors of that weight, the note asked for their keywords.
+            if (record is IArmorGetter weighed && WeightNote(weighed, me, index, relative, project) is { } weight)
+            {
+                notes.Add(weight);
+                continue;
+            }
             var all = Loaded(record is IWeaponGetter ? "WEAP" : "ARMO");
             // Not the Civil War's practice weapons, keyword Dummy: 9 of the 48 plain one-handed swords, and none with a type keyword.
             var kind = all.Where(k => k.Kind == me.Kind && k.Plain && !(dummy is { } practice && k.Keywords.Contains(practice))).ToList();
@@ -188,6 +194,33 @@ internal static class KindParts
             $"{string.Join(" and ", slots)}; {Shown(like.Record)}, the one most like it, has {(calls.Count == 1 ? "them" : "them and the rest")}: " +
             $"one call writes {(calls.Count == 1 ? "its slots" : "them")} as {Shown(like.Record)} has them, and builds again: " +
             ToolCalls.Fix(project, relative, string.Join(", ", calls));
+    }
+
+    /// <summary>The keywords that say an armor's weight, and the ArmorType each goes with.</summary>
+    private static readonly (string Keyword, ArmorType Type, string Said)[] Weights =
+    [
+        ("ArmorHeavy", ArmorType.HeavyArmor, "heavy armor — the Heavy Armor skill and its perks"),
+        ("ArmorLight", ArmorType.LightArmor, "light armor — the Light Armor skill and its perks"),
+        ("ArmorClothing", ArmorType.Clothing, "clothing — no armor skill")
+    ];
+
+    /// <summary>
+    /// An armor whose keyword says one weight and whose ArmorType another — none written is LightArmor: the game counts it by its
+    /// ArmorType, its skill and perks, and its keyword by the other. Asked for a heavy helmet, eval round 130's armor+detailed #1
+    /// wrote the keyword ArmorHeavy and no ArmorType, and was warned only that light helmets carry ArmorLight.
+    /// </summary>
+    private static string? WeightNote(IArmorGetter armor, Known me, RecordIndex index, string relative, string project)
+    {
+        var type = armor.BodyTemplate?.ArmorType ?? ArmorType.LightArmor;
+        var said = Weights.Where(w => index.ByEditorId.TryGetValue(w.Keyword, out var key) && me.Keywords.Contains(key)).ToList();
+        if (said is not [var (keyword, meant, meaning)] || meant == type) return null;
+        var counted = Weights.First(w => w.Type == type);
+        var name = armor.EditorID ?? Session.FormKeyText(armor.FormKey);
+        return $"{relative}: {name} has the keyword {keyword}, which says {meaning}, and its BodyTemplate's ArmorType is {type}" +
+            (armor.BodyTemplate is null ? " (it has no BodyTemplate)" : "") + $", which the game counts it as: {counted.Said}. " +
+            $"Where {keyword} says what was meant, one call makes it {meant} and builds again: " +
+            ToolCalls.Fix(project, relative, Field("BodyTemplate.ArmorType", meant.ToString())) +
+            $"; where {type} was, its keyword is {counted.Keyword} — set it in Keywords in place of {keyword}";
     }
 
     /// <summary>The record of a kind most like one: on its mesh where one is, then the one sharing the most links, then load order.</summary>

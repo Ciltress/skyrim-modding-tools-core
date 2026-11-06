@@ -17,10 +17,19 @@ internal static class MadeNotes
     /// 117 shouts cast, 330 are of `Type: Voice` and 2 Powers. Eval round 126's shout task went 0 of 10, no run's word casting
     /// a Voice spell, each build answering success.
     /// </summary>
-    public static List<string> Shouts(ISkyrimModGetter mod, ILinkCache lookup, string pluginDir)
+    public static List<string> Shouts(ISkyrimModGetter mod, ILinkCache lookup, RecordIndex index, string pluginDir)
     {
         var files = EffectCasting.Files(pluginDir);
         var notes = new List<string>();
+        // The five masters' shouts the player learns — named, a word with a translation each — and how many of them have three words.
+        var learned = new Lazy<(int All, int Three)>(() =>
+        {
+            var shouts = index.ByFormKey.Values.Where(e => e.Signature == "SHOU" && e.Name is { Length: > 0 }
+                    && KindParts.Masters.Contains(e.FormKey.ModKey.FileName.String, StringComparer.OrdinalIgnoreCase))
+                .Select(e => lookup.TryResolve<IShoutGetter>(e.FormKey, out var s) ? s : null).OfType<IShoutGetter>()
+                .Where(s => s.WordsOfPower.Count > 0 && s.WordsOfPower.All(w => !w.Word.IsNull)).ToList();
+            return (shouts.Count, shouts.Count(s => s.WordsOfPower.Count == 3));
+        });
         foreach (var shout in mod.Shouts.Where(s => s.FormKey.ModKey == mod.ModKey))
         {
             if (files.GetValueOrDefault(shout.FormKey) is not { } relative) continue;
@@ -42,6 +51,29 @@ internal static class MadeNotes
                     "the magic skill's *A shout* writes one whole, readSkill {\"skill\": \"skyrim-modding-magic\"}, as the game's Frost Breath has it, " +
                     "readRecord {\"record\": \"FrostBreathShout\"}");
                 continue;
+            }
+            // Fewer words than the game's shouts: asked for a new dragon shout, eval round 130's shout #3 built one of one word as a
+            // plain success.
+            if (shout.WordsOfPower.Count < 3 && learned.Value is { All: >= 5 } game && game.Three >= 0.9 * game.All)
+            {
+                var shoutId = shout.EditorID ?? Session.FormKeyText(shout.FormKey);
+                var last = shout.WordsOfPower[^1];
+                string Id(Mutagen.Bethesda.Plugins.IFormLinkGetter link) =>
+                    mod.EnumerateMajorRecords().FirstOrDefault(r => r.FormKey == link.FormKey)?.EditorID ?? Session.FormKeyText(link.FormKey);
+                string Next(string id, int n) => System.Text.RegularExpressions.Regex.IsMatch(id, @"\d$")
+                    ? System.Text.RegularExpressions.Regex.Replace(id, @"\d+$", m => (int.Parse(m.Value, CultureInfo.InvariantCulture) + n).ToString(CultureInfo.InvariantCulture))
+                    : $"{id}{n + 1}";
+                var count = shout.WordsOfPower.Count;
+                var sets = string.Join(", ", Enumerable.Range(1, 3 - count).Select(n =>
+                    $"{{\"path\": \"WordsOfPower[{count + n - 1}]\", \"value\": {{\"Word\": {ToolCalls.Quoted(Next(Id(last.Word), n))}, " +
+                    $"\"Spell\": {ToolCalls.Quoted(Next(Id(last.Spell), n))}, \"RecoveryTime\": {(last.RecoveryTime * (n + 1)).ToString(CultureInfo.InvariantCulture)}}}}}"));
+                notes.Add($"{relative}: {shoutId} has {(count == 1 ? "one word" : $"{count} words")} of power, and " +
+                    (game.Three == game.All ? $"all {game.All} of the five masters' named shouts" : $"{game.Three} of the five masters' {game.All} named shouts") +
+                    " have three — each word learned shouts it stronger, with a Voice spell of its own, and the shouts menu " +
+                    $"shows the three. Write the other {(3 - count == 1 ? "one" : "two")} as its {(count == 1 ? "word is" : "words are")} written: a WordOfPower " +
+                    $"each in WordsOfPower/ and a Voice spell each in Spells/, stronger than the last; then one call names them and builds again: " +
+                    ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, sets, build: true) +
+                    $" — with the EditorIDs you wrote. Only where the user asked for a shout of {(count == 1 ? "one word" : $"{count} words")} is it right as it is");
             }
             var spells = shout.WordsOfPower.Where(w => !w.Spell.IsNull)
                 .Select(w => mod.Spells.FirstOrDefault(s => s.FormKey == w.Spell.FormKey)
@@ -195,6 +227,55 @@ internal static class MadeNotes
     }
 
     /// <summary>
+    /// A copy of a game's leveled list that holds entries the game's has not in place of some the game's has: those are handed
+    /// out no more. An entry set at an index the list has writes over the one there — `Entries[{count}]` adds one after the
+    /// last. Asked for bandits that can also carry silver swords, eval round 130's leveled #3 set `Entries[3]` and `Entries[0]`
+    /// on three of the bandits' lists, and #4 an entry's Reference, each build a plain success. A copy that only lost entries
+    /// is a removal, and not noted.
+    /// </summary>
+    public static List<string> ListEntries(ISkyrimModGetter mod, ILinkCache lookup, string pluginDir)
+    {
+        var files = EffectCasting.Files(pluginDir);
+        var notes = new List<string>();
+        var own = mod.EnumerateMajorRecords().Where(r => r.FormKey.ModKey == mod.ModKey).ToDictionary(r => r.FormKey);
+        string Named(Mutagen.Bethesda.Plugins.FormKey key) => own.GetValueOrDefault(key)?.EditorID
+            ?? (lookup.TryResolve<IItemGetter>(key, out var item) ? item.EditorID : null)
+            ?? (lookup.TryResolve<INpcSpawnGetter>(key, out var npc) ? npc.EditorID : null)
+            ?? (lookup.TryResolve<ISpellRecordGetter>(key, out var spell) ? spell.EditorID : null)
+            ?? Session.FormKeyText(key);
+        static List<(Mutagen.Bethesda.Plugins.FormKey Reference, short Level, short Count)> Of<T>(IEnumerable<T>? entries,
+            Func<T, (Mutagen.Bethesda.Plugins.FormKey, short, short)?> data) =>
+            (entries ?? []).Select(data).OfType<(Mutagen.Bethesda.Plugins.FormKey, short, short)>().ToList();
+        var lists = mod.LeveledItems.Where(l => l.FormKey.ModKey != mod.ModKey)
+                .Select(l => ((IMajorRecordGetter)l, Of(l.Entries, e => e.Data is { } d ? (d.Reference.FormKey, d.Level, d.Count) : null),
+                    lookup.TryResolve<ILeveledItemGetter>(l.FormKey, out var g) ? Of(g.Entries, e => e.Data is { } d ? (d.Reference.FormKey, d.Level, d.Count) : null) : null))
+            .Concat(mod.LeveledNpcs.Where(l => l.FormKey.ModKey != mod.ModKey)
+                .Select(l => ((IMajorRecordGetter)l, Of(l.Entries, e => e.Data is { } d ? (d.Reference.FormKey, d.Level, d.Count) : null),
+                    lookup.TryResolve<ILeveledNpcGetter>(l.FormKey, out var g) ? Of(g.Entries, e => e.Data is { } d ? (d.Reference.FormKey, d.Level, d.Count) : null) : null)));
+        foreach (var (copy, has, game) in lists)
+        {
+            if (game is null || files.GetValueOrDefault(copy.FormKey) is not { } relative) continue;
+            var lost = game.ToList();
+            var added = new List<(Mutagen.Bethesda.Plugins.FormKey Reference, short Level, short Count)>();
+            foreach (var entry in has)
+                if (lost.IndexOf(entry) is var at and >= 0) lost.RemoveAt(at); else added.Add(entry);
+            if (lost.Count == 0 || added.Count == 0) continue;
+            string Shown((Mutagen.Bethesda.Plugins.FormKey Reference, short Level, short Count) e) =>
+                $"{Named(e.Reference)} at level {e.Level}{(e.Count == 1 ? "" : $", {e.Count} of it")}";
+            var name = copy.EditorID ?? Session.FormKeyText(copy.FormKey);
+            var sets = string.Join(", ", lost.Select((e, i) => $"{{\"path\": \"Entries[{has.Count + i}]\", \"value\": {{\"Data\": {{\"Level\": {e.Level}, " +
+                $"\"Reference\": {ToolCalls.Quoted(Named(e.Reference))}, \"Count\": {e.Count}}}}}}}"));
+            var them = lost.Count == 1 ? "it" : "them";
+            notes.Add($"{relative}: this copy of {name} holds {string.Join(", ", added.Select(Shown))} in place of {lost.Count} of the game's " +
+                $"entries, {string.Join(", ", lost.Select(Shown))}, which the list hands out no more — an entry set at an index the list has, " +
+                $"Entries[3], writes over the one there; Entries[{has.Count}] adds one after the last. Where the user asked to add, not to " +
+                $"replace, one call puts {them} back and builds again: {ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, sets, build: true)}; " +
+                $"only where the user asked for {them} gone is this right as it is");
+        }
+        return notes;
+    }
+
+    /// <summary>
     /// The leveled item list an NPC's kind takes an item of this one's kind from: of the lists its Items name — or its
     /// inventory template's — and those inside them, the one that hands out the most items, every one like this one: a
     /// weapon held as it is held (one-handed, two-handed, a bow, a staff), an armor worn in a slot it fills, else a record of its
@@ -286,7 +367,7 @@ internal static class MadeNotes
                 $"with the name of the game's {game.EditorId} (\"{game.Name}\", {Session.FormKeyText(game.FormKey)}) — at the workbench the player gets " +
                 $"the copy, not the game's. Where the game's {game.Name} was meant, one call makes the recipe make it and builds again: " +
                 ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, $"{{\"path\": \"CreatedObject\", \"value\": {ToolCalls.Quoted(game.EditorId!)}}}", build: true) +
-                (copyFile is null ? "" : $", and {copyFile} is then named by nothing: delete it, {ToolCalls.Delete(pluginDir, copyFile)}") +
+                (copyFile is null ? "" : $", and {copyFile} is then named by nothing: delete it, which builds again too, {ToolCalls.Delete(pluginDir, copyFile, build: true)}") +
                 $"; only where the user asked for a new {type} of its own beside the game's is the copy meant — then nothing to change, and this warning stays");
         }
         return notes;
