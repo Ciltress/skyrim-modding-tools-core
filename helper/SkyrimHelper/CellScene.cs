@@ -122,24 +122,46 @@ internal static class CellScene
     }
 
     /// <summary>
-    /// An exterior cell's ground as 33 × 33 heights, west to east in each row, south to north row by row, 128 units apart — as the
-    /// game reads its landscape: each height the one before it in its row plus its step, a row's first the row before's first
-    /// plus its step, all times 8.
+    /// An exterior cell's ground as 33 × 33 heights, [y, x]: west to east in each row, south to north row by row, 128 units apart —
+    /// as the game reads its landscape: each height the one before it in its row plus its step, a row's first the row before's
+    /// first plus its step, all times 8.
     /// </summary>
-    private static JsonObject Ground(ILandscapeVertexHeightMapGetter heights, P2Int grid)
+    internal static float[,] Heights(ILandscapeVertexHeightMapGetter map)
     {
-        var rows = new JsonArray();
-        var rowStart = heights.Offset;
+        var heights = new float[33, 33];
+        var rowStart = map.Offset;
         for (var y = 0; y < 33; y++)
         {
-            rowStart += unchecked((sbyte)heights.HeightMap[0, y]);
+            rowStart += unchecked((sbyte)map.HeightMap[0, y]);
             var height = rowStart;
-            var row = new JsonArray(Math.Round(height * 8, 1));
+            heights[y, 0] = height * 8;
             for (var x = 1; x < 33; x++)
             {
-                height += unchecked((sbyte)heights.HeightMap[x, y]);
-                row.Add(Math.Round(height * 8, 1));
+                height += unchecked((sbyte)map.HeightMap[x, y]);
+                heights[y, x] = height * 8;
             }
+        }
+        return heights;
+    }
+
+    /// <summary>The ground's height at a position of an exterior cell, between its four nearest heights.</summary>
+    internal static float GroundAt(float[,] heights, P2Int grid, float x, float y)
+    {
+        var fx = Math.Clamp((x - grid.X * CellContents.CellSize) / (CellContents.CellSize / 32f), 0, 32);
+        var fy = Math.Clamp((y - grid.Y * CellContents.CellSize) / (CellContents.CellSize / 32f), 0, 32);
+        var (i, j) = ((int)Math.Min(31, Math.Floor(fx)), (int)Math.Min(31, Math.Floor(fy)));
+        var (tx, ty) = (fx - i, fy - j);
+        return (heights[j, i] * (1 - tx) + heights[j, i + 1] * tx) * (1 - ty) + (heights[j + 1, i] * (1 - tx) + heights[j + 1, i + 1] * tx) * ty;
+    }
+
+    private static JsonObject Ground(ILandscapeVertexHeightMapGetter map, P2Int grid)
+    {
+        var heights = Heights(map);
+        var rows = new JsonArray();
+        for (var y = 0; y < 33; y++)
+        {
+            var row = new JsonArray();
+            for (var x = 0; x < 33; x++) row.Add(Math.Round(heights[y, x], 1));
             rows.Add(row);
         }
         return new JsonObject

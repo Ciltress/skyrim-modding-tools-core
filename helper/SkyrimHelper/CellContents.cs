@@ -180,15 +180,24 @@ internal static class CellContents
         Func<FormKey, List<IModContext<ISkyrimMod, ISkyrimModGetter, IMajorRecord, IMajorRecordGetter>>> contexts, string pluginDir)
     {
         var cellName = cell.EditorID ?? Session.FormKeyText(cell.FormKey);
-        var worldspace = contexts(cell.FormKey).Select(WorldspaceOf).FirstOrDefault(w => w is not null);
+        var versions = contexts(cell.FormKey);
+        var worldspace = versions.Select(WorldspaceOf).FirstOrDefault(w => w is not null);
+        // The ground, from the version of the cell whose landscape wins: the project's own references are held to it.
+        var land = versions.Select(v => (v.Record as ICellGetter)?.Landscape?.VertexHeightMap).FirstOrDefault(m => m is not null);
+        var heights = land is null ? null : CellScene.Heights(land);
         foreach (var reference in own)
         {
             if (PlacementOf(reference) is not { } placement) continue;
             var lies = GridAt(placement.Position);
-            if (lies.Equals(grid)) continue;
             var name = reference.EditorID ?? Session.FormKeyText(reference.FormKey);
             var file = files.FirstOrDefault(f => f.Identity.FormKey == reference.FormKey
                 || reference.EditorID is { } id && string.Equals(f.Identity.EditorId, id, StringComparison.OrdinalIgnoreCase)).Relative;
+            if (lies.Equals(grid))
+            {
+                if (heights is not null && OffTheGround(name, file, placement.Position, CellScene.GroundAt(heights, grid, placement.Position.X, placement.Position.Y), pluginDir) is { } off)
+                    yield return off;
+                continue;
+            }
             var other = worldspace is null ? null : CellAt(contexts(worldspace.Value), lies);
             var inside = Triple(new P3Float(
                 Math.Clamp(placement.Position.X, grid.X * CellSize + 64, (grid.X + 1) * CellSize - 64),
@@ -208,6 +217,30 @@ internal static class CellContents
                       ToolCalls.Edit(project, file, $"{{\"path\": \"Placement.Position\", \"value\": \"{inside}\"}}", build: true) + "."
                     : $"Write its Position in {cellName}'s cell — {inside} is.") + move;
         }
+    }
+
+    /// <summary>How far above the ground an object may stand outdoors before it is warned of: on a table, a cart, a low wall.</summary>
+    private const float AboveGround = 200;
+    /// <summary>How far below it: an object's origin is its base, and the ground's heights are 128 units apart.</summary>
+    private const float BelowGround = 64;
+
+    /// <summary>
+    /// A reference placed outdoors far above the ground at its x and y, or below it — floating, or buried — with the call that sets
+    /// it on the ground. Eval round 132's hand-made outdoor mods built a chest 311 units above Riverwood's ground with no word.
+    /// </summary>
+    private static string? OffTheGround(string name, string? file, P3Float at, float ground, string pluginDir)
+    {
+        var above = at.Z - ground;
+        if (above <= AboveGround && above >= -BelowGround) return null;
+        var onIt = Triple(new P3Float(at.X, at.Y, (float)Math.Round(ground)));
+        var how = above > 0 ? $"{Whole(above)} units above the ground there, at z {Whole(ground)}: in game it floats"
+            : $"{Whole(-above)} units below the ground there, at z {Whole(ground)}: in game it is buried";
+        return $"{file ?? name}: {name} is placed at {Triple(at)}, {how}. " +
+            (file is not null
+                ? "One call sets it on the ground and builds again: " +
+                  ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), file, $"{{\"path\": \"Placement.Position\", \"value\": \"{onIt}\"}}", build: true)
+                : $"Write its Position on the ground — {onIt}") +
+            (above > 0 ? "; where it stands on something there — a table, a roof, a bridge — nothing to change, and this warning stays" : "");
     }
 
     /// <summary>The worldspace a cell's version lies in, through its parents.</summary>
