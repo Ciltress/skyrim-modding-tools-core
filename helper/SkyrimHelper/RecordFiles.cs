@@ -308,6 +308,10 @@ public static class RecordFiles
             "`MutagenObjectType: HasPerkConditionData` and `Perk: SteelSmithing` below it, and `ComparisonValue: 1` beside Data — as the game's " +
             "RecipeWeaponSteelSword has it, readRecord {\"record\": \"RecipeWeaponSteelSword\"}; with no CompareOperator line it is EqualTo, " +
             "the player has the perk"),
+        // An armor's `Model:` was answered "move it in each item of Stages, under Destructible", the one field of that name an Armor
+        // has, and eval round 129's armor+detailed #4 wrote its helmet's mesh there; #3 and #4 ended unbuilt.
+        (["Armor"], ["Model", "Models", "Mesh", "Meshes", "GroundModel", "WornModel", "ModelFile", "Nif"], null, ArmorModels),
+        (["Armor"], ["ArmorValue", "Defense", "Rating"], "ArmorRating", "it is ArmorRating"),
         // Its cell found by editRecord, a model would set `Placed[0]` on it (eval round 128's world+detailed #4).
         (["Cell"], ["Placed", "References", "Refs", "Objects", "Items", "Containers", "Contents", "Chest", "Chests", "PlacedObjects"], null,
             "what is placed in a cell is no field of its file: each reference is a file of its own in the cell's Temporary/ folder, beside " +
@@ -325,6 +329,12 @@ public static class RecordFiles
     /// <summary>Where the strength of a magic effect is written: in what names it, not in the effect.</summary>
     internal const string EffectStrength ="a magic effect has no strength of its own: Magnitude, Area and Duration go under Data, " +
         "in the Effects item of the spell or ObjectEffect that names it as BaseEffect";
+
+    /// <summary>Where an armor's meshes are: its WorldModel on the ground, its Armature's armor addons worn.</summary>
+    internal const string ArmorModels = "an armor's look is two things, as the game's IronHelmet has them, readRecord {\"record\": \"IronHelmet\"}: " +
+        "WorldModel, the mesh on the ground — `WorldModel:`, then `Male:`, `Model:` and `File:`, each two spaces further in, the path " +
+        "editRecord sets as WorldModel.Male.Model.File — and Armature, the ArmorAddon records it is worn as, `Armature:` with `- IronHelmetAA` " +
+        "below it; delete it here";
 
     /// <summary>A field's name as YAML writes it, at a line's start or in flow style — not the 012EB7 of a FormID.</summary>
     private static readonly Regex KeyIn = new(@"(?<![\w.])([A-Za-z_]\w*)[ \t]*:(?=[ \t]|$)", RegexOptions.Multiline);
@@ -710,6 +720,9 @@ public static class RecordFiles
         if (!lines.Success) return null;
         var fields = Regex.Matches(lines.Groups["block"].Value, @"^[ \t]+(?<key>[A-Za-z][A-Za-z0-9_]*):[ \t]*(?<value>[^\n#]*?)[ \t]*$", RegexOptions.Multiline)
             .Select(m => (Key: m.Groups["key"].Value, Value: m.Groups["value"].Value)).ToList();
+        // A field under another name, as its own: an armor's BasicStats with `ArmorValue: 20` was answered "delete them", and eval
+        // round 129's armor+detailed #4 lost its rating, weight and value with it.
+        fields = fields.Select(f => known.Contains(f.Key) ? f : (Key: SynonymFor(type, f.Key) ?? f.Key, f.Value)).ToList();
         var margin = TopLevelKey.Matches(text).Select(m => m.Groups[1].Value).ToHashSet();
         if (fields.Count == 0 || fields.Any(f => !known.Contains(f.Key) || margin.Contains(f.Key) || f.Value.Length == 0)) return null;
         var set = string.Join(", ", fields.Select(f => $"{{\"path\": \"{f.Key}\", \"value\": " +
@@ -750,6 +763,18 @@ public static class RecordFiles
         var part = move.Groups["part"].Value;
         var them = keys.Count > 1 ? "them" : "it";
         var at = Regex.Match(text, $@"^{Regex.Escape(part)}:[ \t]*\r?$", RegexOptions.Multiline);
+        // The part written as one value: `BodyTemplate: IronHelmetAA`, an armor addon's name, which eval round 129's armor+detailed #3
+        // set as BodyTemplate's File, then as Armature, then as File again, until its turns ran out.
+        if (!at.Success && Regex.Match(text, $@"^{Regex.Escape(part)}:[ \t]*(?<one>[^\s#][^\r\n#]*?)[ \t]*(?:#.*)?\r?$", RegexOptions.Multiline) is { Success: true } written)
+        {
+            var one = written.Groups["one"].Value;
+            return $": `{part}:` is written as one value, `{one}`, and takes fields of its own — write `{part}:` alone, with {them} below it, " +
+                "two spaces in" + (part == "BodyTemplate"
+                    ? "; BodyTemplate holds the slots the armor fills and its weight class — `FirstPersonFlags:` with `- Hair` below it for a " +
+                      "helmet, and `ArmorType:` — and no mesh: the ArmorAddon records the armor is worn as go under `Armature:`, " +
+                      (one.EndsWith("AA", StringComparison.Ordinal) ? $"as `- {one}`" : "as `- IronHelmetAA` for the game's Iron Helmet")
+                    : "");
+        }
         if (!at.Success) return $": delete {them} at the margin, and write `{part}:` with {them} below, two spaces in";
         // The part has it already, with another value (the same is taken out by the build): moved, it would be there
         // twice — the model was told to move BasicStats' Value there, twice, and answered unbuilt (eval round 37).

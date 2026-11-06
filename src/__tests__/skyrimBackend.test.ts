@@ -1154,6 +1154,45 @@ describe('the Skyrim backend', () => {
         });
     });
 
+    it('builds after a deleteRecord sent with `build`, and answers that build — or its refusal, the file deleted', async () => {
+        // Its Silver Sword of its own deleted, the model answered with no build since (eval round 129's leveled #1).
+        const { backend, fixture, helperAnswers } = makeBackend();
+        await newProjectWithRecord(backend, fixture.projects, 'FlameBlade');
+        const handler = createHandlers(backend as unknown as AppBackend, CORE_PRODUCT).find(h => h.getTools().some(t => t.name === 'deleteRecord'))!;
+        const remove = async (file: string, more: object) =>
+            JSON.parse((await handler.handle('deleteRecord', { project: 'FlameBlade', record: file, ...more })).content[0].text);
+        const plugin = path.join(fixture.projects, 'FlameBlade', 'plugin');
+        const extra = path.join(plugin, 'Weapons', 'SilverSword.yaml');
+        write(extra, 'EditorID: SilverSword\n');
+
+        const built = await remove('Weapons/SilverSword.yaml', { build: true });
+
+        expect(Object.keys(built).slice(0, 2)).toEqual(['status', 'nextStep']);
+        expect(built).toMatchObject({ status: 'success', nextStep: `Deleted and built: the plugin is without that record. ${TOLD}`, deleted: extra });
+        expect(fs.existsSync(extra)).toBe(false);
+        expect(fs.existsSync(built.output)).toBe(true);
+
+        write(extra, 'EditorID: SilverSword\n');
+        helperAnswers.checkRecords = () => ({ records: 1, leftOut: [], notes: ['a note'] });
+        expect(await remove('Weapons/SilverSword.yaml', { build: true })).toMatchObject({
+            status: 'built_with_warnings', nextStep: expect.stringMatching(/^Built, with a warning: /), deleted: extra
+        });
+
+        write(extra, 'EditorID: SilverSword\n');
+        helperAnswers.checkRecords = () => {
+            throw new HelperError('badRecord', '1 field(s) cannot be built as written: Weapons/FlameBladeSword.yaml: Damage is high.');
+        };
+        await expect(remove('Weapons/SilverSword.yaml', { build: true })).rejects.toThrow(new RegExp(`^Deleted ${escape(extra)} — sending this ` +
+            'again changes nothing\\. The build after it: Not built: 1 field\\(s\\)'));
+        expect(fs.existsSync(extra)).toBe(false);
+
+        // Without it, the delete alone, and the build named as the next step.
+        write(extra, 'EditorID: SilverSword\n');
+        expect(await remove('Weapons/SilverSword.yaml', {})).toEqual({
+            status: 'success', nextStep: 'Run buildProject next — the plugin has this change only once a build answers success.', deleted: extra
+        });
+    });
+
     it('says at both ends of a refusal that nothing was built, and that a build again is what writes the plugin', async () => {
         // 10 of the 13 runs of eval rounds 31–47 that ended on a refused build told the user the mod was built.
         const { backend, fixture, helperAnswers } = makeBackend();

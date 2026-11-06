@@ -433,6 +433,8 @@ export interface RecordSearchResult {
     nextStep?: string;
     /** A type of `types` named by the game's word for what it holds — NOTE — and the record type it was read as: BOOK. */
     typesRead?: string;
+    /** A `text` that found nothing, and the singular it found these by: "no record is named 'Steel Arrows': these are 'Steel Arrow'". */
+    searchedAs?: string;
 }
 
 export interface RecordRequest {

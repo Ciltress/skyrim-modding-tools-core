@@ -431,19 +431,40 @@ export class ProjectsHandlers extends BaseHandler {
                                 type: 'string',
                                 description: 'The file: its path in the plugin folder, like "Notes/MavenWarning.yaml", the record\'s EditorID, ' +
                                     'or, for a file outside the plugin folder, its path from the projects folder or its full path.'
+                            },
+                            build: {
+                                type: 'boolean',
+                                description: 'true: build the project right after the delete, and answer that build as buildProject does.'
                             }
                         },
                         required: ['project', 'record']
                     }
                 },
                 onFailure: 'Failed to delete the record file',
-                run: args => asRequestError(this.backend.deleteRecord({
-                    project: requireString(args, 'project'),
-                    record: requireString(args, 'record', 'The file: its path in the plugin folder, its EditorID, or its full path.')
-                }).then(result => ({
-                    nextStep: 'Run buildProject next — the plugin has this change only once a build answers success.',
-                    ...result
-                })))
+                // Its Silver Sword of its own deleted, the model answered with no build since (eval round 129's leveled #1): with
+                // `build`, the delete and the build are one call, as editRecord's are, and the notes write theirs so.
+                run: async args => {
+                    const project = requireString(args, 'project');
+                    const result = await asRequestError(this.backend.deleteRecord({
+                        project,
+                        record: requireString(args, 'record', 'The file: its path in the plugin folder, its EditorID, or its full path.')
+                    }));
+                    if (!optionalBoolean(args, 'build')) {
+                        return { nextStep: 'Run buildProject next — the plugin has this change only once a build answers success.', ...result };
+                    }
+                    const built = await this.build(project).catch((error: unknown) => {
+                        if (error instanceof Error) {
+                            error.message = `Deleted ${result.deleted} — sending this again changes nothing. The build after it: ${error.message}`;
+                        }
+                        throw error;
+                    });
+                    if (built.status) return { ...built, deleted: result.deleted };
+                    const { nextStep, ...rest } = built;
+                    return {
+                        nextStep: nextStep?.replace(/^Built\./, 'Deleted and built: the plugin is without that record.') ?? '',
+                        ...rest, deleted: result.deleted
+                    };
+                }
             },
             {
                 definition: {

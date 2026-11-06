@@ -21,9 +21,10 @@ internal static class ToolCalls
         $"moveRecord {{\"project\": {Quoted(ProjectOf(pluginDir))}, \"from\": {Quoted(from.Replace('\\', '/'))}, " +
         $"\"to\": {Quoted(to.Replace('\\', '/'))}}}";
 
-    /// <summary>deleteRecord: a record file of the plugin folder.</summary>
-    public static string Delete(string pluginDir, string record) =>
-        $"deleteRecord {{\"project\": {Quoted(ProjectOf(pluginDir))}, \"record\": {Quoted(record.Replace('\\', '/'))}}}";
+    /// <summary>deleteRecord: a record file of the plugin folder; with `build`, the build after it in the same call.</summary>
+    public static string Delete(string pluginDir, string record, bool build = false) =>
+        $"deleteRecord {{\"project\": {Quoted(ProjectOf(pluginDir))}, \"record\": {Quoted(record.Replace('\\', '/'))}" +
+        (build ? ", \"build\": true" : "") + "}";
 
     /// <summary>
     /// editRecord: fields of a record file, `set` as its items' JSON — `{"path": "Voice", "value": "FemaleNord"}`, empty for

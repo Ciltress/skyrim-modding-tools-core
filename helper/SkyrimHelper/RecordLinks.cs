@@ -172,9 +172,34 @@ public static class RecordLinks
                     $": addPatch the one meant and add {editorId} to its Entries there, every entry kept; and where this list was copied only " +
                     $"for it, delete the copy, which nothing else needs: {ToolCalls.Delete(pluginDir, relative)}";
             }
+            // A recipe named where an item belongs: told only to write the one meant, eval round 129's world+detailed #5 put 500 of
+            // RecipeIngotGold in its chest through three builds. The item the recipe makes, and the items named by a word of the
+            // recipe's editor ID — Gold001 "Gold" — each with its call.
+            string? RecipeAsItem(string field, string wanted, string kind, string editorId, FormKey? key)
+            {
+                if (kind != "ConstructibleObject" || !(wanted == "Item" || ItemKinds.Contains(wanted))) return null;
+                var offered = new List<(string Id, string? Name, FormKey Key, bool Made)>();
+                if (key is { } recipe && lookup is not null && lookup.TryResolve<IConstructibleObjectGetter>(recipe, out var cobj)
+                    && cobj.CreatedObject.FormKeyNullable is { } made && index.ByFormKey.TryGetValue(made, out var madeEntry) && madeEntry.EditorId is { } madeId)
+                    offered.Add((madeId, madeEntry.Name, made, true));
+                var words = Regex.Split(editorId, "(?<=[a-z])(?=[A-Z])|[^A-Za-z]+")
+                    .Where(w => w.Length > 2 && !w.Equals("Recipe", StringComparison.OrdinalIgnoreCase) && !w.Equals("Temper", StringComparison.OrdinalIgnoreCase)).ToList();
+                foreach (var entry in index.ByFormKey.Values
+                    .Where(e => ItemKinds.Contains(e.Type) && e.Type != "LeveledItem" && !e.Unplayable && e.EditorId is not null
+                        && e.Name is { } name && words.Any(w => name.Equals(w, StringComparison.OrdinalIgnoreCase)))
+                    .OrderBy(e => e.FormKey.ModKey.FileName.String.Equals("Skyrim.esm", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                    .ThenBy(e => e.EditorId, StringComparer.OrdinalIgnoreCase).Take(2))
+                    if (!offered.Any(o => o.Key == entry.FormKey)) offered.Add((entry.EditorId!, entry.Name, entry.FormKey, false));
+                if (offered.Count == 0) return null;
+                return $" — {editorId} is a recipe, the way a workbench makes an item, not an item: name the item itself, one call each naming it " +
+                    "here and building again — " + string.Join("; or ", offered.Select(o =>
+                        $"{o.Id}{(o.Name is { Length: > 0 } shown ? $" \"{shown}\"" : "")} ({Session.FormKeyText(o.Key)}){(o.Made ? ", the one it makes" : "")}: " +
+                        ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, $"{{\"path\": \"{field}\", \"value\": {ToolCalls.Quoted(o.Id)}}}", build: true)));
+            }
             string WrongType(string field, string wanted, string kind, string editorId, FormKey? key) =>
                 BaseAsEffect(field, wanted, kind, editorId) is { } baseText ? baseText
                     : ItemInNpcList(wanted, kind, editorId) is { } npcListText ? npcListText
+                    : RecipeAsItem(field, wanted, kind, editorId, key) is { } recipeText ? recipeText
                     : CasterAsEffect(field, wanted, editorId, key) is { } casterText ? casterText
                     : wanted == "ObjectEffect" && kind == "MagicEffect"
                         ? $" — an enchantment, whose Effects name the magic effects it casts: name one, such as {RecordFiles.ExampleName("ObjectEffect")}, " +

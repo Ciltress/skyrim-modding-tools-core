@@ -127,7 +127,22 @@ internal static class KeptFromSource
                   $"{(one ? "is right as it is" : "are right as they are")}: nothing to change, and this warning stays —" +
                   " answer with the build."
                 : "";
-            notes.Add($"{relative}: {name} {string.Join(", and ", said)} — {how}.{numbersAlone} If the user asked for " +
+            // The game's own record meant, by the name the user gave: the copy is not needed. Asked for bandits that carry silver
+            // swords, eval round 129's leveled #1 and #4 wrote a Silver Sword of their own beside the game's, were told it is still
+            // named as the game's, and sent the same name again.
+            var gameMeant = "";
+            if (named is not null)
+            {
+                var namedBy = mod.EnumerateMajorRecords().Where(r => r.FormKey != record.FormKey && r.EnumerateFormLinks().Any(l => l.FormKey == record.FormKey))
+                    .Select(r => files.GetValueOrDefault(r.FormKey) ?? r.EditorID ?? Session.FormKeyText(r.FormKey)).Distinct().ToList();
+                gameMeant = $" Where the game's {theirs} was meant — the user named a '{named}', which the game has — this copy is not needed: " +
+                    (namedBy.Count == 0
+                        ? $"nothing in the project names {name}, and one call deletes it and builds again: {ToolCalls.Delete(pluginDir, relative, build: true)}."
+                        : $"name {theirs} where {Listed(namedBy)} {(namedBy.Count == 1 ? "names" : "name")} {name}, then delete it: " +
+                          $"{ToolCalls.Delete(pluginDir, relative, build: true)}.") +
+                    $" Where one of the mod's own was asked for, it takes a name of its own — '{named}' sent again changes nothing.";
+            }
+            notes.Add($"{relative}: {name} {string.Join(", and ", said)} — {how}.{numbersAlone}{gameMeant} If the user asked for " +
                 $"{(one ? "another" : "others")}, one call sets {(one ? "it" : "them")} and builds again: " +
                 ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, string.Join(", ", set), build: true) +
                 $", with what the user asked for in place of {Listed(shown)} — what the user left as {theirs}'s stays");

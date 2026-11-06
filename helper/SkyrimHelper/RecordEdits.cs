@@ -123,7 +123,7 @@ public static class RecordEdits
     private static JsonNode? Normal(JsonNode? node, RecordIndex? index) => node switch
     {
         JsonObject fields => new JsonObject(fields.Select(f => KeyValuePair.Create(f.Key, Normal(f.Value, index)))),
-        JsonArray items when items.Select(i => Normal(i, index)).ToList() is var normal => new JsonArray(
+        JsonArray items when items.Select(i => Normal(Unwrapped(i), index)).ToList() is var normal => new JsonArray(
             (normal.All(i => i is JsonValue v && v.TryGetValue<string>(out _))
                 ? normal.OrderBy(i => i!.GetValue<string>(), StringComparer.Ordinal) : normal.AsEnumerable()).ToArray()),
         JsonValue one when one.TryGetValue<string>(out var said) => LinkOf(said, index) is { } key ? JsonValue.Create("@" + Session.FormKeyText(key))
@@ -132,6 +132,15 @@ public static class RecordEdits
         JsonValue one when double.TryParse(one.ToJsonString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var number) => JsonValue.Create(number),
         _ => node?.DeepClone()
     };
+
+    /// <summary>
+    /// A list item that is one part — `- Item:` with the item's fields below it, `- Data:` with an entry's — as its fields alone,
+    /// the shape it was sent in before the build put them into their part. Its Items set as `[{"Item": "03DED1:Skyrim.esm",
+    /// "Count": 1}, …]`, an NPC's copy held them under `Item:` once built, and the refused call it had sent again was warned
+    /// "not sent again" (eval round 129's leveled #2).
+    /// </summary>
+    private static JsonNode? Unwrapped(JsonNode? item) =>
+        item is JsonObject { Count: 1 } one && one.First().Value is JsonObject part ? part : item;
 
     /// <summary>The record a value names: a FormID, or an EditorID of the load order; null for any other value.</summary>
     private static FormKey? LinkOf(string said, RecordIndex? index) =>
@@ -501,6 +510,14 @@ public static class RecordEdits
             && (fields["MutagenObjectType"] is not JsonValue kind || kind.GetValue<object>().ToString() == Field(there, "MutagenObjectType")))
             return fields.Where(f => f.Key != "MutagenObjectType")
                 .Aggregate(text, (merged, f) => SetPath(merged, type, $"{path}.{f.Key}", f.Value?.DeepClone(), changes, context));
+        // A text sent in the block a file writes it in — `|-`, its lines indented below — is the text alone: eval round 129's
+        // note+detailed #4 sent its note's text so, and the note began with "|-".
+        if (value is JsonValue blockSent && blockSent.TryGetValue<string>(out var blockSaid) && Unblocked(blockSaid) is { } unblocked
+            && (types[^1] == typeof(string) || Translated(types[^1]) || steps.Count > 1 && steps[^1] is { Key: "Value", Index: null } && Translated(types[^2])))
+        {
+            value = JsonValue.Create(unblocked);
+            label += " (sent with the `|-` a file writes a text's lines below, left out)";
+        }
         if (steps.Count > 1 && steps[^1] is { Key: "Value", Index: null } && Translated(types[^2]) && value is JsonValue)
             return Set(text, steps.SkipLast(1).ToList(), types.SkipLast(1).ToList(), value, label, changes);
         // A link sent with the comment a file writes after it — `013F42:Skyrim.esm # RightHand` — is the link alone: written in
@@ -547,6 +564,21 @@ public static class RecordEdits
             throw new HelperException("badRequest", $"{label}: {unwritable}. Nothing was written.");
         text = Set(text, steps, types, value, label, changes);
         return steps.Count > 1 && steps[^1] is { Key: "MutagenObjectType", Index: null } ? Rekinded(text, steps.SkipLast(1).ToList(), types[^2], changes) : text;
+    }
+
+    /// <summary>
+    /// A text that opens on a YAML block's sign — `|-`, `|`, `>` — and a line end, as the text below it, the indent its lines
+    /// share taken off; line ends sent as `\n` stay so. Null for any other text.
+    /// </summary>
+    private static string? Unblocked(string said)
+    {
+        var sign = Regex.Match(said, @"^[ \t]*[|>][+-]?[1-9]?[ \t]*(?:\\r\\n|\\n|\r?\n)");
+        if (!sign.Success) return null;
+        var rest = said[sign.Length..];
+        var sent = !rest.Contains('\n') && rest.Contains("\\n");
+        var lines = Regex.Split(rest, sent ? @"\\r\\n|\\n" : @"\r?\n");
+        var indent = lines.Where(l => l.Trim().Length > 0).Select(l => l.Length - l.TrimStart(' ').Length).DefaultIfEmpty(0).Min();
+        return string.Join(sent ? "\\n" : "\n", lines.Select(l => l.Length >= indent ? l[indent..] : l.TrimStart(' ')));
     }
 
     /// <summary>A link with a comment after it: `013F42:Skyrim.esm # RightHand`.</summary>

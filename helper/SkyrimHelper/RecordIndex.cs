@@ -83,6 +83,9 @@ public sealed class RecordIndex
                     entry.Unplayable = weapon.Data is { } data && (data.Flags.HasFlag(WeaponData.Flag.NonPlayable) || data.Flags.HasFlag(WeaponData.Flag.BoundWeapon));
                 else if (record is IArmorGetter armor)
                     entry.Unplayable = armor.MajorFlags.HasFlag(Armor.MajorFlag.NonPlayable);
+                // CWArrow, a NonPlayable "Iron Arrow" of damage 1, was copied for eval round 129's arrow #5.
+                else if (record is IAmmunitionGetter ammo)
+                    entry.Unplayable = ammo.Flags.HasFlag(Ammunition.Flag.NonPlayable);
             }
         }
         foreach (var entry in index.ByFormKey.Values)

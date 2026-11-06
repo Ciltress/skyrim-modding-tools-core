@@ -160,6 +160,7 @@ public sealed class Session : IDisposable
         }
 
         IEnumerable<RecordIndex.Entry> matches;
+        string? searchedAs = null;
         var notFound = new JsonArray();
         if (p["records"] is JsonArray wanted)
         {
@@ -177,8 +178,22 @@ public sealed class Session : IDisposable
         else
         {
             var text = p["text"]?.GetValue<string>()?.Trim() ?? "";
+            matches = ByText(text);
+            // A name said in the plural finds nothing: "Steel Arrows" found no record and "Arrows" two others, and eval round 129's
+            // world+detailed #4 filled its chest with Iron Arrows. Each word made singular, the first that finds a record answers.
+            if (text.Length > 0 && !Chosen(matches).Any())
+                foreach (var singular in Singulars(text))
+                    if (ByText(singular) is var found && Chosen(found).Any())
+                    {
+                        matches = found;
+                        searchedAs = $"no record is named '{text}': these are '{singular}'";
+                        break;
+                    }
+        }
+        IEnumerable<RecordIndex.Entry> ByText(string text)
+        {
             var word = new Regex($@"(?<![A-Za-z0-9]){Regex.Escape(text)}(?![A-Za-z0-9])", RegexOptions.IgnoreCase);
-            matches = idx.ByFormKey.Values
+            return idx.ByFormKey.Values
                 .Where(e => text.Length == 0
                     || e.EditorId?.Contains(text, StringComparison.OrdinalIgnoreCase) == true
                     || e.Name?.Contains(text, StringComparison.OrdinalIgnoreCase) == true)
@@ -209,7 +224,11 @@ public sealed class Session : IDisposable
                     : e.FormKey.ModKey == SkyrimMaster ? 0 : 1)
                 .ThenBy(e => e.EditorId, StringComparer.OrdinalIgnoreCase);
         }
-        if (plugin is not null) matches = matches.Where(e => e.Plugins.Any(k => k.FileName.String.Equals(plugin, StringComparison.OrdinalIgnoreCase)));
+        IEnumerable<RecordIndex.Entry> InPlugin(IEnumerable<RecordIndex.Entry> found) => plugin is null ? found
+            : found.Where(e => e.Plugins.Any(k => k.FileName.String.Equals(plugin, StringComparison.OrdinalIgnoreCase)));
+        IEnumerable<RecordIndex.Entry> Chosen(IEnumerable<RecordIndex.Entry> found) => types is { Count: > 0 }
+            ? InPlugin(found).Where(e => types.Contains(e.Signature) || types.Contains(e.Type)) : InPlugin(found);
+        matches = InPlugin(matches);
         var untyped = matches;
         if (types is { Count: > 0 }) matches = matches.Where(e => types.Contains(e.Signature) || types.Contains(e.Type));
 
@@ -218,6 +237,7 @@ public sealed class Session : IDisposable
         foreach (var e in all.Take(limit)) rows.Add(e.ToJson());
         var answer = new JsonObject { ["total"] = all.Count, ["records"] = rows };
         if (readAs.Count > 0) answer["typesRead"] = string.Join("; ", readAs);
+        if (searchedAs is not null) answer["searchedAs"] = searchedAs;
         if (notFound.Count > 0)
         {
             answer["notFound"] = notFound;
@@ -236,6 +256,30 @@ public sealed class Session : IDisposable
                 $" — send types [{string.Join(", ", shown.Select(e => $"\"{e.Signature}\"").Distinct())}] for {(shown.Count == 1 ? "it" : "those")}, or no types";
         }
         return answer;
+    }
+
+    /// <summary>
+    /// A search's text with a word made singular — the last first, one at a time, then every one: "Steel Arrows" as "Steel
+    /// Arrow", "Iron Daggers" as "Iron Dagger", "Torches" as "Torch", "Wolves" as "Wolf".
+    /// </summary>
+    private static IEnumerable<string> Singulars(string text)
+    {
+        var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        static List<string> Of(string word)
+        {
+            bool Ends(string end) => word.EndsWith(end, StringComparison.OrdinalIgnoreCase);
+            if (word.Length < 4 || !Ends("s") || Ends("ss") || Ends("us") || Ends("is")) return [];
+            if (Ends("ies")) return [word[..^3] + "y"];
+            if (Ends("ves")) return [word[..^3] + "f", word[..^3] + "fe", word[..^1]];
+            if (Ends("es")) return [word[..^2], word[..^1]];
+            return [word[..^1]];
+        }
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { text };
+        for (var i = words.Length - 1; i >= 0; i--)
+            foreach (var singular in Of(words[i]))
+                if (string.Join(' ', words.Select((w, at) => at == i ? singular : w)) is var said && seen.Add(said)) yield return said;
+        if (words.Select(w => Of(w).FirstOrDefault() ?? w).ToArray() is var all && string.Join(' ', all) is var every && seen.Add(every))
+            yield return every;
     }
 
     // ---------------------------------------------------------------- reading
@@ -601,6 +645,8 @@ public sealed class Session : IDisposable
             .Concat(RecordNeeds.ListNotes(mod, dir)).Concat(BookTexts.Notes(mod, lookup, Index, dir))
             .Concat(EffectCasting.GivenBackNotes(mod, lookup, Index, dir)).Concat(MadeNotes.Shouts(mod, lookup, dir))
             .Concat(MadeNotes.CopiedNames(mod, Index, dir)).Concat(MadeNotes.RecipePerks(mod, lookup, dir)).Concat(MadeNotes.PlayerCopy(mod, dir))
+            .Concat(MadeNotes.NpcItems(mod, lookup, dir)).Concat(MadeNotes.Words(mod, dir))
+            .Concat(MadeNotes.Unplayable(mod, dir))
             .Concat(CellContents.PlacedNotes(mod, Contexts, Index, dir))
             .Select(n => (JsonNode)n).ToArray();
         return new JsonObject
