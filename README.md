@@ -30,17 +30,23 @@ This is the engine of the Skyrim Modding Tools. Use it from your own code, or ta
 - ✍️ **Mods as text.** A mod is a folder of YAML files, one per record, in [Spriggit](https://github.com/Mutagen-Modding/Spriggit)'s
   format: easy to read, to diff and to keep in git. The build checks every link, gives new records their FormIDs,
   compiles Papyrus scripts and writes the plugin — then reads it back and tells you what it holds.
+- 🛡️ **Caught before the game.** The build warns of what would go wrong in game — an armor no one can wear, a mesh
+  the game does not have, an effect that does nothing, a chest under the floor, a copy that changes nothing — each
+  with the one call that fixes it, and corrects the slips that have one right answer by itself.
+- 🗡️ **Every kind of mod object.** Weapons, armor, arrows, potions, recipes, enchantments, spells and magic effects,
+  dragon shouts, NPCs, leveled lists, perks, books and notes, quests with Papyrus scripts, and objects placed in a
+  cell, like a chest in Breezehome.
 - 🩹 **Patch without touching.** Copy another mod's record into your patch and change it there; the original mod
   stays as it is.
 - 📦 **Install mods.** Search Nexus Mods, read a mod's page and what it requires, download, install with its FOMOD
   installer answered, enable or disable, and check SKSE plugins against your game version.
 - 💥 **Read crash logs.** Crash Logger SSE's logs against 105 known crashes, with the mod behind every DLL, mesh,
   texture and record the log names.
-- 📚 **Teach the agent.** Skills for items and crafting, magic, NPCs, leveled lists, game updates and crash analysis,
-  and guides to which tool does what — the knowledge a model needs to mod well.
+- 📚 **Teach the agent.** Skills for items and crafting, magic, NPCs, leveled lists, perks, quests and scripts, the
+  world, game updates and crash analysis, and guides to which tool does what — the knowledge a model needs to mod well.
 
-The Creation Kit stays for what only it can do, like placing objects and navmesh; its work is pulled back into the
-text.
+The Creation Kit stays for what only it can do, like navmesh and placing objects outdoors, in a worldspace; its work
+is pulled back into the text.
 
 ## Modding with Muddy! 🦀
 

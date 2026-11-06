@@ -1,7 +1,7 @@
 # Skills
 
-Agent skills served by this MCP server — as resources under `<scheme>://skills/<collection>/<name>`
-and through the `readSkill` tool. Discovery walks each collection for `SKILL.md` files, so adding,
+Agent skills served by the tools: through the `readSkill` tool in both products, and by the MCP server as resources
+under `<scheme>://skills/<collection>/<name>` too. Discovery walks each collection for `SKILL.md` files, so adding,
 editing or removing one needs **no rebuild** — but the result is cached per process
 ([`discoverSkills()`](../src/lib/skills.ts)), so a running server keeps serving the old set until it is
 **restarted**.
@@ -21,6 +21,9 @@ one, at any depth; every directory containing a `SKILL.md` is one skill, and eve
 | `skyrim-modding-magic` | Spells, magic effects, enchantments, scrolls, shouts, how perks reach magic | `REFERENCE.md` |
 | `skyrim-modding-npcs` | NPCs, templates, FaceGen, outfits, factions, AI packages, followers | `REFERENCE.md` |
 | `skyrim-modding-leveled-lists` | Leveled items, NPCs and spells: how a pick works, the conflict problem | `REFERENCE.md` |
+| `skyrim-modding-perks` | Perks: what one changes (its entry points — damage, spell cost, prices), its conditions, its ranks, how the player gets it | `REFERENCE.md` |
+| `skyrim-modding-quests-and-scripts` | Quests that start with the game, Papyrus scripts on quests, items, magic effects and NPCs, their properties and the events the game sends them | `REFERENCE.md` |
+| `skyrim-modding-world` | Interior cells and what is placed in them — containers, furniture, doors, NPCs — and a new object placed in one | `REFERENCE.md` |
 | `skyrim-modding-game-versions` | Mods whose SKSE plugins do not fit the game version: checking, a fitting file or disabling, saves | `REFERENCE.md` (game versions, SKSE builds, the rules) |
 | `skyrim-modding-crash-analysis` | A game that crashed: Crash Logger SSE's log read, diagnoses and suspect mods weighed, the fix on the user's word | — |
 
