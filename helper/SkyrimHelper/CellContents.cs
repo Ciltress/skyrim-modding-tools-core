@@ -27,7 +27,8 @@ internal static class CellContents
         "Book", "Weapon", "Armor", "Ingestible", "MiscItem", "Ammunition", "Ingredient", "Key", "SoulGem", "Scroll"];
 
     public static JsonObject? Of(IReadOnlyList<IModContext<ISkyrimMod, ISkyrimModGetter, IMajorRecord, IMajorRecordGetter>> contexts,
-        RecordIndex index, string? cellFile)
+        RecordIndex index, string? cellFile,
+        Func<FormKey, List<IModContext<ISkyrimMod, ISkyrimModGetter, IMajorRecord, IMajorRecordGetter>>>? allContexts = null)
     {
         if (contexts.Count == 0 || contexts[0].Record is not ICellGetter winner) return null;
         var seen = new HashSet<FormKey>();
@@ -37,6 +38,19 @@ internal static class CellContents
             if (context.Record is not ICellGetter cell) continue;
             foreach (var reference in cell.Persistent) if (seen.Add(reference.FormKey)) placed.Add((reference, true));
             foreach (var reference in cell.Temporary) if (seen.Add(reference.FormKey)) placed.Add((reference, false));
+        }
+        // Outdoors, the worldspace's persistent references standing in this cell's square too: the game keeps them in the
+        // worldspace's top cell, and shows them here — Alvor's grindstone in Riverwood is one, and readRecord of Riverwood listed
+        // it nowhere (the outdoor task's second mini-round).
+        if (GridOf(winner) is { } square && allContexts is not null && contexts.Select(WorldspaceOf).FirstOrDefault(w => w is not null) is { } world)
+        {
+            foreach (var version in allContexts(world))
+            {
+                if (version.Record is not IWorldspaceGetter { TopCell: { } top }) continue;
+                foreach (var reference in top.Persistent)
+                    if (PlacementOf(reference) is { } spot && GridAt(spot.Position).Equals(square) && seen.Add(reference.FormKey))
+                        placed.Add((reference, true));
+            }
         }
 
         var rows = placed.Select(p => (p.Reference, p.Persistent, Base: BaseOf(p.Reference), Placement: PlacementOf(p.Reference)))

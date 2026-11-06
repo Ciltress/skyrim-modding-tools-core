@@ -18,7 +18,8 @@ namespace SkyrimHelper;
 internal static class CellScene
 {
     public static JsonObject Of(IReadOnlyList<IModContext<ISkyrimMod, ISkyrimModGetter, IMajorRecord, IMajorRecordGetter>> contexts,
-        Func<FormKey, IMajorRecordGetter?> winning, RecordIndex index, ISkyrimModGetter? project)
+        Func<FormKey, IMajorRecordGetter?> winning, RecordIndex index, ISkyrimModGetter? project,
+        Func<FormKey, List<IModContext<ISkyrimMod, ISkyrimModGetter, IMajorRecord, IMajorRecordGetter>>>? allContexts = null)
     {
         if (contexts.Count == 0 || contexts[0].Record is not ICellGetter winner)
             throw new HelperException("badRequest", "exportCell takes a cell: an interior's editor ID like WhiterunBreezehome, or an exterior cell's like Riverwood.");
@@ -36,6 +37,30 @@ internal static class CellScene
             {
                 if (!seen.Add(reference.FormKey)) continue;
                 if (Row(reference, persistent, own, winning, index) is { } row) references.Add(row);
+            }
+        }
+        // Outdoors, the worldspace's persistent references standing in the cell's square too — the project's own top cell's
+        // first — as readRecord lists them (CellContents): Alvor's forge and grindstone in Riverwood are such.
+        if (CellContents.GridOf(winner) is { } square && allContexts is not null)
+        {
+            FormKey? worldKey = null;
+            for (var parent = contexts[0].Parent; parent is not null; parent = parent.Parent)
+                if (parent.Record is IWorldspaceGetter w) { worldKey = w.FormKey; break; }
+            if (worldKey is { } wk)
+            {
+                var tops = new List<(IWorldspaceGetter World, bool Own)>();
+                if (project?.Worldspaces.FirstOrDefault(w => w.FormKey == wk) is { } ownWorld) tops.Add((ownWorld, true));
+                tops.AddRange(allContexts(wk).Select(c => c.Record).OfType<IWorldspaceGetter>().Select(w => (w, false)));
+                foreach (var (world, own) in tops)
+                {
+                    if (world.TopCell is not { } top) continue;
+                    foreach (var reference in top.Persistent)
+                    {
+                        var at = reference switch { IPlacedObjectGetter o => o.Placement, IPlacedNpcGetter n => n.Placement, _ => null };
+                        if (at is null || !CellContents.GridAt(at.Position).Equals(square) || !seen.Add(reference.FormKey)) continue;
+                        if (Row(reference, true, own, winning, index) is { } row) references.Add(row);
+                    }
+                }
             }
         }
 

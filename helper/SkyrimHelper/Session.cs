@@ -351,7 +351,7 @@ public sealed class Session : IDisposable
         // A cell with what is placed in it, from every plugin's version, and the lines of a new reference (CellContents).
         var cellFile = versions.OfType<JsonObject>().SelectMany(v => v["files"]!.AsArray().OfType<JsonObject>())
             .Select(f => f["path"]!.GetValue<string>()).FirstOrDefault(f => RecordFiles.IsCellFile(f.Split('/')));
-        if (CellContents.Of(contexts, Index, cellFile) is { } placed) answer["placed"] = placed;
+        if (CellContents.Of(contexts, Index, cellFile, Contexts) is { } placed) answer["placed"] = placed;
         // A thing that can be placed: where the load order places it (PlacedIndex).
         else if (winner is IPlaceableObjectGetter or INpcGetter)
         {
@@ -481,7 +481,7 @@ public sealed class Session : IDisposable
         var formKey = Resolve(Required(p, "cell"));
         var built = p["projectPlugin"]?.GetValue<string>();
         using var project = built is not null && File.Exists(built) ? SkyrimMod.Create(release).FromPath(built).Construct() : null;
-        return CellScene.Of(Contexts(formKey), key => Contexts(key).FirstOrDefault()?.Record, Index, project);
+        return CellScene.Of(Contexts(formKey), key => Contexts(key).FirstOrDefault()?.Record, Index, project, Contexts);
     }
 
     private static string? ProjectFileFor(string projectDir, FormKey formKey)
