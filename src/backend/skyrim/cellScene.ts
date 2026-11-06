@@ -244,7 +244,8 @@ export function cellFolderOf(pluginDir: string, cellFormId: string): string | un
  * `Blender Foundation\Blender <version>` of Program Files or of a drive's root, the newest version first. Undefined
  * when there is none.
  */
-export function findBlender(windows: boolean, pathVariable: string | undefined, home: string, exists = fs.existsSync): string | undefined {
+export function findBlender(windows: boolean, pathVariable: string | undefined, home: string,
+    exists: (file: string) => boolean = fs.existsSync): string | undefined {
     const exe = windows ? 'blender.exe' : 'blender';
     const join = windows ? path.win32.join : path.posix.join;
     const onPath = (pathVariable ?? '').split(windows ? ';' : ':').filter(Boolean).map(dir => join(dir, exe));
