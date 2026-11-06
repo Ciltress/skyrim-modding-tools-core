@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { BaseHandler } from './BaseHandler.js';
 import type { ToolSpec } from './BaseHandler.js';
 import type { BuildResult, ProjectFile } from '../backend/index.js';
@@ -577,6 +578,102 @@ export class ProjectsHandlers extends BaseHandler {
                 },
                 onFailure: 'Failed to pull the project',
                 run: args => asRequestError(this.backend.pullProject(requireString(args, 'project')))
+            },
+            {
+                definition: {
+                    name: 'exportCell',
+                    annotations: {
+                        title: 'Export a cell for Blender',
+                        readOnlyHint: false,
+                        // Writes only into the project's blender/ folder, which a second export rewrites.
+                        destructiveHint: false,
+                        idempotentHint: true,
+                        openWorldHint: false
+                    },
+                    description:
+                        'Lay a cell out for Blender, to arrange it by eye: every object placed in it — the project\'s own build over ' +
+                        'the load order\'s — with the meshes and textures they show, copied out of the mods and archives, and the ' +
+                        'Python that places them in Blender through the PyNifly add-on, where the game places them. An interior ' +
+                        '(WhiterunBreezehome) or an exterior cell (Riverwood), with its ground. Creates the project when it does not ' +
+                        'exist. Answers the folder and the two scripts: importScript places the cell, exportScript writes what was ' +
+                        'moved, copied (Shift+D) or deleted — run each in Blender\'s Scripting tab, or send its text through ' +
+                        'Blender\'s MCP server — then importCell brings the changes into the project.',
+                    inputSchema: {
+                        type: 'object',
+                        properties: {
+                            project: PROJECT,
+                            cell: {
+                                type: 'string',
+                                description: 'The cell: an interior\'s editor ID like WhiterunBreezehome, an exterior cell\'s like Riverwood, or its FormID.'
+                            },
+                            textures: {
+                                type: 'boolean',
+                                description: 'Copy the textures the meshes name as well. Defaults to true; without them the meshes show grey.'
+                            }
+                        },
+                        required: ['project', 'cell']
+                    }
+                },
+                onFailure: 'Failed to export the cell',
+                run: async args => {
+                    const exported = await asRequestError(this.backend.exportCell({
+                        project: requireString(args, 'project'),
+                        cell: requireString(args, 'cell'),
+                        textures: optionalBoolean(args, 'textures')
+                    }));
+                    const run = (script: string) => `exec(open(${JSON.stringify(script)}, encoding="utf-8").read())`;
+                    return {
+                        ...exported,
+                        nextStep: `In Blender, with the PyNifly add-on enabled, run ${exported.importScript} — the Scripting tab's Run ` +
+                            `Script, or ${run(exported.importScript)} through Blender's MCP server: it places ${exported.references} ` +
+                            `objects of ${exported.cell}. Move, turn, scale, copy (Shift+D) or delete them there; then run ` +
+                            `${exported.exportScript} the same way — ${run(exported.exportScript)} — and call importCell ` +
+                            `{"project": ${JSON.stringify(exported.project)}, "cell": ${JSON.stringify(path.basename(exported.folder))}}.`
+                    };
+                }
+            },
+            {
+                definition: {
+                    name: 'importCell',
+                    annotations: {
+                        title: 'Import a cell from Blender',
+                        readOnlyHint: false,
+                        destructiveHint: false,
+                        idempotentHint: true,
+                        openWorldHint: false
+                    },
+                    description:
+                        'Bring a cell arranged in Blender back into the project, from the layout its exportScript wrote: each object ' +
+                        'moved, turned or scaled is written as the project\'s copy of its reference with the new placement; each copy ' +
+                        'made in Blender as a new reference of the project, in the cell\'s Temporary folder; each one deleted ' +
+                        'disabled — another plugin\'s reference is never deleted, what names it would break — or, the project\'s own, ' +
+                        'its file deleted. Answers the full path of each file written; run buildProject next.',
+                    inputSchema: {
+                        type: 'object',
+                        properties: {
+                            project: PROJECT,
+                            cell: {
+                                type: 'string',
+                                description: 'The cell exported, as exportCell named it — its editor ID. Defaults to the only cell the project exported.'
+                            }
+                        },
+                        required: ['project']
+                    }
+                },
+                onFailure: 'Failed to import the cell',
+                run: async args => {
+                    const project = requireString(args, 'project');
+                    const imported = await asRequestError(this.backend.importCell({ project, cell: optionalString(args, 'cell') }));
+                    const changed = imported.moved.length + imported.added.length + imported.removed.length;
+                    return {
+                        ...imported,
+                        nextStep: changed === 0
+                            ? `Nothing was changed in Blender: the layout holds every object where the game places it (${imported.unchanged}). ` +
+                              'Move, copy or delete objects there, run the exportScript again, then importCell.'
+                            : `Written: ${imported.moved.length} moved, ${imported.added.length} added, ${imported.removed.length} removed. ` +
+                              `Build next: buildProject {"project": ${JSON.stringify(project)}}, and answer with what it says.`
+                    };
+                }
             }
         ];
     }

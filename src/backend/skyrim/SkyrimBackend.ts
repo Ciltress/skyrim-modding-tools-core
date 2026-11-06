@@ -25,6 +25,10 @@ export interface SkyrimBackend extends Backend {
     buildProject(project: string): Promise<BuildResult>;
     deployProject(project: string): Promise<DeployResult>;
     pullProject(project: string): Promise<PullResult>;
+    /** A cell laid out for Blender in the project's blender/ folder: its references, the meshes and textures they show, the script that places them. */
+    exportCell(request: ExportCellRequest): Promise<ExportCellResult>;
+    /** What was changed in Blender written into the project: references moved or deleted as copies, copies made as new references. */
+    importCell(request: ImportCellRequest): Promise<ImportCellResult>;
 
     /** Skyrim SE mods on Nexus Mods. Needs no instance, and no API key. */
     searchNexus(query: NexusSearchQuery): Promise<NexusSearchResult>;
@@ -416,6 +420,45 @@ export interface PullResult {
     removed: string[];
     /** Set when the pull could not check git, so nothing guarded uncommitted work. */
     warning?: string;
+}
+
+export interface ExportCellRequest {
+    project: string;
+    /** The cell: an interior's editor ID like WhiterunBreezehome, an exterior cell's like Riverwood, or its FormID. */
+    cell: string;
+    /** Copy the textures the meshes name too. Defaults to true; without them Blender shows the meshes grey. */
+    textures?: boolean;
+}
+
+export interface ExportCellResult {
+    project: string;
+    cell: string;
+    /** The folder the cell was written into: cell.json, meshes/, textures/ and the scripts. */
+    folder: string;
+    references: number;
+    meshes: number;
+    textures: number;
+    /** Meshes and textures no mod and no archive of the setup has. */
+    missing: string[];
+    /** The Python that places the cell in Blender, and the one that writes its layout. */
+    importScript: string;
+    exportScript: string;
+}
+
+export interface ImportCellRequest {
+    project: string;
+    /** The cell exported, by the name of its folder under the project's blender/ folder (its editor ID). Defaults to the only one. */
+    cell?: string;
+}
+
+export interface ImportCellResult {
+    project: string;
+    folder: string;
+    /** Full paths of the reference files written: moved, copies made, deleted ones disabled or removed. */
+    moved: string[];
+    added: string[];
+    removed: string[];
+    unchanged: number;
 }
 
 export interface RecordQuery {

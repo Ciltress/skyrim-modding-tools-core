@@ -38,7 +38,7 @@ public sealed class Session : IDisposable
         // Overlays are read by one thread at a time: whatever reads plugins waits for the background index.
         // Downloaded files and plugin headers are read from files of their own, and need not wait; record
         // files do, since a FormKey of another plugin's is checked against the record it names.
-        if (method is not ("hello" or "gameVersion" or "setLoadOrder" or "readArchive" or "extractArchive" or "pluginHeaders" or "bsaFiles")
+        if (method is not ("hello" or "gameVersion" or "setLoadOrder" or "readArchive" or "extractArchive" or "pluginHeaders" or "bsaFiles" or "extractFiles")
             && indexing is { } running)
         {
             try { await running; } catch { /* surfaced by the call that needs the index */ }
@@ -71,6 +71,8 @@ public sealed class Session : IDisposable
             p["remove"] as JsonArray, p["among"] as JsonArray, indexing is null ? null : Index),
         "sksePlugins" => SksePlugins.Read(p),
         "bsaFiles" => BsaFiles.Find(p),
+        "cellScene" => CellSceneOf(p),
+        "extractFiles" => CellScene.Extract(p, release.ToGameRelease()),
         _ => throw new HelperException("unknownMethod", $"No method '{method}'.")
     };
 
@@ -331,7 +333,7 @@ public sealed class Session : IDisposable
         };
         // A cell with what is placed in it, from every plugin's version, and the lines of a new reference (CellContents).
         var cellFile = versions.OfType<JsonObject>().SelectMany(v => v["files"]!.AsArray().OfType<JsonObject>())
-            .Select(f => f["path"]!.GetValue<string>()).FirstOrDefault(f => f.StartsWith("Cells/", StringComparison.Ordinal) && f.EndsWith("/RecordData.yaml", StringComparison.Ordinal));
+            .Select(f => f["path"]!.GetValue<string>()).FirstOrDefault(f => RecordFiles.IsCellFile(f.Split('/')));
         if (CellContents.Of(contexts, Index, cellFile) is { } placed) answer["placed"] = placed;
         return answer;
     }
@@ -448,6 +450,15 @@ public sealed class Session : IDisposable
             });
         }
         return new JsonObject { ["added"] = added, ["alreadyInProject"] = already };
+    }
+
+    /// <summary>A cell as exportCell lays it out in Blender (CellScene): its references, the project's built plugin over the load order's.</summary>
+    private JsonNode CellSceneOf(JsonObject p)
+    {
+        var formKey = Resolve(Required(p, "cell"));
+        var built = p["projectPlugin"]?.GetValue<string>();
+        using var project = built is not null && File.Exists(built) ? SkyrimMod.Create(release).FromPath(built).Construct() : null;
+        return CellScene.Of(Contexts(formKey), key => Contexts(key).FirstOrDefault()?.Record, Index, project);
     }
 
     private static string? ProjectFileFor(string projectDir, FormKey formKey)

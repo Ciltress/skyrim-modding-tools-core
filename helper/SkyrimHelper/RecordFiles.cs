@@ -170,22 +170,49 @@ public static class RecordFiles
     internal static readonly HashSet<string> PlacedFolders = new(StringComparer.Ordinal) { "Temporary", "Persistent" };
 
     /// <summary>
-    /// The records a project keeps in an interior cell's folder, <c>Cells/&lt;block&gt;/&lt;sub-block&gt;/&lt;cell&gt;/</c>: the cell's own
-    /// RecordData.yaml, and each reference placed in it, a file in its Temporary or Persistent folder of the kind its
-    /// MutagenObjectType names — PlacedObject, PlacedNpc… — or null where it names no placed kind. Read apart from the
-    /// groups' records (FlatRecords): eval round 125's world runs wrote a chest into a cell's file under fields of their own,
-    /// and placed by its editor ID it was refused by the reader as a malformed FormKey. A worldspace's are left to the reader.
+    /// How many folders of a project file's path name its cell: an interior cell's <c>Cells/&lt;block&gt;/&lt;sub-block&gt;/&lt;cell&gt;/</c>
+    /// (4), an exterior cell's <c>Worldspaces/&lt;worldspace&gt;/&lt;block x, y&gt;/&lt;sub-block x, y&gt;/&lt;cell&gt;/</c> (5), a worldspace's
+    /// persistent cell <c>Worldspaces/&lt;worldspace&gt;/TopCell/</c> (3) — as Spriggit writes them — or 0 for a file in no cell's folder.
+    /// </summary>
+    internal static int CellDepth(string[] parts) => parts[0] switch
+    {
+        "Cells" when parts.Length >= 5 => 4,
+        "Worldspaces" when parts.Length >= 4 && parts[2] == "TopCell" => 3,
+        "Worldspaces" when parts.Length >= 6 => 5,
+        _ => 0
+    };
+
+    /// <summary>A cell's own file: RecordData.yaml in its folder.</summary>
+    internal static bool IsCellFile(string[] parts) => CellDepth(parts) is > 0 and var depth && parts.Length == depth + 1 && parts[depth] == "RecordData.yaml";
+
+    /// <summary>A reference placed in a cell: a file in its folder's Temporary/ or Persistent/.</summary>
+    internal static bool IsPlacedFile(string[] parts) => CellDepth(parts) is > 0 and var depth && parts.Length == depth + 2 && PlacedFolders.Contains(parts[depth]);
+
+    /// <summary>An exterior cell's folder — in a worldspace's block, by its grid — rather than an interior cell's or the persistent one's.</summary>
+    internal static bool IsExterior(string[] parts) => parts[0] == "Worldspaces" && CellDepth(parts) == 5;
+
+    /// <summary>
+    /// The records a project keeps in a cell's folder — an interior cell's, an exterior cell's in its worldspace, a worldspace's
+    /// persistent cell's (<see cref="CellDepth"/>): the cell's own RecordData.yaml, and each reference placed in it, a file in its
+    /// Temporary or Persistent folder of the kind its MutagenObjectType names — PlacedObject, PlacedNpc… — or null where it names
+    /// no placed kind. Read apart from the groups' records (FlatRecords): eval round 125's world runs wrote a chest into a cell's
+    /// file under fields of their own, and placed by its editor ID it was refused by the reader as a malformed FormKey — outdoors
+    /// as well, where a chest placed beside Riverwood's cooking pot by its editor ID was refused so (2026-11-06). The worldspace's
+    /// own file and its blocks' are left to the reader.
     /// </summary>
     public static IEnumerable<(string File, string Relative, Type? Type)> CellRecords(string pluginDir)
     {
-        var cells = Path.Combine(pluginDir, "Cells");
-        if (!Directory.Exists(cells)) yield break;
-        foreach (var file in Directory.EnumerateFiles(cells, "*.yaml", SearchOption.AllDirectories).Order(StringComparer.Ordinal))
+        foreach (var group in new[] { "Cells", "Worldspaces" })
         {
-            var relative = Path.GetRelativePath(pluginDir, file).Replace('\\', '/');
-            var parts = relative.Split('/');
-            if (parts.Length == 5 && parts[4] == "RecordData.yaml") yield return (file, relative, typeof(Cell));
-            else if (parts.Length == 6 && PlacedFolders.Contains(parts[4])) yield return (file, relative, PlacedKind(File.ReadAllText(file)));
+            var folder = Path.Combine(pluginDir, group);
+            if (!Directory.Exists(folder)) continue;
+            foreach (var file in Directory.EnumerateFiles(folder, "*.yaml", SearchOption.AllDirectories).Order(StringComparer.Ordinal))
+            {
+                var relative = Path.GetRelativePath(pluginDir, file).Replace('\\', '/');
+                var parts = relative.Split('/');
+                if (IsCellFile(parts)) yield return (file, relative, typeof(Cell));
+                else if (IsPlacedFile(parts)) yield return (file, relative, PlacedKind(File.ReadAllText(file)));
+            }
         }
     }
 
@@ -196,15 +223,16 @@ public static class RecordFiles
     /// </summary>
     private static string? CellProblem(string relative, string text, string[] parts, string pluginDir)
     {
-        var placed = parts.Length == 6 && PlacedFolders.Contains(parts[4]);
-        Type? type = parts.Length == 5 && parts[4] == "RecordData.yaml" ? typeof(Cell) : placed ? PlacedKind(text) : null;
-        var cellFolder = string.Join('/', parts.Take(4));
+        var depth = CellDepth(parts);
+        var placed = IsPlacedFile(parts);
+        Type? type = IsCellFile(parts) ? typeof(Cell) : placed ? PlacedKind(text) : null;
+        var cellFolder = string.Join('/', parts.Take(depth));
         // A reference in the folder of a cell the project has no copy of: the reader answered "RecordData.yaml cannot be read as
         // a record: Could not find file …", and the run never copied the cell (the mini-round after eval round 128,
         // world+detailed #1).
-        if (placed && parts.Length >= 4 && !File.Exists(Path.Combine(pluginDir, cellFolder, "RecordData.yaml")))
+        if (placed && !File.Exists(Path.Combine(pluginDir, cellFolder, "RecordData.yaml")))
         {
-            var cell = CellFolder.Match(parts[3]);
+            var cell = CellFolder.Match(parts[depth - 1]);
             var copy = cell.Success
                 ? $"one call copies it in, and this file stays where it is: addPatch {{\"project\": {ToolCalls.Quoted(ToolCalls.ProjectOf(pluginDir))}, " +
                   $"\"records\": [\"{cell.Groups["id"].Value.ToUpperInvariant()}:{cell.Groups["plugin"].Value}\"]}} — where its answer names " +
@@ -1098,8 +1126,9 @@ public static class RecordFiles
             var parts = relative.Split('/');
             // In Cells/ too, where it is no cell's Temporary/ or Persistent/ file: eval round 131's world #1 wrote its chest's
             // reference as Cells/HuntersChestRef.yaml, which the reader took for nothing, and the build answered success without it.
-            var inCell = parts[0] == "Cells" && parts.Length == 6 && PlacedFolders.Contains(parts[4]);
-            if (parts[0] != "Worldspaces" && !inCell && PlacedKind(File.ReadAllText(file)) is { } placedKind)
+            // Outdoors the same: a reference anywhere in Worldspaces/ but an exterior cell's or the persistent cell's folder.
+            var inCell = IsPlacedFile(parts);
+            if (!inCell && PlacedKind(File.ReadAllText(file)) is { } placedKind)
             {
                 problems.Add(PlacedOutside(relative, placedKind, pluginDir));
                 continue;
@@ -1162,7 +1191,7 @@ public static class RecordFiles
                 else
                     (formKeys.TryGetValue(formKey, out var holders) ? holders : formKeys[formKey] = []).Add(relative);
             }
-            if (parts[0] == "Cells" && CellProblem(relative, text, parts, pluginDir) is { } cellProblem) problems.Add(cellProblem);
+            if (CellDepth(parts) > 0 && CellProblem(relative, text, parts, pluginDir) is { } cellProblem) problems.Add(cellProblem);
             if (type is null || parts.Length != 2) continue;
             if (Identity(text) is { EditorId: { } recordId } identity)
                 (editorIds.TryGetValue(recordId, out var sharing) ? sharing : editorIds[recordId] = []).Add((relative, identity.FormKey, type));

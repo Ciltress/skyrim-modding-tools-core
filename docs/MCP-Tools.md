@@ -143,7 +143,7 @@ arguments, see [`Tool-Reference.md`](./Tool-Reference.md), which is generated fr
 | --- | --- | --- |
 | `core` | 17 | look up, patch, edit, build, deploy; move or delete a record file; list the mods, check them against the game, install, disable or enable one; read a crash log — small local models |
 | `readonly` | 10 | looking records and mods up, on Nexus Mods too, and reading crash logs only; the write tools are absent, not discouraged |
-| `all` | 23 | the default; right for clients that fetch tool schemas on demand. 22 without a Nexus API key, which `downloadNexusFile` needs |
+| `all` | 25 | the default; right for clients that fetch tool schemas on demand. 24 without a Nexus API key, which `downloadNexusFile` needs; the only one with `exportCell` and `importCell`, a cell in Blender and back |
 
 Counts include `healthcheck`, which every profile lists. `profiles.test.ts` holds them to `PROFILES`.
 
@@ -409,7 +409,24 @@ the game's prefix with Amethyst):
 {"tool":"deployProject","args":{"project":"FrostBlade"}}
 ```
 
-### 4.5 Find a mod on Nexus, check what it needs, install it
+### 4.5 Arrange a cell in Blender
+
+Blender with the PyNifly add-on; the Blender part runs in its Scripting tab, or through Blender's MCP server:
+
+```jsonc
+{"tool":"exportCell","args":{"project":"BreezehomeTidy","cell":"WhiterunBreezehome"}}
+// → folder, importScript, exportScript: the cell's references, meshes and textures in the project's blender/ folder
+// Blender: run importScript; move, turn, scale, copy (Shift+D) or delete; run exportScript — it writes layout.json
+{"tool":"importCell","args":{"project":"BreezehomeTidy"}}   // moved → copies of their references; copies → new references;
+                                                            // deleted → another plugin's disabled, the project's own deleted
+{"tool":"buildProject","args":{"project":"BreezehomeTidy"}}
+```
+
+An exterior cell (`Riverwood`) comes with its ground, a mesh of its landscape's heights that is not exported back. The
+game turns a reference by z, then y, then x, each angle clockwise: the script places it with Blender's Euler order ZYX,
+the angles negated, and turns Blender's rotation back the same way (CommonLibSSE's `NiMatrix3::SetEulerAnglesXYZ`).
+
+### 4.6 Find a mod on Nexus, check what it needs, install it
 
 ```jsonc
 {"tool":"searchNexus","args":{"text":"realistic water"}}   // most endorsed first; modId, version, author, page
@@ -438,7 +455,7 @@ a plugin that named it in `missingMasters`, or installed again after `disableMod
 manager told, as for `deployProject`. Its `meta.ini` names the Nexus mod and file, so Mod Organizer's update check knows
 it. `missingMasters` lists plugins the game cannot load until another mod is installed.
 
-### 4.6 Find out why the game crashed
+### 4.7 Find out why the game crashed
 
 ```jsonc
 {"tool":"readCrashLog","args":{}}
@@ -460,7 +477,7 @@ crash "just now" — reads the newest log before it that day, and the nextStep s
 stamp writes it, `[Sat 2026-10-31 09:26 GMT+1]`, is read without its brackets, weekday and zone (since eval round 100). A fix is made
 with the mod tools, on the user's word: `disableMod` and `enableMod`, `installMod`, `editIni`.
 
-### 4.7 Find out what you are connected to
+### 4.8 Find out what you are connected to
 
 ```jsonc
 {"tool":"healthcheck","args":{}}
@@ -666,6 +683,10 @@ Start with `healthcheck`.
 | `buildProject` → "WordsOfPower/Dahl.yaml: Dahl is translated 'Dahl', as it is named … Where the user gave its meaning, one call writes it and builds again" | Since v0.2.57 a word named and translated as the word its EditorID spells. Round 131's shout+detailed #5 built Kreh "Kreh" as a success | — |
 | `buildProject` of `Name: Steel Sword` at a record's margin → corrected: "line 7, `Name: Steel Sword`, written as a text's two lines" | Since v0.2.57 the build writes a text written as one value as its two lines, in place of refusing it. Round 131's quest+detailed #3 spent its last builds on it | — |
 | `buildProject` → nextStep "… Not done yet: its call fixes it and builds again — deleteRecord {…, "build": true} — send it next, then answer with what that build says" | Since v0.2.57 the first warning that fixes something has its call in the nextStep; one that stays ("answer with the build") is left as it is. The left-over copy's and effect's deletes build too. 6 of round 131's 13 misses answered a warning with its call | — |
+| `buildProject` of a reference placed outdoors by its Base's editor ID → "RecordData.yaml cannot be read as a record: Malformed FormKey string" | Fixed in v0.2.58: an exterior cell's references — in `Worldspaces/<worldspace>/<block>/<sub-block>/<cell>/Temporary/` — are read as an interior cell's are, their links by editor ID resolved, their fields and their folder checked; readRecord of an exterior cell names that folder in `newReference`, with the cell's square of x and y | — |
+| `buildProject` → "FarChestRef is placed at 21000, …, in Riverwood04, cell 5, -12 — not in Riverwood, cell 4, -12 … One call places it in Riverwood, at its edge nearest to where it is" | Since v0.2.58 an exterior cell's reference whose position lies in another cell's square is warned, with that cell, the call that puts it back at the cell's edge, and the calls that move it to the cell it stands in. Outdoors the under-the-floor and outside-the-walls notes are not given: the ground rises and falls | — |
+| `importCell` → "… holds no layout.json yet: in Blender, run …export_layout.py" | The layout is written in Blender: run the exportScript exportCell named — the Scripting tab's Run Script, or its text through Blender's MCP server — after arranging, then call importCell again | Run the exportScript |
+| `exportCell` → `missing` lists meshes or textures | No mod and no archive of the setup has them: those objects stay empties in Blender (a mesh), or grey (a texture), and are moved and copied as any other | — |
 | `editRecord` of `WorldModel.Male.Model.File` on an armor → "added WorldModel.Male.Model.File: …" | Since v0.2.51: a part whose type is an interface no class takes as it is — an armor's WorldModel, an IGenderedItem — is read by its own fields, Male and Female; it was refused as "a list" | — |
 | A link naming no record → "the Item records closest to it: SteelArrow (\"Steel Arrow\", an Ammunition, 01397F:Skyrim.esm), … BaseArrowSteel75 (a leveled list, one picked at random, 037C0E:Skyrim.esm)" | Since v0.2.50 each close record with its in-game name and kind, a leveled list said to pick one at random — round 128's world+detailed #3 took BaseArrowSteel75 for ten arrows — and a record whose in-game name, spaces out, is the name written first: `AncientNordSword` → DraugrSword | Name the one meant |
 | `buildProject` reads a condition's record by editor ID — `Perk: SteelSmithing`, `Keyword: WeapTypeBow` | A condition's link is a link or an alias's index (Mutagen's `IFormLinkOrIndex`), which the links' resolution did not take for one: an editor ID there reached the reader, which refused it as a malformed FormKey (the eval's hand-made recipe and perk mods, 2026-11-04). Since v0.2.48, resolved as every link is, and refused where it names no record | — |

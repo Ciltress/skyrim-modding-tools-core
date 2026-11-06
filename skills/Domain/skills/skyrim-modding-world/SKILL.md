@@ -1,6 +1,6 @@
 ---
 name: skyrim-modding-world
-description: Cells and what is placed in them in Skyrim SE - interiors like a player home, the references the game places there (containers, furniture, doors, NPCs, items), and a new object placed in one. Use when a mod should put something into the world - a chest with items in Breezehome, a container, an NPC standing in a room - or when an object a mod placed is missing in game.
+description: Cells and what is placed in them in Skyrim SE - interiors like a player home and the exterior cells of a worldspace like a town's streets, the references the game places there (containers, furniture, doors, NPCs, items), a new object placed in one, and a cell arranged in Blender and brought back. Use when a mod should put something into the world - a chest with items in Breezehome, a bedroll beside Riverwood's cooking pot, an NPC standing in a room - when objects of a cell are to be moved, copied or removed, or when an object a mod placed is missing in game.
 ---
 
 # Cells and placed objects
@@ -75,5 +75,50 @@ reference.
 - **Write** the cell's copy (addPatch), the record of the mod's own if it has one, and a reference's file for each
   object placed.
 - **Done** when the build answers success, the build's line naming each reference placed, with no warning.
-- **An exterior cell** — a town's streets, the wilderness — sits in a worldspace, by its grid: the tools do not place
-  references there yet. Place them in the Creation Kit and bring the work back with pullProject.
+
+## Place something outdoors
+
+An exterior cell — a town's streets, the wilderness — is a square of 4096 units of a worldspace, by its grid. A
+reference is placed there as indoors, in the cell's folder inside its worldspace's.
+
+1. `findRecords` with `types: ["CELL"]` and the place's name — a town's cells are named after it: `Riverwood`,
+   `Riverwood01`, `Riverwood02`… — and readRecord the one whose `placed` lists what the new object goes beside. Its
+   `newReference` names the cell's folder and its square: the x and y a reference placed in it stands between.
+2. `addPatch` the cell: `{"project": "RiverwoodCamp", "records": ["Riverwood"]}` copies the worldspace's file, its
+   blocks' and the cell's.
+3. The reference in the cell's `Temporary` folder —
+   `Worldspaces/Tamriel - 00003C_Skyrim.esm/0, -1/0, -2/Riverwood - 009732_Skyrim.esm/Temporary/RiverwoodCampBedroll.yaml`:
+
+   ```yaml
+   MutagenObjectType: PlacedObject
+   EditorID: RiverwoodCampBedroll
+   Base: Bedroll01L
+   Placement:
+     Position: 19356.4, -47335.5, -141.5
+     Rotation: 0, 0, 2.6832
+   ```
+
+4. `buildProject`. A reference whose position lies in another cell's square is warned, with the cell it lies in.
+
+- **Position**: inside the cell's square, beside an object `placed` lists, at that object's z — the ground rises and
+  falls, so a z from across the cell sinks it into a hill or leaves it floating.
+- **Navmesh and LOD** are the Creation Kit's: a large object placed on a road blocks the NPCs' paths there, and nothing
+  placed is seen from afar. A chest, a bedroll, a barrel beside a house need neither.
+
+## Arrange a cell in Blender
+
+To move, turn, copy or remove what stands in a cell by eye, the cell goes to Blender and back — Blender with the
+PyNifly add-on, which reads the game's meshes.
+
+1. `exportCell` `{"project": "BreezehomeTidy", "cell": "WhiterunBreezehome"}` writes the cell's objects, the meshes and
+   textures they show into the project's `blender/` folder, and answers two scripts: `importScript` and `exportScript`.
+2. Run `importScript` in Blender — its Scripting tab's Run Script, or `exec(open(r"<importScript>").read())` sent through
+   Blender's MCP server: each object stands where the game places it, named after its reference (`PlayerHouseChest
+   [10EB84]`), an exterior cell on its ground.
+3. Arrange: move, turn or scale an object; copy one with Shift+D for one more of its kind; delete one to take it out.
+   Through Blender's MCP server, an object is found by its name — `bpy.data.objects["PlayerHouseChest [10EB84]"]` — and
+   moved by its `location`, in game units.
+4. Run `exportScript` the same way: it writes `layout.json` beside the cell's objects.
+5. `importCell` `{"project": "BreezehomeTidy"}` writes each change into the project — a moved object as the project's copy
+   of its reference with its new placement, a copy as a new reference, a deleted one of another plugin disabled — then
+   `buildProject`.

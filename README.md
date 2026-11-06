@@ -34,8 +34,11 @@ This is the engine of the Skyrim Modding Tools. Use it from your own code, or ta
   the game does not have, an effect that does nothing, a chest under the floor, a copy that changes nothing — each
   with the one call that fixes it, and corrects the slips that have one right answer by itself.
 - 🗡️ **Every kind of mod object.** Weapons, armor, arrows, potions, recipes, enchantments, spells and magic effects,
-  dragon shouts, NPCs, leveled lists, perks, books and notes, quests with Papyrus scripts, and objects placed in a
-  cell, like a chest in Breezehome.
+  dragon shouts, NPCs, leveled lists, perks, books and notes, quests with Papyrus scripts, and objects placed in the
+  world, indoors and out — a chest in Breezehome, a bedroll by Riverwood's cooking pot.
+- 🧊 **Cells in Blender.** Export a cell — its objects, with the meshes and textures they show — and arrange it in
+  Blender with the PyNifly add-on, by hand or through Blender's MCP server; what was moved, copied or deleted comes back
+  as the mod's own references.
 - 🩹 **Patch without touching.** Copy another mod's record into your patch and change it there; the original mod
   stays as it is.
 - 📦 **Install mods.** Search Nexus Mods, read a mod's page and what it requires, download, install with its FOMOD
@@ -45,8 +48,8 @@ This is the engine of the Skyrim Modding Tools. Use it from your own code, or ta
 - 📚 **Teach the agent.** Skills for items and crafting, magic, NPCs, leveled lists, perks, quests and scripts, the
   world, game updates and crash analysis, and guides to which tool does what — the knowledge a model needs to mod well.
 
-Some work still needs the Creation Kit, like navmesh, objects placed outdoors or a new NPC's face; what you make
-there, `pullProject` reads back into the project's text.
+Some work still needs the Creation Kit, like navmesh, distant LOD or a new NPC's face; what you make there,
+`pullProject` reads back into the project's text.
 
 ## Modding with Muddy! 🦀
 

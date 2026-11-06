@@ -23,7 +23,7 @@ one, at any depth; every directory containing a `SKILL.md` is one skill, and eve
 | `skyrim-modding-leveled-lists` | Leveled items, NPCs and spells: how a pick works, the conflict problem | `REFERENCE.md` |
 | `skyrim-modding-perks` | Perks: what one changes (its entry points — damage, spell cost, prices), its conditions, its ranks, how the player gets it | `REFERENCE.md` |
 | `skyrim-modding-quests-and-scripts` | Quests that start with the game, Papyrus scripts on quests, items, magic effects and NPCs, their properties and the events the game sends them | `REFERENCE.md` |
-| `skyrim-modding-world` | Interior cells and what is placed in them — containers, furniture, doors, NPCs — and a new object placed in one | `REFERENCE.md` |
+| `skyrim-modding-world` | Cells and what is placed in them — containers, furniture, doors, NPCs — indoors and outdoors, a new object placed in one, and a cell arranged in Blender and brought back | `REFERENCE.md` |
 | `skyrim-modding-game-versions` | Mods whose SKSE plugins do not fit the game version: checking, a fitting file or disabling, saves | `REFERENCE.md` (game versions, SKSE builds, the rules) |
 | `skyrim-modding-crash-analysis` | A game that crashed: Crash Logger SSE's log read, diagnoses and suspect mods weighed, the fix on the user's word | — |
 

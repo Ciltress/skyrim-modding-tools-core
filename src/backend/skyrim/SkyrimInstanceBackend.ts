@@ -15,6 +15,10 @@ import type { Instance, ModEntry } from './modManager.js';
 import { ModError, findMod, listedMods, nexusRecord, ownerOf, pluginFiles } from './modList.js';
 import { checkGameVersion, myGamesDir } from './gameVersion.js';
 import { Attributor, dataPath } from './crash/attribution.js';
+import {
+    BLENDER_SCRIPT, cellFolderOf, copyEditorId, initiallyDisabled, layoutChanges, launcher, newReferenceText, normalRotation, recordFileOf, sceneFolderName, texturesOf,
+    triple, type CellSceneFile, type LayoutFile
+} from './cellScene.js';
 import { CrashLogNotFoundError, chooseCrashLog } from './crash/crashLogFiles.js';
 import { buildCrashReport, crashLogSection, type CrashLogSection, type CrashReport } from './crash/crashReport.js';
 import { CRASH_RULES } from './crash/rules/index.js';
@@ -33,7 +37,7 @@ import type {
     EditIniRequest, EditIniResult, EditRecordRequest, GameFile, EditRecordResult, EditInputRequest, EditInputResult, EnableModRequest, EnableModResult, InstallModQuestions, InstallModRequest, ReadCrashLogRequest,
     InstallModResult, GameVersionCheck, ModList, ModListQuery, MoveRecordRequest, MoveRecordResult,
     NewProjectRequest, NexusAccount, NexusDownload, NexusMod, NexusSearchQuery, NexusSearchResult, ProjectFile, ProjectInfo,
-    PullResult, RecordQuery, RecordRequest, RecordSearchResult, RecordVersion, RecordVersions, SkyrimBackend
+    PullResult, ExportCellRequest, ExportCellResult, ImportCellRequest, ImportCellResult, RecordQuery, RecordRequest, RecordSearchResult, RecordVersion, RecordVersions, SkyrimBackend
 } from './SkyrimBackend.js';
 import { CORE_INFO } from '../../lib/product.js';
 import { exampleWeapons } from '../../lib/skills.js';
@@ -719,6 +723,133 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
         } finally {
             fs.rmSync(scratch, { recursive: true, force: true });
         }
+    }
+
+    async exportCell({ project, cell, textures = true }: ExportCellRequest): Promise<ExportCellResult> {
+        await this.engine.ensureFresh();
+        const instance = this.engine.modManager.readInstance();
+        const paths = projectPaths(this.engine.projectsDir, project);
+        if (!projectExists(paths)) await this.newProject({ project });
+        const { plugin } = readProjectHeader(paths);
+        const built = path.join(paths.build, plugin);
+        const scene = await this.engine.helper.call<CellSceneFile>('cellScene',
+            { cell, ...(fs.existsSync(built) ? { projectPlugin: built } : {}) }, BUILD_TIMEOUT_MS);
+
+        // Into the project's blender/ folder, which git leaves out: the game's meshes and textures are no part of the mod.
+        const blender = path.join(paths.root, 'blender');
+        const folder = path.join(blender, sceneFolderName(scene.cell));
+        fs.mkdirSync(folder, { recursive: true });
+        fs.writeFileSync(path.join(blender, '.gitignore'), '*\n');
+        fs.rmSync(path.join(folder, 'layout.json'), { force: true });
+
+        const attributor = this.attributor(instance);
+        const copyOut = async (files: string[]) => {
+            const sources = await attributor.sources(files);
+            const extract: { archive: string; from: string; to: string }[] = [];
+            for (const [asked, source] of sources) {
+                const target = path.join(folder, ...dataPath(asked).split('\\'));
+                if ('file' in source) {
+                    fs.mkdirSync(path.dirname(target), { recursive: true });
+                    fs.copyFileSync(source.file, target);
+                } else extract.push({ archive: source.archive, from: source.under, to: target });
+            }
+            if (extract.length > 0) await this.engine.helper.call('extractFiles', { files: extract }, BUILD_TIMEOUT_MS * 4);
+            return files.filter(file => !sources.has(file));
+        };
+        const models = [...new Set(scene.references.map(r => r.model).filter((m): m is string => !!m))];
+        const missing = await copyOut(models);
+        const found = models.filter(model => !missing.includes(model));
+        let textureCount = 0;
+        if (textures) {
+            const named = new Map<string, string>();
+            for (const model of found) {
+                const file = path.join(folder, ...dataPath(model).split('\\'));
+                if (fs.existsSync(file)) for (const texture of texturesOf(fs.readFileSync(file))) named.set(texture.toLowerCase(), texture);
+            }
+            const all = [...named.values()];
+            const lacking = await copyOut(all);
+            missing.push(...lacking);
+            textureCount = all.length - lacking.length;
+        }
+
+        fs.writeFileSync(path.join(folder, 'cell.json'), JSON.stringify(scene, null, 1));
+        fs.copyFileSync(BLENDER_SCRIPT, path.join(folder, 'skyrim_cell.py'));
+        const importScript = path.join(folder, 'import_cell.py');
+        const exportScript = path.join(folder, 'export_layout.py');
+        fs.writeFileSync(importScript, launcher(folder, 'import_cell'));
+        fs.writeFileSync(exportScript, launcher(folder, 'export_layout'));
+        return {
+            project, cell: scene.cell.editorId ?? scene.cell.formId, folder,
+            references: scene.references.length, meshes: found.length, textures: textureCount, missing, importScript, exportScript
+        };
+    }
+
+    async importCell({ project, cell }: ImportCellRequest): Promise<ImportCellResult> {
+        await this.engine.ensureFresh();
+        const paths = projectPaths(this.engine.projectsDir, project);
+        const { plugin } = readProjectHeader(paths);
+        const blender = path.join(paths.root, 'blender');
+        const exported = fs.existsSync(blender)
+            ? fs.readdirSync(blender, { withFileTypes: true }).filter(e => e.isDirectory() && fs.existsSync(path.join(blender, e.name, 'cell.json'))).map(e => e.name)
+            : [];
+        const name = cell ? exported.find(e => e.toLowerCase() === cell.toLowerCase().replace(/[^\w.-]/g, '_')) : exported.length === 1 ? exported[0] : undefined;
+        if (!name) {
+            throw new ProjectError(exported.length === 0
+                ? `'${project}' has no cell exported for Blender: exportCell writes one first.`
+                : `Name the cell to bring back, one of ${exported.join(', ')}.`);
+        }
+        const folder = path.join(blender, name);
+        const layoutFile = path.join(folder, 'layout.json');
+        if (!fs.existsSync(layoutFile)) {
+            throw new ProjectError(`${folder} holds no layout.json yet: in Blender, run ${path.join(folder, 'export_layout.py')} — ` +
+                `the Scripting tab's Run Script, or its text sent through Blender's MCP server — then call importCell again.`);
+        }
+        const scene = JSON.parse(fs.readFileSync(path.join(folder, 'cell.json'), 'utf8')) as CellSceneFile;
+        const changes = layoutChanges(scene, JSON.parse(fs.readFileSync(layoutFile, 'utf8')) as LayoutFile);
+        const result: ImportCellResult = { project, folder, moved: [], added: [], removed: [], unchanged: changes.unchanged };
+        const projectPlugin = plugin.toLowerCase();
+        const isNew = (formId: string) => formId.split(':')[1]?.toLowerCase() === projectPlugin;
+
+        // The other plugins' references moved or deleted are changed as copies; a copy made in Blender needs the cell's copy.
+        const toCopy = [...changes.moved.map(m => m.reference), ...changes.removed]
+            .filter(r => !isNew(r.formId) && !recordFileOf(paths.plugin, r.formId)).map(r => r.formId);
+        if (!cellFolderOf(paths.plugin, scene.cell.formId)) toCopy.unshift(scene.cell.formId);
+        if (toCopy.length > 0) await this.addPatch({ project, records: [...new Set(toCopy)] });
+        const cellFolder = cellFolderOf(paths.plugin, scene.cell.formId);
+        if (!cellFolder) throw new ProjectError(`The copy of ${scene.cell.editorId ?? scene.cell.formId} is not in '${project}'.`);
+
+        for (const { reference, position, rotation, scale } of changes.moved) {
+            const file = recordFileOf(paths.plugin, reference.formId);
+            if (!file) continue;
+            const set: Record<string, unknown> = {
+                'Placement.Position': triple(position),
+                'Placement.Rotation': triple(normalRotation(rotation))
+            };
+            if (Math.abs(scale - (reference.scale || 1)) >= 0.002) set.Scale = Math.round(scale * 1000) / 1000;
+            await this.editRecord({ project, record: path.relative(paths.plugin, file).replace(/\\/g, '/'), set });
+            result.moved.push(file);
+        }
+        for (const reference of changes.removed) {
+            const file = recordFileOf(paths.plugin, reference.formId);
+            if (!file) continue;
+            if (isNew(reference.formId)) {
+                result.removed.push((await this.deleteRecord({ project, record: path.relative(paths.plugin, file).replace(/\\/g, '/') })).deleted);
+                continue;
+            }
+            // Another plugin's reference is never deleted — what names it would break: it starts disabled, as xEdit's
+            // "Undelete and Disable" leaves one.
+            fs.writeFileSync(file, initiallyDisabled(fs.readFileSync(file, 'utf8')));
+            result.removed.push(file);
+        }
+        const taken = new Set(recordFiles(paths.plugin).map(file => path.basename(file, '.yaml').toLowerCase()));
+        for (const copy of changes.copies) {
+            const editorId = copyEditorId(project, copy.baseEditorId || copy.base.split(':')[0], taken);
+            const file = path.join(cellFolder, 'Temporary', `${editorId}.yaml`);
+            fs.mkdirSync(path.dirname(file), { recursive: true });
+            fs.writeFileSync(file, newReferenceText({ kind: copy.kind, editorId, base: copy.base, position: copy.position, rotation: copy.rotation, scale: copy.scale }));
+            result.added.push(file);
+        }
+        return result;
     }
 
     // Nexus needs neither the instance nor the helper: these answer whatever state the engine is in.

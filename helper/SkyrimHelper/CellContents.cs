@@ -80,10 +80,26 @@ internal static class CellContents
                     $"{name}'s own fields; the cell's file holds none of them. Position is in game units, x and y across the floor, " +
                     "z up, rotation in radians about each axis" +
                     (near.Base is { } by ? $"; the position above is {by.EditorId ?? Session.FormKeyText(by.FormKey)}'s, 64 units along x" : "") +
-                    ". A Persistent reference — in the Persistent folder — is one a quest or script names; an object placed for the player is Temporary."
+                    ". A Persistent reference — in the Persistent folder — is one a quest or script names; an object placed for the player is Temporary." +
+                    (GridOf(winner) is { } grid
+                        ? $" {name} lies outdoors, cell {grid.X}, {grid.Y} of its worldspace: a reference placed in it stands between x {grid.X * CellSize} and " +
+                          $"{(grid.X + 1) * CellSize}, y {grid.Y * CellSize} and {(grid.Y + 1) * CellSize}, on the ground beside what is placed there — the z of " +
+                          "the objects near it, since the ground rises and falls."
+                        : "")
             }
         };
     }
+
+    /// <summary>The length of an exterior cell's side, in game units.</summary>
+    internal const int CellSize = 4096;
+
+    /// <summary>An exterior cell's grid — the cell x, y of its worldspace — or null for an interior cell.</summary>
+    internal static P2Int? GridOf(ICellGetter cell) =>
+        cell.Flags.HasFlag(Cell.Flag.IsInteriorCell) || cell.Grid is not { } grid ? null : grid.Point;
+
+    /// <summary>The exterior cell a position lies in, by its grid.</summary>
+    internal static P2Int GridAt(P3Float position) =>
+        new((int)Math.Floor(position.X / CellSize), (int)Math.Floor(position.Y / CellSize));
 
     /// <summary>How far below the lowest container, furniture, door or activator a cell places a reference may be, in game units.</summary>
     private const float Below = 32;
@@ -107,6 +123,14 @@ internal static class CellContents
         {
             var own = cell.Persistent.Concat(cell.Temporary).Where(r => r.FormKey.ModKey == mod.ModKey).ToList();
             if (own.Count == 0) continue;
+            // Outdoors no walls and no floor: the ground rises and falls, and what is placed lies far apart. A reference belongs to
+            // the cell its position lies in — one placed beyond it the game shows with a cell it does not stand in, loaded and
+            // unloaded with the wrong ground.
+            if (GridOf(cell) is { } grid)
+            {
+                notes.AddRange(OutsideGrid(cell, grid, own, files, contexts, pluginDir));
+                continue;
+            }
             var seen = new HashSet<FormKey>();
             var points = new List<(P3Float At, string Name, string Type)>();
             foreach (var context in contexts(cell.FormKey).Where(c => c.ModKey != mod.ModKey))
@@ -145,6 +169,65 @@ internal static class CellContents
             }
         }
         return notes;
+    }
+
+    /// <summary>
+    /// The project's references placed in an exterior cell at a position of another cell — each with the cell its position lies in,
+    /// and the calls that copy that cell in and move the reference there, or put it back in its cell.
+    /// </summary>
+    private static IEnumerable<string> OutsideGrid(ICellGetter cell, P2Int grid, List<IPlacedGetter> own,
+        List<(string Relative, (FormKey? FormKey, string? EditorId) Identity)> files,
+        Func<FormKey, List<IModContext<ISkyrimMod, ISkyrimModGetter, IMajorRecord, IMajorRecordGetter>>> contexts, string pluginDir)
+    {
+        var cellName = cell.EditorID ?? Session.FormKeyText(cell.FormKey);
+        var worldspace = contexts(cell.FormKey).Select(WorldspaceOf).FirstOrDefault(w => w is not null);
+        foreach (var reference in own)
+        {
+            if (PlacementOf(reference) is not { } placement) continue;
+            var lies = GridAt(placement.Position);
+            if (lies.Equals(grid)) continue;
+            var name = reference.EditorID ?? Session.FormKeyText(reference.FormKey);
+            var file = files.FirstOrDefault(f => f.Identity.FormKey == reference.FormKey
+                || reference.EditorID is { } id && string.Equals(f.Identity.EditorId, id, StringComparison.OrdinalIgnoreCase)).Relative;
+            var other = worldspace is null ? null : CellAt(contexts(worldspace.Value), lies);
+            var inside = Triple(new P3Float(
+                Math.Clamp(placement.Position.X, grid.X * CellSize + 64, (grid.X + 1) * CellSize - 64),
+                Math.Clamp(placement.Position.Y, grid.Y * CellSize + 64, (grid.Y + 1) * CellSize - 64), placement.Position.Z));
+            var project = ToolCalls.ProjectOf(pluginDir);
+            var there = other is null
+                ? $"cell {lies.X}, {lies.Y}, which no plugin of the load order has"
+                : $"{other.EditorID ?? Session.FormKeyText(other.FormKey)}, cell {lies.X}, {lies.Y}";
+            var move = other is null || file is null ? "" :
+                $" Where it is meant to stand there, the calls are addPatch {{\"project\": {ToolCalls.Quoted(project)}, \"records\": [\"{Session.FormKeyText(other.FormKey)}\"]}}, " +
+                $"then moveRecord of {file} into that cell's Temporary/ folder, which addPatch's answer names.";
+            yield return $"{file ?? name}: {name} is placed at {Triple(placement.Position)}, in {there} — not in {cellName}, cell {grid.X}, {grid.Y}, " +
+                $"between x {grid.X * CellSize} and {(grid.X + 1) * CellSize}, y {grid.Y * CellSize} and {(grid.Y + 1) * CellSize}: the game loads it with {cellName} " +
+                "while it stands elsewhere, on ground that is not loaded with it. " +
+                (file is not null
+                    ? $"One call places it in {cellName}, at its edge nearest to where it is, and builds again: " +
+                      ToolCalls.Edit(project, file, $"{{\"path\": \"Placement.Position\", \"value\": \"{inside}\"}}", build: true) + "."
+                    : $"Write its Position in {cellName}'s cell — {inside} is.") + move;
+        }
+    }
+
+    /// <summary>The worldspace a cell's version lies in, through its parents.</summary>
+    private static FormKey? WorldspaceOf(IModContext<ISkyrimMod, ISkyrimModGetter, IMajorRecord, IMajorRecordGetter> context)
+    {
+        for (var parent = context.Parent; parent is not null; parent = parent.Parent)
+            if (parent.Record is IWorldspaceGetter world) return world.FormKey;
+        return null;
+    }
+
+    /// <summary>The cell of a worldspace at a grid, from the worldspace's versions, winning first.</summary>
+    private static ICellGetter? CellAt(IEnumerable<IModContext<ISkyrimMod, ISkyrimModGetter, IMajorRecord, IMajorRecordGetter>> worldspaces, P2Int grid)
+    {
+        foreach (var context in worldspaces)
+            if (context.Record is IWorldspaceGetter world)
+                foreach (var block in world.SubCells)
+                    foreach (var subBlock in block.Items)
+                        foreach (var cell in subBlock.Items)
+                            if (cell.Grid?.Point is { } point && point.Equals(grid)) return cell;
+        return null;
     }
 
     /// <summary>A coordinate rounded to a whole unit, for a note.</summary>

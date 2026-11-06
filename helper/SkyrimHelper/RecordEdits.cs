@@ -273,10 +273,12 @@ public static class RecordEdits
         var wanted = (Path.IsPathRooted(record) ? Path.GetRelativePath(pluginDir, record) : record).Replace('\\', '/').Trim();
         var hit = flat.FirstOrDefault(f => f.Relative.Equals(wanted, StringComparison.OrdinalIgnoreCase));
         // A cell's folder, or its name before the FormID — `WhiterunBreezehome - 0165A8_Skyrim.esm` — is its RecordData.yaml.
-        if (hit == default) hit = flat.FirstOrDefault(f => f.Type == typeof(Mutagen.Bethesda.Skyrim.Cell) && f.Relative.Split('/') is { Length: 5 } cell
-            && (string.Join('/', cell.Take(4)).Equals(wanted.TrimEnd('/'), StringComparison.OrdinalIgnoreCase)
-                || cell[3].Equals(wanted, StringComparison.OrdinalIgnoreCase)
-                || cell[3].Split(" - ")[0].Equals(wanted, StringComparison.OrdinalIgnoreCase)));
+        // Outdoors too, where the cell's folder is a worldspace's block's: `Worldspaces/Tamriel - 00003C_Skyrim.esm/0, -1/0, -2/Riverwood - …`.
+        if (hit == default) hit = flat.FirstOrDefault(f => f.Type == typeof(Mutagen.Bethesda.Skyrim.Cell) && f.Relative.Split('/') is var cell
+            && RecordFiles.CellDepth(cell) is > 0 and var depth
+            && (string.Join('/', cell.Take(depth)).Equals(wanted.TrimEnd('/'), StringComparison.OrdinalIgnoreCase)
+                || cell[depth - 1].Equals(wanted, StringComparison.OrdinalIgnoreCase)
+                || cell[depth - 1].Split(" - ")[0].Equals(wanted, StringComparison.OrdinalIgnoreCase)));
         if (hit == default) hit = flat.FirstOrDefault(f => Path.GetFileName(f.Relative).Equals(wanted, StringComparison.OrdinalIgnoreCase)
             || Path.GetFileNameWithoutExtension(f.Relative).Equals(wanted, StringComparison.OrdinalIgnoreCase));
         if (hit == default) hit = flat.FirstOrDefault(f => string.Equals(RecordFiles.Identity(File.ReadAllText(f.File)).EditorId, wanted, StringComparison.OrdinalIgnoreCase));

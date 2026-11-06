@@ -11,7 +11,7 @@ import type {
     EditRecordRequest, EditRecordResult, EditInputRequest, EditInputResult, MoveRecordRequest, MoveRecordResult,
     InstallModRequest, InstallModResult,
     NewProjectRequest, NexusDownload, NexusMod, NexusModSummary,
-    NexusSearchQuery, NexusSearchResult, ProjectInfo, PullResult, RecordQuery, RecordRequest, RecordSearchResult,
+    NexusSearchQuery, NexusSearchResult, ProjectInfo, PullResult, ExportCellRequest, ExportCellResult, ImportCellRequest, ImportCellResult, RecordQuery, RecordRequest, RecordSearchResult,
     RecordSummary, RecordVersions, ListedMod, ModList, ModListQuery, GameVersionCheck,
     CrashLogSection, CrashReport, EditIniRequest, EditIniResult, EnableModRequest, EnableModResult, ReadCrashLogRequest, GameFile
 } from '../backend/skyrim/SkyrimBackend.js';
@@ -220,6 +220,22 @@ export class InMemorySkyrimBackend implements AppBackend {
         return { project: name, plugin: project.plugin, source: `mods/${name}/${project.plugin}`, added: [], changed: [], removed: [] };
     }
 
+    /** A cell exported with one reference and its mesh: the folder is the project's blender/ folder's, as the real backend's. */
+    async exportCell(request: ExportCellRequest): Promise<ExportCellResult> {
+        if (!this.projects.has(request.project)) await this.newProject({ project: request.project });
+        const folder = `projects/${request.project}/blender/${request.cell}`;
+        return {
+            project: request.project, cell: request.cell, folder, references: 1, meshes: 1, textures: request.textures === false ? 0 : 1, missing: [],
+            importScript: `${folder}/import_cell.py`, exportScript: `${folder}/export_layout.py`
+        };
+    }
+
+    async importCell(request: ImportCellRequest): Promise<ImportCellResult> {
+        this.existing(request.project);
+        const folder = `projects/${request.project}/blender/${request.cell ?? 'WhiterunBreezehome'}`;
+        return { project: request.project, folder, moved: [`${folder}/moved.yaml`], added: [], removed: [], unchanged: 0 };
+    }
+
     async searchNexus(query: NexusSearchQuery): Promise<NexusSearchResult> {
         const mods = [NEXUS_MOD].filter(mod => !query.text || mod.name.toLowerCase().includes(query.text.toLowerCase()));
         return { total: mods.length, mods: mods.slice(0, query.limit) };
@@ -386,7 +402,7 @@ export interface FakeBackendOptions {
 }
 
 const DOMAIN_METHODS = [
-    'findRecords', 'readRecord', 'newProject', 'addPatch', 'editRecord', 'buildProject', 'deployProject', 'pullProject',
+    'findRecords', 'readRecord', 'newProject', 'addPatch', 'editRecord', 'buildProject', 'deployProject', 'pullProject', 'exportCell', 'importCell',
     'searchNexus', 'readNexusMod', 'downloadNexusFile', 'installMod', 'disableMod', 'enableMod', 'listMods', 'checkGameVersion',
     'readCrashLog', 'editIni', 'findGameFiles'
 ] as const;

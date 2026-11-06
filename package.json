@@ -18,6 +18,7 @@
   },
   "files": [
     "dist",
+    "blender",
     "agents",
     "docs",
     "skills",

@@ -77,6 +77,31 @@ export class Attributor {
         return owners;
     }
 
+    /**
+     * Where to read each file the game would load, by its path under Data: the full path of the loose file that wins, or the
+     * full path of the last archive holding it — for exportCell, which copies a cell's meshes and textures out. A file the
+     * game does not have is left out.
+     */
+    async sources(paths: readonly string[]): Promise<Map<string, { file: string } | { archive: string; under: string }>> {
+        const sources = new Map<string, { file: string } | { archive: string; under: string }>();
+        const looseless: { asked: string; under: string }[] = [];
+        for (const asked of paths) {
+            const under = dataPath(asked);
+            const loose = this.loose(under);
+            if (loose) sources.set(asked, { file: loose });
+            else looseless.push({ asked, under });
+        }
+        if (looseless.length === 0 || !this.bsaFiles) return sources;
+        const archives = this.archivesInOrder();
+        if (archives.length === 0) return sources;
+        const answer = await this.bsaFiles({ release: this.instance.release, archives, files: looseless.map(file => file.under) });
+        for (const { asked, under } of looseless) {
+            const archive = answer.found[under];
+            if (archive) sources.set(asked, { archive, under });
+        }
+        return sources;
+    }
+
     /** `under` has backslashes, which only Windows' path functions split on: split here, the same on every system. */
     private loose(under: string): string | undefined {
         const parts = under.split('\\');

@@ -44,6 +44,8 @@ Workflows and the error model: [`MCP-Tools.md`](./MCP-Tools.md). The vocabulary:
 | Change fields of a record file — a sword's damage, a copy's value | `editRecord` with the fields by path, `set: [{"path": "BasicStats.Damage", "value": 12}]` — no old text to match; `"build": true` builds after |
 | Turn the text into a plugin | `buildProject` — it also checks every link, and turns links written as editor IDs into FormIDs |
 | Place something in a room — a chest in Breezehome, an NPC | `readRecord` of the cell → `placed` lists what stands there and gives the lines of a new reference; `addPatch` the cell, then write the reference as a file of its own in the cell's `Temporary` folder — skill `skyrim-modding-world` |
+| Place something outdoors — a bedroll by Riverwood's cooking pot | The same as in a room: `readRecord` of the exterior cell (`Riverwood`) gives its folder in the worldspace and its square of x and y; `addPatch` the cell, then the reference in its `Temporary` folder — skill `skyrim-modding-world` |
+| Move, turn, copy or remove what stands in a cell, by eye | `exportCell` → run its `importScript` in Blender (PyNifly add-on; the Scripting tab, or Blender's MCP server) → arrange → run its `exportScript` → `importCell` → `buildProject` |
 | Put a record file where the build reads it, or drop one | `moveRecord`, `deleteRecord` — a build's answer names each misplaced or left-over file with its call |
 | Put the mod into the game | `deployProject` — enables it in the mod manager; with Amethyst, also deploys or says to |
 | Bring back what you did in the Creation Kit or xEdit | `pullProject` — commit first, review with `git diff` after |
@@ -112,6 +114,7 @@ Workflows and the error model: [`MCP-Tools.md`](./MCP-Tools.md). The vocabulary:
 | "install the mod" (one you made) | `deployProject` |
 | "save", "export the plugin" | `buildProject`, then `deployProject` |
 | "import from the Creation Kit" | `pullProject` |
+| "open the cell in Blender", "edit the room in 3D", "NifCity" | `exportCell`, then `importCell` |
 | "profile" | The mod manager's profile — the server follows the selected one. The tool set is the *tool profile*, `MCP_PROFILE` |
 | "is it connected?" | `healthcheck`, not a test call to a write tool |
 | "Nexus ID", "the mod's link" | `modId`: the number in the page's address, `…/skyrimspecialedition/mods/12604` |

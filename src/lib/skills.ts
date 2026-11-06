@@ -49,7 +49,7 @@ export const FAMILY_SKILLS = [
     { skill: 'skyrim-modding-quests-and-scripts', covers: 'quests and Papyrus scripts: anything given or done when a game starts' },
     // Asked for a chest like the player houses', 3 of round 128's detailed world runs read the items skill and made a
     // HearthFires recipe.
-    { skill: 'skyrim-modding-world', covers: 'cells and what is placed in them: a chest, furniture or NPC put in a house or room' },
+    { skill: 'skyrim-modding-world', covers: 'cells and what is placed in them, indoors or out: a chest, furniture or NPC; a cell in Blender' },
     { skill: 'skyrim-modding-perks', covers: 'perks' }
 ] as const;
 

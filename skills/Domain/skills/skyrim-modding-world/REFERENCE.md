@@ -18,6 +18,21 @@ In a project an interior cell is a folder, `Cells/<block>/<sub-block>/<EditorID>
 cell's own fields in its `RecordData.yaml` and a `GroupRecordData.yaml` for each block above it, as addPatch copies them.
 Its references are files in its `Temporary` and `Persistent` folders.
 
+An **exterior** cell is a square of 4096 × 4096 units of its worldspace — Tamriel for Skyrim's land, a city's own
+worldspace inside its walls (WhiterunWorld, SolitudeWorld…). Its `Grid` `Point` is its place: cell 4, -12 is Riverwood's,
+from x 16384 to 20480 and y -49152 to -45056 — a position's cell is its x and y divided by 4096, rounded down. In a
+project it is a folder in the worldspace's, by its block and sub-block:
+`Worldspaces/Tamriel - 00003C_Skyrim.esm/0, -1/0, -2/Riverwood - 009732_Skyrim.esm/`, beside the worldspace's own
+`RecordData.yaml` — addPatch of the cell copies all of them. Its references are files in its `Temporary` folder as
+indoors; a worldspace's persistent references are in its `TopCell/Persistent` folder.
+
+| Exterior field | What it does |
+|---|---|
+| `Grid` | `Point: x, y`, the cell's square of the worldspace. |
+| `MaxHeightData`, `OcclusionData` | The ground's heights and what hides it, the game's own: kept as copied. |
+| `Regions`, `Location` | Its weather and sound regions, the location it belongs to. |
+| `WaterHeight`, `Water` | Its water's height and kind. |
+
 ## Placed references
 
 | Kind (`MutagenObjectType`) | Places | Base |
@@ -60,6 +75,10 @@ bed — is Temporary.
   build since the reference is a file of its own; or a reference in no `Temporary` or `Persistent` folder.
 - **It stands in a wall or floats:** a position from memory; take one from the `placed` list readRecord gives, moved a
   little, at the height the room's other objects stand at.
+- **Outdoors it sinks into the ground or floats:** the ground rises and falls; take the z of a placed object right
+  beside it, a few dozen units away, not one across the cell.
+- **Outdoors it pops in and out, or stands on missing ground:** placed in a cell its position is not in — the build
+  warns, naming the cell the position lies in.
 - **The chest is empty, or holds the game's items:** the reference names the game's container, whose items are its
   own, not a container of the mod's own with the items asked for.
 - **The items come back, or vanish:** a container with `Respawns` in a cell that resets.
