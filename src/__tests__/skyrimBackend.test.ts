@@ -652,6 +652,12 @@ describe('the Skyrim backend', () => {
         await backend.moveRecord({ project: 'MavenNote', from: slashed(loose), to: 'Books/MavenLetter.yaml' });
         expect(fs.existsSync(path.join(plugin, 'Books', 'MavenLetter.yaml'))).toBe(true);
         expect(fs.existsSync(loose)).toBe(false);
+
+        // From a path where no file is, by the file name only one record file has (eval round 132's world #1).
+        write(path.join(plugin, 'Temporary', 'BreezeChestRef.yaml'), 'MutagenObjectType: PlacedObject\n');
+        const byName = await backend.moveRecord({ project: 'MavenNote', from: 'Cells/Temporary/BreezeChestRef.yaml', to: 'Cells/0/6/Breezehome/Temporary/BreezeChestRef.yaml' });
+        expect(byName.moved.from).toBe(path.join(plugin, 'Temporary', 'BreezeChestRef.yaml'));
+        expect(fs.existsSync(path.join(plugin, 'Cells', '0', '6', 'Breezehome', 'Temporary', 'BreezeChestRef.yaml'))).toBe(true);
     });
 
     it('moves no record file over another, out of the projects folder, onto the header or to a name the build does not read', async () => {

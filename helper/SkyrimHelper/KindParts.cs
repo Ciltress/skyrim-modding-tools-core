@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Text.RegularExpressions;
 using Mutagen.Bethesda.Plugins;
 using Mutagen.Bethesda.Plugins.Cache;
 using Mutagen.Bethesda.Plugins.Records;
@@ -73,6 +74,7 @@ internal static class KindParts
         {
             if (files.GetValueOrDefault(record.FormKey) is not { } relative) continue;
             var me = Read(record, -1);
+            if (record is IArmorGetter head && HeadNote(head, me, Loaded("ARMO"), index, relative, project, Named) is { } onTheHead) notes.Add(onTheHead);
             if (me.Kind is null)
             {
                 if (record is IArmorGetter armor && SlotNote(armor, me, Loaded("ARMO"), index, relative, project, Named) is { } slot) notes.Add(slot);
@@ -194,6 +196,56 @@ internal static class KindParts
             $"{string.Join(" and ", slots)}; {Shown(like.Record)}, the one most like it, has {(calls.Count == 1 ? "them" : "them and the rest")}: " +
             $"one call writes {(calls.Count == 1 ? "its slots" : "them")} as {Shown(like.Record)} has them, and builds again: " +
             ToolCalls.Fix(project, relative, string.Join(", ", calls));
+    }
+
+    /// <summary>The words of a name that say an armor is worn on the head.</summary>
+    private static readonly Regex HeadWords = new(@"\b(?:helm|helmet|hood|hat|cap|crown|circlet|mask|cowl|headdress|diadem|coif)s?\b",
+        RegexOptions.IgnoreCase);
+
+    /// <summary>The slots of the head: a helmet's, a hood's, a circlet's.</summary>
+    private const BipedObjectFlag HeadSlots = BipedObjectFlag.Head | BipedObjectFlag.Hair | BipedObjectFlag.LongHair | BipedObjectFlag.Circlet
+        | BipedObjectFlag.Ears;
+
+    /// <summary>
+    /// An armor named for the head — a helm, a hood, a hat — that fills no slot of the head: worn, it takes the place of what it
+    /// fills, and its model is drawn there. With the call that gives it the slots most of the load order's helmets of its weight
+    /// fill, and the model and Armature of the one most like it. Eval round 132's armor #3 copied General Tullius' Armor for its
+    /// Frostguard Helm, its slot the body's, and built as a success.
+    /// </summary>
+    private static string? HeadNote(IArmorGetter armor, Known me, List<Known> all, RecordIndex index, string relative, string project,
+        Func<FormKey, string> named)
+    {
+        var flags = armor.BodyTemplate?.FirstPersonFlags ?? 0;
+        if (flags == 0 || (flags & HeadSlots) != 0) return null;
+        var shownName = armor.Name?.String;
+        var spaced = Regex.Replace(armor.EditorID ?? "", "([a-z])([A-Z])", "$1 $2");
+        var called = shownName is { } n && HeadWords.IsMatch(n) ? n : HeadWords.IsMatch(spaced) ? armor.EditorID : null;
+        if (called is null) return null;
+        var type = armor.BodyTemplate?.ArmorType;
+        var word = type == ArmorType.Clothing ? "ClothingHead" : "ArmorHelmet";
+        if (!index.ByEditorId.TryGetValue(word, out var headKey)) return null;
+        var kin = all.Where(k => k.Plain && k.Record is IArmorGetter other && k.Keywords.Contains(headKey)
+            && other.BodyTemplate is { } body && body.FirstPersonFlags != 0 && (type is null || body.ArmorType == type)).ToList();
+        if (kin.Count < Fewest) return null;
+        var usual = kin.GroupBy(k => ((IArmorGetter)k.Record).BodyTemplate!.FirstPersonFlags).OrderByDescending(g => g.Count()).First();
+        var official = usual.Where(k => Masters.Contains(k.Record.FormKey.ModKey.FileName.String, StringComparer.OrdinalIgnoreCase)).ToList();
+        var like = Like(me, official.Count > 0 ? official : usual.ToList());
+        if (like is null) return null;
+        static List<string> Names(BipedObjectFlag f) =>
+            Enum.GetValues<BipedObjectFlag>().Where(x => x != 0 && f.HasFlag(x)).Select(x => x.ToString()).Distinct().ToList();
+        var slots = Names(usual.Key);
+        var worn = Names(flags);
+        var calls = new List<string> { List("BodyTemplate.FirstPersonFlags", slots) };
+        if (like.Model is { } model) calls.Add(Field("WorldModel.Male.Model.File", model));
+        if (like.Armature.Count > 0) calls.Add(List("Armature", like.Armature.Select(named)));
+        var name = armor.EditorID ?? Session.FormKeyText(armor.FormKey);
+        return $"{relative}: {name} is called \"{called}\", worn on the head, and fills {string.Join(" and ", worn)}" +
+            (flags.HasFlag(BipedObjectFlag.Body) ? " — a cuirass's slot" : ", no slot of the head") +
+            ": worn, it takes the place of what is worn there, and its model is drawn there. " +
+            $"{usual.Count()} of the load order's {kin.Count} {(type is null ? "" : $"{type} ")}armors with the keyword {word} fill " +
+            $"{string.Join(" and ", slots)}; one call gives it those slots, and the model and Armature of {Shown(like.Record)}, the one most " +
+            $"like it, and builds again: {ToolCalls.Fix(project, relative, string.Join(", ", calls))}; only where it is meant to be worn " +
+            "there, nothing to change, and this warning stays";
     }
 
     /// <summary>The keywords that say an armor's weight, and the ArmorType each goes with.</summary>

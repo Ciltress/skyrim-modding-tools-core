@@ -379,7 +379,11 @@ internal static class MadeNotes
                 $"the copy, not the game's. Where the game's {game.Name} was meant, one call makes the recipe make it and builds again: " +
                 ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, $"{{\"path\": \"CreatedObject\", \"value\": {ToolCalls.Quoted(game.EditorId!)}}}", build: true) +
                 (copyFile is null ? "" : $", and {copyFile} is then named by nothing: delete it, which builds again too, {ToolCalls.Delete(pluginDir, copyFile, build: true)}") +
-                $"; only where the user asked for a new {type} of its own beside the game's is the copy meant — then nothing to change, and this warning stays");
+                // A new mod is no ask for a new item: eval round 132's recipe #1 answered "since your request was to create a new mod,
+                // the system maintained the new record", on this warning and its call in the nextStep.
+                $". A recipe for {game.Name} in a new mod is the game's {game.Name}: a new mod is no ask for a new {type}. Only where the " +
+                $"user asked for a {type} of its own beside the game's — another of its name — is the copy meant; then nothing to change, " +
+                "and this warning stays");
         }
         return notes;
     }

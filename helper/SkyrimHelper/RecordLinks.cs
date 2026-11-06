@@ -1365,7 +1365,8 @@ public static class RecordLinks
             .Select(c => (c.EditorId, c.FormKey, c.Type, c.Name,
                 Score: c.Name is { Length: > 0 } inGame && Bare(inGame).Equals(bare, StringComparison.OrdinalIgnoreCase) ? -1 : Closeness(editorId, c.EditorId)))
             .Where(c => c.Score < int.MaxValue)
-            .OrderBy(c => c.Score).ThenBy(c => c.EditorId.Length).ThenBy(c => c.EditorId, StringComparer.Ordinal)
+            .OrderBy(c => c.Score).ThenByDescending(c => SharedStart(editorId, c.EditorId)).ThenBy(c => c.EditorId.Length)
+            .ThenBy(c => c.EditorId, StringComparer.Ordinal)
             .Select(c => $"{c.EditorId} ({(c.Name is { Length: > 0 } shown ? $"\"{shown}\", " : "")}" +
                 $"{(typeof(ILeveledItemGetter).IsAssignableFrom(c.Type) ? "a leveled list, one picked at random" : RecordFiles.Article(Kind(c.Type)))}, " +
                 $"{(c.FormKey is { } key ? Session.FormKeyText(key) : "new in this project")})")
@@ -1384,10 +1385,19 @@ public static class RecordLinks
         .Where(e => e.EditorId is not null)
         .Select(e => (Entry: e, Score: Closeness(editorId, e.EditorId!)))
         .Where(c => c.Score < int.MaxValue)
-        .OrderBy(c => c.Score).ThenBy(c => c.Entry.EditorId!.Length).ThenBy(c => c.Entry.EditorId, StringComparer.Ordinal)
+        .OrderBy(c => c.Score).ThenByDescending(c => SharedStart(editorId, c.Entry.EditorId!)).ThenBy(c => c.Entry.EditorId!.Length)
+        .ThenBy(c => c.Entry.EditorId, StringComparer.Ordinal)
         .Take(5)
         .Select(c => $"{c.Entry.EditorId} ({c.Entry.Type}, {Session.FormKeyText(c.Entry.FormKey)})")
         .ToList();
+
+    /// <summary>
+    /// How many letters two editor IDs begin with alike, any case, two at least: among names as close, the one sharing the most
+    /// of the beginning first — one letter alike says nothing. StandardArrow shares one word with every arrow, and SteelArrow, the one meant, came sixth by length —
+    /// left out of the five, the model took IronArrow for ten Steel Arrows (eval round 132's world+detailed #1).
+    /// </summary>
+    private static int SharedStart(string a, string b) =>
+        a.Zip(b).TakeWhile(p => char.ToUpperInvariant(p.First) == char.ToUpperInvariant(p.Second)).Count() is var shared and >= 2 ? shared : 0;
 
     /// <summary>
     /// Lower is closer: one editor ID inside the other, at least half its length — not the quest T01 in

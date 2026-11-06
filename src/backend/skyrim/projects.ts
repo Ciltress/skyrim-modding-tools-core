@@ -441,7 +441,16 @@ function existingFile(projectsDir: string, file: string, given: string, paths: P
 /** Moves a record file into the project's plugin folder, its group folder made when there is none. */
 export function moveRecordFile(projectsDir: string, paths: ProjectPaths, from: string, to: string): { from: string; to: string } {
     const target = path.resolve(paths.plugin, to.trim());
-    const source = projectsFile(projectsDir, paths, from, target);
+    let source = projectsFile(projectsDir, paths, from, target);
+    // A `from` naming no file, whose file name only one record file of the project has, is that file: told "No file at
+    // Cells/Temporary/BreezeChestRef.yaml", where its write had asked the file to go, eval round 132's world #1 sent the same
+    // move again — the file was at Temporary/BreezeChestRef.yaml, the build's refusal had named it there.
+    if (!fs.existsSync(source)) {
+        const name = path.basename(from.trim().replace(/\\/g, '/')).toLowerCase();
+        const named = [...recordFiles(paths.plugin), ...strayRecordFiles(paths)].filter(file => path.basename(file).toLowerCase() === name);
+        // Not the file already where it is to go: that move is done, and its refusal names the project's files.
+        if (named.length === 1 && named[0] !== target) source = named[0];
+    }
     existingFile(projectsDir, source, from, paths, 'moved');
     const inPlugin = path.relative(paths.plugin, target);
     if (!to.trim() || !inPlugin || inPlugin.startsWith('..') || path.isAbsolute(inPlugin)) {
