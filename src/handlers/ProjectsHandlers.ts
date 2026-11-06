@@ -622,13 +622,19 @@ export class ProjectsHandlers extends BaseHandler {
                         textures: optionalBoolean(args, 'textures')
                     }));
                     const run = (script: string) => `exec(open(${JSON.stringify(script)}, encoding="utf-8").read())`;
+                    const importCell = `importCell {"project": ${JSON.stringify(exported.project)}, "cell": ${JSON.stringify(path.basename(exported.folder))}}`;
                     return {
                         ...exported,
-                        nextStep: `In Blender, with the PyNifly add-on enabled, run ${exported.importScript} — the Scripting tab's Run ` +
-                            `Script, or ${run(exported.importScript)} through Blender's MCP server: it places ${exported.references} ` +
-                            `objects of ${exported.cell}. Move, turn, scale, copy (Shift+D) or delete them there; then run ` +
-                            `${exported.exportScript} the same way — ${run(exported.exportScript)} — and call importCell ` +
-                            `{"project": ${JSON.stringify(exported.project)}, "cell": ${JSON.stringify(path.basename(exported.folder))}}.`
+                        nextStep: exported.blendFile
+                            ? `${exported.blendFile} holds the ${exported.references} objects of ${exported.cell}, each where the game places it and ` +
+                              `named after its reference. Open it in Blender, or work on it without a window through Blender's MCP server: ` +
+                              `execute_blender_code_for_cli with blend_file ${JSON.stringify(exported.blendFile)} and code that changes the objects ` +
+                              `— bpy.data.objects["<name>"].location, rotation_euler, .copy() for one more, bpy.data.objects.remove for one less — ` +
+                              `then ends with ${run(exported.exportScript)} and bpy.ops.wm.save_mainfile(). Then ${importCell}.`
+                            : `In Blender, with the PyNifly add-on enabled, run ${exported.importScript} — the Scripting tab's Run ` +
+                              `Script, or ${run(exported.importScript)} through Blender's MCP server: it places ${exported.references} ` +
+                              `objects of ${exported.cell}. Move, turn, scale, copy (Shift+D) or delete them there; then run ` +
+                              `${exported.exportScript} the same way — ${run(exported.exportScript)} — and call ${importCell}.`
                     };
                 }
             },

@@ -163,7 +163,7 @@ export function createBackend(env: NodeJS.ProcessEnv, options: BackendOptions): 
     const projectsDir = paths.SKYRIM_PROJECTS_DIR ?? defaultProjectsDir(options.product.root);
     const current = sharedEngine?.modManager;
     if (current?.name !== modManager.name || current.location !== modManager.location || sharedEngine?.projectsDir !== projectsDir
-        || sharedEngine?.crashLogDir !== paths.SKYRIM_CRASH_LOG_DIR) {
+        || sharedEngine?.crashLogDir !== paths.SKYRIM_CRASH_LOG_DIR || sharedEngine?.blender !== paths.SKYRIM_BLENDER) {
         sharedEngine?.stop();
         sharedEngine = new SkyrimEngine(
             modManager,
@@ -174,7 +174,8 @@ export function createBackend(env: NodeJS.ProcessEnv, options: BackendOptions): 
                 creationKitDir: paths.SKYRIM_CK_DIR,
                 papyrusCompiler: paths.SKYRIM_PAPYRUS_COMPILER,
                 papyrusCompilerCandidates,
-                crashLogDir: paths.SKYRIM_CRASH_LOG_DIR
+                crashLogDir: paths.SKYRIM_CRASH_LOG_DIR,
+                blender: paths.SKYRIM_BLENDER
             }
         );
     }

@@ -111,14 +111,30 @@ To move, turn, copy or remove what stands in a cell by eye, the cell goes to Ble
 PyNifly add-on, which reads the game's meshes.
 
 1. `exportCell` `{"project": "BreezehomeTidy", "cell": "WhiterunBreezehome"}` writes the cell's objects, the meshes and
-   textures they show into the project's `blender/` folder, and answers two scripts: `importScript` and `exportScript`.
-2. Run `importScript` in Blender — its Scripting tab's Run Script, or `exec(open(r"<importScript>").read())` sent through
-   Blender's MCP server: each object stands where the game places it, named after its reference (`PlayerHouseChest
-   [10EB84]`), an exterior cell on its ground.
-3. Arrange: move, turn or scale an object; copy one with Shift+D for one more of its kind; delete one to take it out.
-   Through Blender's MCP server, an object is found by its name — `bpy.data.objects["PlayerHouseChest [10EB84]"]` — and
-   moved by its `location`, in game units.
-4. Run `exportScript` the same way: it writes `layout.json` beside the cell's objects.
-5. `importCell` `{"project": "BreezehomeTidy"}` writes each change into the project — a moved object as the project's copy
+   textures they show into the project's `blender/` folder, and answers `blendFile` — the cell placed and saved in
+   Blender, each object where the game places it, named after its reference (`PlayerHouseChest [10EB84]`), an exterior
+   cell on its ground — and `exportScript`, which writes what changed.
+2. Arrange the objects: move, turn or scale one; copy one for one more of its kind; delete one to take it out.
+   - **By hand:** open `blendFile` in Blender; Shift+D copies an object.
+   - **Through Blender's MCP server, no window:** `execute_blender_code_for_cli` with `blend_file` the `blendFile` and
+     code that changes the objects and ends with the exportScript and a save:
+
+     ```python
+     import bpy
+     chest = bpy.data.objects["PlayerHouseChest [10EB84]"]
+     chest.location.x += 100                      # game units: 64 is about an arm's length
+     copy = chest.copy(); chest.users_collection[0].objects.link(copy); copy.location.y += 80
+     exec(open(r"<exportScript>", encoding="utf-8").read())
+     bpy.ops.wm.save_mainfile()
+     result = {"moved": chest.name, "copy": copy.name}
+     ```
+
+     Find a name first with the same tool and code that lists them —
+     `result = {"names": [o.name for o in bpy.data.objects if o.get("skyrim_base_editor_id") == "PlayerHouseChest"]}`.
+3. `importCell` `{"project": "BreezehomeTidy"}` writes each change into the project — a moved object as the project's copy
    of its reference with its new placement, a copy as a new reference, a deleted one of another plugin disabled — then
    `buildProject`.
+
+Without a `blendFile` — no Blender found, set `SKYRIM_BLENDER` — the answer's `importScript` places the cell in a
+running Blender: its Scripting tab's Run Script, or its text sent through `execute_blender_code`; then the
+`exportScript` the same way.

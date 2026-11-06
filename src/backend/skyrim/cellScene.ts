@@ -239,6 +239,48 @@ export function cellFolderOf(pluginDir: string, cellFormId: string): string | un
     return undefined;
 }
 
+/**
+ * Where Blender is, when SKYRIM_BLENDER names none: on PATH, then where its installer and Steam put it — on Windows in
+ * `Blender Foundation\Blender <version>` of Program Files or of a drive's root, the newest version first. Undefined
+ * when there is none.
+ */
+export function findBlender(windows: boolean, pathVariable: string | undefined, home: string, exists = fs.existsSync): string | undefined {
+    const exe = windows ? 'blender.exe' : 'blender';
+    const join = windows ? path.win32.join : path.posix.join;
+    const onPath = (pathVariable ?? '').split(windows ? ';' : ':').filter(Boolean).map(dir => join(dir, exe));
+    const versions = (foundation: string) => {
+        try {
+            return fs.readdirSync(foundation).filter(name => /^Blender \d/i.test(name))
+                .sort((a, b) => b.localeCompare(a, undefined, { numeric: true })).map(name => join(foundation, name, exe));
+        } catch {
+            return [];
+        }
+    };
+    const candidates = windows
+        ? [...onPath, ...'CDEFGHIJKLMNOPQRSTUVWXYZ'.split('').flatMap(drive => [
+            ...versions(`${drive}:\\Program Files\\Blender Foundation`), ...versions(`${drive}:\\Blender Foundation`),
+            `${drive}:\\Program Files (x86)\\Steam\\steamapps\\common\\Blender\\blender.exe`,
+            `${drive}:\\SteamLibrary\\steamapps\\common\\Blender\\blender.exe`, `${drive}:\\Steam\\steamapps\\common\\Blender\\blender.exe`])]
+        : [...onPath, '/usr/bin/blender', '/usr/local/bin/blender', join(home, '.local/share/Steam/steamapps/common/Blender/blender'),
+            '/var/lib/flatpak/exports/bin/org.blender.Blender', join(home, '.local/share/flatpak/exports/bin/org.blender.Blender')];
+    return candidates.find(candidate => exists(candidate));
+}
+
+/**
+ * The Python that saves a cell placed by import_cell as `cell.blend` beside it, for Blender started in the background:
+ * a user opens it, and an agent works on it through Blender's MCP server without a Blender window (its _for_cli tools).
+ * Answers import_cell's result on a line of its own.
+ */
+export function saveBlendCode(folder: string): string {
+    const literal = JSON.stringify(folder);
+    return `import bpy, json, os\nfolder = ${literal}\nns = {"__name__": "skyrim_cell"}\n` +
+        `exec(compile(open(os.path.join(folder, "skyrim_cell.py"), encoding="utf-8").read(), "skyrim_cell.py", "exec"), ns)\n` +
+        `for obj in list(bpy.data.objects):\n    bpy.data.objects.remove(obj, do_unlink=True)\n` +
+        `answer = ns["import_cell"](folder)\n` +
+        `bpy.ops.wm.save_as_mainfile(filepath=os.path.join(folder, "cell.blend"), compress=True)\n` +
+        `print("SKYRIM_CELL_BLEND " + json.dumps(answer))\n`;
+}
+
 /** An editor ID of the project's own for a copy made in Blender: the project's name, the base's and a number. */
 export function copyEditorId(project: string, base: string, taken: Set<string>): string {
     const stem = `${project.replace(/[^A-Za-z0-9]/g, '')}${base.replace(/[^A-Za-z0-9]/g, '')}`.slice(0, 80) || 'BlenderCopy';

@@ -3,7 +3,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
-    BLENDER_SCRIPT, cellFolderOf, copyEditorId, initiallyDisabled, launcher, layoutChanges, newReferenceText, normalRotation,
+    BLENDER_SCRIPT, cellFolderOf, copyEditorId, findBlender, initiallyDisabled, launcher, layoutChanges, newReferenceText, normalRotation,
+    saveBlendCode,
     recordFileOf, rotationMatrix, sameRotation, texturesOf, triple, type CellSceneFile, type LayoutFile
 } from '../backend/skyrim/cellScene.js';
 
@@ -87,6 +88,18 @@ describe('a cell in Blender and back', () => {
         } finally {
             fs.rmSync(plugin, { recursive: true, force: true });
         }
+    });
+
+    it('finds Blender on PATH first, then where its installer or Steam put it, the newest version first', () => {
+        const have = new Set(['C:\\Tools\\blender.exe', 'D:\\SteamLibrary\\steamapps\\common\\Blender\\blender.exe']);
+        expect(findBlender(true, 'C:\\Windows;C:\\Tools', 'C:\\Users\\me', file => have.has(file))).toBe('C:\\Tools\\blender.exe');
+        expect(findBlender(true, 'C:\\Windows', 'C:\\Users\\me', file => have.has(file))).toBe('D:\\SteamLibrary\\steamapps\\common\\Blender\\blender.exe');
+        expect(findBlender(false, '/usr/sbin', '/home/me', file => file === '/home/me/.local/share/flatpak/exports/bin/org.blender.Blender'))
+            .toBe('/home/me/.local/share/flatpak/exports/bin/org.blender.Blender');
+        expect(findBlender(false, '', '/home/me', () => false)).toBeUndefined();
+        const code = saveBlendCode('C:\\Mods\\Camp\\blender\\Riverwood');
+        expect(code).toContain('ns["import_cell"](folder)');
+        expect(code).toContain('save_as_mainfile(filepath=os.path.join(folder, "cell.blend")');
     });
 
     it('ships the Blender script, and launches it from the folder it sits in', () => {

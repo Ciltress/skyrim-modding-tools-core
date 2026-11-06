@@ -16,7 +16,8 @@ import { ModError, findMod, listedMods, nexusRecord, ownerOf, pluginFiles } from
 import { checkGameVersion, myGamesDir } from './gameVersion.js';
 import { Attributor, dataPath } from './crash/attribution.js';
 import {
-    BLENDER_SCRIPT, cellFolderOf, copyEditorId, initiallyDisabled, layoutChanges, launcher, newReferenceText, normalRotation, recordFileOf, sceneFolderName, texturesOf,
+    BLENDER_SCRIPT, cellFolderOf, copyEditorId, findBlender, initiallyDisabled, layoutChanges, launcher, newReferenceText, normalRotation, recordFileOf,
+    saveBlendCode, sceneFolderName, texturesOf,
     triple, type CellSceneFile, type LayoutFile
 } from './cellScene.js';
 import { CrashLogNotFoundError, chooseCrashLog } from './crash/crashLogFiles.js';
@@ -778,10 +779,34 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
         const exportScript = path.join(folder, 'export_layout.py');
         fs.writeFileSync(importScript, launcher(folder, 'import_cell'));
         fs.writeFileSync(exportScript, launcher(folder, 'export_layout'));
+        const blend = await this.saveBlend(folder);
         return {
             project, cell: scene.cell.editorId ?? scene.cell.formId, folder,
-            references: scene.references.length, meshes: found.length, textures: textureCount, missing, importScript, exportScript
+            references: scene.references.length, meshes: found.length, textures: textureCount, missing, importScript, exportScript, ...blend
         };
+    }
+
+    /**
+     * The cell placed and saved as cell.blend by Blender in the background, where SKYRIM_BLENDER or a search finds one with PyNifly:
+     * a user opens the file, and an agent works on it through Blender's MCP server with no Blender window. Without Blender, why not.
+     */
+    private async saveBlend(folder: string): Promise<{ blendFile: string } | { blendFileNote: string }> {
+        const windows = this.engine.platform.name === 'windows';
+        const blender = this.engine.blender ?? findBlender(windows, process.env.PATH, os.homedir());
+        const blendFile = path.join(folder, 'cell.blend');
+        fs.rmSync(blendFile, { force: true });
+        if (!blender) {
+            return { blendFileNote: 'No Blender found — set SKYRIM_BLENDER to blender.exe for a ready cell.blend; the importScript places the cell in a running Blender as well.' };
+        }
+        const { execFile } = await import('node:child_process');
+        const output = await new Promise<string>(resolve => {
+            execFile(blender, ['--background', '--python-expr', saveBlendCode(folder)], { timeout: 15 * 60_000, maxBuffer: 64 * 1024 * 1024, windowsHide: true },
+                (error, stdout, stderr) => resolve(`${stdout}\n${stderr}${error ? `\n${error.message}` : ''}`));
+        });
+        if (fs.existsSync(blendFile)) return { blendFile };
+        const why = /PyNifly add-on is not enabled/.test(output) ? 'its PyNifly add-on is not enabled'
+            : output.split('\n').filter(line => /Error|error:/.test(line)).slice(-2).join(' ').slice(0, 300) || 'it saved none';
+        return { blendFileNote: `${blender} made no cell.blend: ${why}. The importScript places the cell in a running Blender.` };
     }
 
     async importCell({ project, cell }: ImportCellRequest): Promise<ImportCellResult> {
