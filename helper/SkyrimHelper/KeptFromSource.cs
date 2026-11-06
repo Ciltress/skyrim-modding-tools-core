@@ -131,7 +131,16 @@ internal static class KeptFromSource
             // swords, eval round 129's leveled #1 and #4 wrote a Silver Sword of their own beside the game's, were told it is still
             // named as the game's, and sent the same name again.
             var gameMeant = "";
-            if (named is not null)
+            // A copy carrying a record of the mod's own is the mod's own, and no copy to delete: eval round 131's armor+detailed #3
+            // gave its copy of the Steel Helmet its own enchantment and numbers, was told first "this copy is not needed … delete it",
+            // deleted it, left the enchantment named by nothing, wrote the helmet back and answered on the same warning.
+            List<string> carried = named is null ? [] : record.EnumerateFormLinks().Select(l => l.FormKey)
+                .Where(k => k.ModKey == mod.ModKey && k != record.FormKey).Distinct()
+                .Select(k => mod.EnumerateMajorRecords().FirstOrDefault(r => r.FormKey == k)?.EditorID ?? Session.FormKeyText(k)).ToList();
+            if (carried.Count > 0)
+                gameMeant = $" It carries {Listed(carried)}, this mod's own, so it is one of the mod's own, no copy to delete: it takes the " +
+                    $"name the user gave it — '{named}' sent again changes nothing.";
+            else if (named is not null)
             {
                 var namedBy = mod.EnumerateMajorRecords().Where(r => r.FormKey != record.FormKey && r.EnumerateFormLinks().Any(l => l.FormKey == record.FormKey))
                     .Select(r => files.GetValueOrDefault(r.FormKey) ?? r.EditorID ?? Session.FormKeyText(r.FormKey)).Distinct().ToList();
@@ -142,8 +151,9 @@ internal static class KeptFromSource
                           $"{ToolCalls.Delete(pluginDir, relative, build: true)}.") +
                     $" Where one of the mod's own was asked for, it takes a name of its own — '{named}' sent again changes nothing.";
             }
-            notes.Add($"{relative}: {name} {string.Join(", and ", said)} — {how}.{numbersAlone}{gameMeant} If the user asked for " +
-                $"{(one ? "another" : "others")}, one call sets {(one ? "it" : "them")} and builds again: " +
+            notes.Add($"{relative}: {name} {string.Join(", and ", said)} — {how}.{numbersAlone}{gameMeant} " +
+                (carried.Count > 0 ? "One call" : $"If the user asked for {(one ? "another" : "others")}, one call") +
+                $" sets {(one ? "it" : "them")} and builds again: " +
                 ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, string.Join(", ", set), build: true) +
                 $", with what the user asked for in place of {Listed(shown)} — what the user left as {theirs}'s stays");
             return true;

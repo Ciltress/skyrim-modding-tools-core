@@ -198,7 +198,7 @@ public static class ProjectNotes
             // its run ended on its copy of Fire Storm, "unused due to correct linking" (eval round 117's sword #4).
             if (type == typeof(MagicEffect) && RecordFiles.Identity(text).EditorId is { } effect && !RecordFiles.NamedElsewhere(records, relative, text))
             {
-                var delete = ToolCalls.Delete(pluginDir, relative);
+                var delete = ToolCalls.Delete(pluginDir, relative, build: true);
                 var casters = records.Where(r => r.Relative != relative && Effected.Contains(r.Type.Name))
                     .Select(r => (r.Relative, r.Type, Name: RecordFiles.Identity(r.Text).EditorId ?? r.Relative,
                         Cast: CastLine.Matches(r.Text).Select(m => EffectName(m, index))

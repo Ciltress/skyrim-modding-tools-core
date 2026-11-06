@@ -631,11 +631,23 @@ export class ProjectsHandlers extends BaseHandler {
         const together = (combined ?? []).map(({ file, count, call }) =>
             ` ${count} of them fix ${file} with a call each: one call makes the ${count} and builds again — ${call} — with a value ` +
             'the user named in place of one a warning gives, as that warning says.').join('');
+        // A warning with its call, answered rather than fixed: 6 of eval round 131's 13 misses ended on one — "if you wish to fix
+        // these warnings … let me know" — while the 4 runs that ended on warnings and passed kept only ones that stay. The plugin's
+        // check that would ask again is never run after a plugin's call (OpenClaw). The first warning that fixes something has
+        // its call here; one that stays says "answer with the build" and is left as it is, and one whose call takes the user's
+        // values in place of its own is pointed to.
+        const fixing = together ? undefined : warnings.find(warning => !/answer with the build/.test(warning) && firstCall(warning));
+        const call = fixing && !/in place of/.test(fixing) ? firstCall(fixing) : undefined;
+        const whose = fixing ? (one ? 'its' : `the warning on ${fixing.slice(0, Math.max(0, fixing.indexOf(': ')))}'s`) : '';
+        const next = !fixing ? ''
+            : call ? ` Not done yet: ${whose} call fixes it and builds again — ${call} — send it next, then answer with what that build says.`
+                : ` Not done yet: ${whose} call fixes it and builds again, with what the user asked for in place of what it says — send ` +
+                    'it next, then answer with what that build says.';
         return {
             status: 'built_with_warnings',
             warnings,
             nextStep: `Built, with ${one ? 'a warning' : `${warnings.length} warnings`}: fix what ${one ? 'it' : 'each'} ` +
-                `says and build again — that is part of the task. ${one ? 'It' : 'One'} stays only where the user ` +
+                `says and build again — that is part of the task.${next} ${one ? 'It' : 'One'} stays only where the user ` +
                 'asked for just what it names.' + together + (done ? ` ${done}` : ''),
             ...built
         };
@@ -643,3 +655,21 @@ export class ProjectsHandlers extends BaseHandler {
 }
 
 type BuildAnswer = Omit<BuildResult, 'warnings'> & { status?: 'built_with_warnings'; warnings?: string[]; nextStep?: string };
+
+/** The first tool call a warning gives — `editRecord {…}`, its arguments whole — or undefined. */
+export function firstCall(text: string): string | undefined {
+    const start = /\b(?:editRecord|deleteRecord|moveRecord|addPatch|buildProject) \{/.exec(text);
+    if (!start) return undefined;
+    let depth = 0;
+    let quoted = false;
+    for (let i = start.index + start[0].length - 1; i < text.length; i++) {
+        const c = text[i];
+        if (quoted) {
+            if (c === '\\') i++;
+            else if (c === '"') quoted = false;
+        } else if (c === '"') quoted = true;
+        else if (c === '{' || c === '[') depth++;
+        else if ((c === '}' || c === ']') && --depth === 0) return text.slice(start.index, i + 1);
+    }
+    return undefined;
+}

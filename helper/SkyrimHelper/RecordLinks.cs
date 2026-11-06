@@ -201,6 +201,11 @@ public static class RecordLinks
                     : ItemInNpcList(wanted, kind, editorId) is { } npcListText ? npcListText
                     : RecipeAsItem(field, wanted, kind, editorId, key) is { } recipeText ? recipeText
                     : CasterAsEffect(field, wanted, editorId, key) is { } casterText ? casterText
+                    // A recipe placed as a chest: eval round 131's world #2 made its chest of a copy of a Hearthfire recipe.
+                    : field == "Base" && kind == "ConstructibleObject"
+                        ? $" — {editorId} is a recipe, the way a workbench makes an item, and nothing the world holds: a reference places the " +
+                          "object itself — a chest that holds items is a Container, in Containers/, written as readRecord of a game's chest " +
+                          "shows one, its Items listed in it"
                     : wanted == "ObjectEffect" && kind == "MagicEffect"
                         ? $" — an enchantment, whose Effects name the magic effects it casts: name one, such as {RecordFiles.ExampleName("ObjectEffect")}, " +
                           $"or write one in ObjectEffects with `- BaseEffect: {editorId}` among its Effects, as readRecord {{\"record\": " +
@@ -235,6 +240,17 @@ public static class RecordLinks
                                 (near.Count > 0 ? $" — the {wanted} records closest to {other.Named}: {string.Join(", ", near)}" : $" — find the {wanted} with findRecords") +
                                 (other.Linked is { } linkedId ? $"; or `{Line(linkedId)}`, the one the FormID names" : ""));
                         }
+                        return;
+                    }
+                    // The project's own record by the FormID a build gave it, of a type the field does not take: eval round 131's
+                    // world #2 placed its copy of a recipe as `Base: 000800:BreezehomeChest.esp` once `Base: BreezehomeChest` was
+                    // refused as a ConstructibleObject, and built.
+                    if (linked.ModKey == ownPlugin && own.Values.FirstOrDefault(t => t.FormKey == linked) is { } numberedOwn
+                        && !takes.IsAssignableFrom(numberedOwn.Type))
+                    {
+                        problems.Add($"{relative}: {field} is {raw}, {numberedOwn.EditorId} of this project, which is " +
+                            $"{RecordFiles.Article(Kind(numberedOwn.Type))}; {field} takes {RecordFiles.Article(wanted)}" +
+                            WrongType(field, wanted, Kind(numberedOwn.Type), numberedOwn.EditorId, linked));
                         return;
                     }
                     // A FormID written from memory names another record, or none: Race: 011F7B:Skyrim.esm

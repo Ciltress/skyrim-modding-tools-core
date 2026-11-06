@@ -111,7 +111,18 @@ internal static class MadeNotes
             // translation; a shout whose words the user never gave (RoarWord1, WordRoar1) is not noted: its names are the model's.
             var said = System.Text.RegularExpressions.Regex.Match(word.EditorID ?? "", "^(?:Word(?=[A-Z]))?(?<word>[A-Z][a-z]+)$");
             var own = said.Success ? said.Groups["word"].Value : "";
-            if (own.Length == 0 || own.Equals(translation.Trim(), StringComparison.OrdinalIgnoreCase)) continue;
+            if (own.Length == 0) continue;
+            // Named and translated as the word its EditorID spells: the meaning is missing. Eval round 131's shout+detailed #5
+            // wrote Kreh, Dahl and Vund each translated as itself, asked for "Kreh" (Thunder), and built as success.
+            if (own.Equals(translation.Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                notes.Add($"{relative}: {word.EditorID} is translated '{translation.Trim()}', as it is named — the shouts menu shows a word's Name, " +
+                    "in the dragon tongue, beside its Translation, the word's meaning, as the game's WordFus is named 'Fus' and translated " +
+                    $"'Force', so this word reads '{name}' twice. Where the user gave its meaning, one call writes it and builds again: " +
+                    ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, "{\"path\": \"Translation.Value\", \"value\": \"Meaning\"}", build: true) +
+                    ", with the meaning the user gave in place of Meaning; only where the user gave none is it right as it is");
+                continue;
+            }
             notes.Add($"{relative}: {word.EditorID} is named '{name}', as its Translation is — the shouts menu shows a word's Name, in the dragon " +
                 $"tongue, beside its Translation, as the game's WordFus is named 'Fus' and translated 'Force', so this word reads '{name}' twice. " +
                 $"Where {own} is the word, one call names it so and builds again: " +

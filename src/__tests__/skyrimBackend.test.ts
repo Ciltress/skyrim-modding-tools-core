@@ -18,6 +18,7 @@ import { HelperError, HelperMissingError, HelperUnavailableError, type HelperTra
 import { CompilerUnavailableError, ScriptCompileError } from '../backend/skyrim/externalTools';
 import { asRequestError } from '../handlers/args';
 import { createHandlers } from '../handlers/index';
+import { firstCall } from '../handlers/ProjectsHandlers';
 import { CORE_PRODUCT } from '../testing/fakes';
 import { createBackend, stopBackends, type AppBackend } from '../backend/index';
 import { ToolError, ToolErrorCode } from '../handlers/errors';
@@ -1025,6 +1026,33 @@ describe('the Skyrim backend', () => {
         helperAnswers.checkRecords = () => ({ records: 1, leftOut: [] });
         expect(await answer()).toMatchObject({ status: 'success', records: 1 });
         expect(await answer()).not.toHaveProperty('warnings');
+    });
+
+    it('names the call of the first warning that fixes something in the nextStep, and none of a warning that stays', async () => {
+        // 6 of eval round 131's 13 misses ended on a warning with its call, answered "if you wish to fix these warnings … let me
+        // know"; the 4 runs that ended on warnings and passed kept only ones that stay.
+        const { backend, fixture, helperAnswers } = makeBackend();
+        await newProjectWithRecord(backend, fixture.projects, 'FlameBlade');
+        const handler = createHandlers(backend as unknown as AppBackend, CORE_PRODUCT).find(h => h.getTools().some(t => t.name === 'buildProject'))!;
+        const answer = async (...notes: string[]) => {
+            helperAnswers.checkRecords = () => ({ records: 1, leftOut: [], notes });
+            return JSON.parse((await handler.handle('buildProject', { project: 'FlameBlade' })).content[0].text).nextStep as string;
+        };
+        const call = 'editRecord {"project": "FlameBlade", "record": "Weapons/FlameBlade.yaml", "set": [{"path": "Model.File", "value": "W\\\\{x}.nif"}], "build": true}';
+        const stays = 'Weapons/FlameBlade.yaml: its weight is still AshenHatchet\'s, 13. Where the user named no weight, 13 is right as it is: ' +
+            'nothing to change, and this warning stays — answer with the build. If the user asked for another, one call sets it: ' + call;
+        const fixes = `Weapons/FlameBlade.yaml: its model is an axe's: one call gives it a sword's and builds again: ${call}. Only where the user asked…`;
+        const named = 'Armors/Helm.yaml: Helm is still named \'Steel Helmet\'. One call sets it and builds again: editRecord {"project": "FlameBlade"}, ' +
+            'with what the user asked for in place of \'Steel Helmet\'';
+
+        expect(firstCall(fixes)).toBe(call);
+        expect(firstCall('no call here')).toBeUndefined();
+        expect(await answer(stays)).not.toContain('Not done yet');
+        expect(await answer(stays, fixes)).toContain(`Not done yet: the warning on Weapons/FlameBlade.yaml's call fixes it and builds again — ${call} — ` +
+            'send it next, then answer with what that build says. One stays only where');
+        expect(await answer(fixes)).toContain(`Not done yet: its call fixes it and builds again — ${call} — send it next`);
+        expect(await answer(named)).toContain('Not done yet: its call fixes it and builds again, with what the user asked for in place of what ' +
+            'it says — send it next');
     });
 
     it('gives the fixes two or more warnings give on one file as one call, and leaves a file whose fixes touch a field twice', async () => {

@@ -496,6 +496,8 @@ public sealed class Session : IDisposable
         corrected.AddRange(MisplacedFields.Dedent(dir));
         // And a part's fields indented below an item of a list of names, which holds none.
         corrected.AddRange(MisplacedFields.OutFromUnderItems(dir));
+        // A record's text written as one value, once nothing is indented below it that is no part of it.
+        corrected.AddRange(RecordFiles.TextsInTwoLines(dir));
         // Before the links are checked: a link may name the record by its file's name.
         corrected.AddRange(RecordFiles.NameFromFiles(dir, Index));
         var unneeded = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -712,13 +714,13 @@ public sealed class Session : IDisposable
                 RegexOptions.Multiline | RegexOptions.IgnoreCase);
             notes.Add(made.FirstOrDefault(m => m.Type == type).Id is { } mine
                 ? said + $"{mine} is the project's new {type.Name}: where it is what was asked for, this copy is left over — delete " +
-                    $"it, {ToolCalls.Delete(dir, relative)}; where {id} was to change too, write the change into this file"
+                    $"it, {ToolCalls.Delete(dir, relative, build: true)}; where {id} was to change too, write the change into this file"
                 : made.FirstOrDefault(m => naming.IsMatch(Lf(m.Text))) is { Id: not null } namer
                     ? said + $"{namer.Id} ({namer.Relative}), the project's new {namer.Type.Name}, names {id}: it has the load order's {id} " +
-                        $"without this copy, which is left over — delete it, {ToolCalls.Delete(dir, relative)}; where {id} itself was to " +
+                        $"without this copy, which is left over — delete it, {ToolCalls.Delete(dir, relative, build: true)}; where {id} itself was to " +
                         "change, write the change into this file"
                 : said + $"A new record like it is this file without its FormKey line, with an EditorID of its own; a change to {id} is " +
-                    $"written into this file; a copy that is neither is deleted: {ToolCalls.Delete(dir, relative)}");
+                    $"written into this file; a copy that is neither is deleted: {ToolCalls.Delete(dir, relative, build: true)}");
         }
         return notes;
     }

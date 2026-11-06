@@ -632,6 +632,18 @@ public static class RecordFiles
         return owners is [var only] ? only : null;
     }
 
+    /// <summary>
+    /// What to say of a file listing Items as a record whose type holds none: what holds items in the world, a chest, is a
+    /// Container. Eval round 131's world+detailed #3 took HearthFires' "Chest", a MiscItem, for its pattern and wrote its chest in
+    /// MISC/ with Items and Respawns: sent to MiscItems/ by the folder's name, then told to delete both, it built a misc item lying
+    /// in the house. Null where the type holds items or the file lists none.
+    /// </summary>
+    private static string? HoldsItems(Type type, string text, string pluginDir, string relative) =>
+        FieldsOf(type).Contains("Items") || !TopLevelKey.Matches(text).Any(m => m.Groups[1].Value == "Items") ? null
+            : $"{Article(type.Name)} holds no Items, and this file lists them: what holds items in the world — a chest, a barrel, a sack — " +
+              $"is a Container, in Containers/: if this is one, move the file there, {ToolCalls.Move(pluginDir, relative, $"Containers/{Path.GetFileName(relative)}")}, " +
+              "and build again — the build then names what of it a Container has not";
+
     /// <summary>What a top-level field its type lacks is likely meant to be, as the file writes it — the value on its line, the fields below it — or null.</summary>
     private static string? HintIn(Type type, HashSet<string> known, string key, string text) =>
         ActorValueHint(type, key, text) ?? DataHint(type, key, text) ?? TextHint(type, key, text) ?? Hint(type, known, key, ValueOf(text, key), ValuesOf(text, key), FieldsBelow(text, key));
@@ -709,7 +721,11 @@ public static class RecordFiles
                 .FirstOrDefault(o => o != relative.Replace('\\', '/') && o.StartsWith($"{ownFolder}/", StringComparison.OrdinalIgnoreCase))
             : null;
         var example = ExampleName(type.Name) is { } vanilla ? $" (readRecord {{\"record\": \"{vanilla}\"}})" : "";
-        var deleted = owner is [var (folder, of)]
+        var holds = owner.Count == 0 && bare.Contains("Items") ? HoldsItems(type, text, pluginDir, relative) : null;
+        var deleted = holds is not null
+            ? $"{holds}; if {Article(type.Name)} was meant, delete {them}: one call deletes {them} and builds again: " +
+                ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, "", string.Join(", ", bare.Select(ToolCalls.Quoted)), build: true)
+            : owner is [var (folder, of)]
             ? NamedAs(type, of!, relative, text, others) is { } namer
                 ? $"{(bare.Count == 1 ? "it is" : "they are")} {Article(of!.Name)}'s, which {Article(type.Name)} has nowhere, and {namer}: " +
                     $"write this file anew as {Article(type.Name)}, with {Article(type.Name)}'s fields alone"
@@ -1080,7 +1096,10 @@ public static class RecordFiles
             records++;
 
             var parts = relative.Split('/');
-            if (parts[0] is not ("Cells" or "Worldspaces") && PlacedKind(File.ReadAllText(file)) is { } placedKind)
+            // In Cells/ too, where it is no cell's Temporary/ or Persistent/ file: eval round 131's world #1 wrote its chest's
+            // reference as Cells/HuntersChestRef.yaml, which the reader took for nothing, and the build answered success without it.
+            var inCell = parts[0] == "Cells" && parts.Length == 6 && PlacedFolders.Contains(parts[4]);
+            if (parts[0] != "Worldspaces" && !inCell && PlacedKind(File.ReadAllText(file)) is { } placedKind)
             {
                 problems.Add(PlacedOutside(relative, placedKind, pluginDir));
                 continue;
@@ -1101,8 +1120,12 @@ public static class RecordFiles
                     continue;
                 }
                 var spelled = Groups.Keys.FirstOrDefault(g => g.Equals(parts[0], StringComparison.OrdinalIgnoreCase));
+                var called = spelled is null ? GroupCalled(parts[0]) : null;
                 problems.Add(spelled is not null ? $"{relative}: the folder is spelled {spelled}, not {parts[0]}"
-                    : GroupCalled(parts[0]) is { } group
+                    : called is not null && Groups[called] is { } calledType && HoldsItems(calledType, File.ReadAllText(file), pluginDir, relative) is { } holds
+                        ? $"{relative}: '{parts[0]}' is no group folder, and by its name it would be {called} — but {holds}; if {Article(calledType.Name)} " +
+                          $"was meant, move it into {called}/ and leave its Items out — {ToolCalls.Move(pluginDir, relative, $"{called}/{parts[^1]}")}"
+                    : called is { } group
                         ? $"{relative}: '{parts[0]}' is no group folder — the folder for them is {group}: move the file there — {ToolCalls.Move(pluginDir, relative, $"{group}/{parts[^1]}")}"
                         : $"{relative}: '{parts[0]}' is no group folder — use the one readRecord's pathInPluginFolder names for the type, such as {CommonGroups}");
                 continue;
@@ -1170,6 +1193,21 @@ public static class RecordFiles
                         ? $"; {Article(said)} is written in {folder}/" : ""));
             foreach (var key in BlockFields.Matches(text).Select(m => m.Groups[1].Value).Where(known.Contains).Distinct())
                 if (OneValue(kind ?? type, key)) problems.Add($"{relative}: {Blocked(kind ?? type, key, text)}");
+            // An arrow written as a new weapon with a weapon's fields alone: eval round 131's arrow #3 wrote Hunter's Arrow in Weapons/
+            // with `Data.Skill: Archery` and built a weapon, its missing mesh offered a staff's. No weapon of the game is named an
+            // arrow — the word whole: Harrowing is a weapon's. A sword the user named so has its kind written, and is left alone.
+            if (type.Name == "Weapon" && IsNew(text, own) && NameOf(text) is { } arrowName && Regex.IsMatch(arrowName, @"\b[Aa]rrows?\b")
+                && Regex.Match(text, @"^[ \t]+AnimationType:[ \t]*(?<kind>\w+)", RegexOptions.Multiline) is var animation
+                && (!animation.Success || animation.Groups["kind"].Value is "Bow" or "Crossbow"))
+            {
+                problems.Add($"{relative}: {Identity(text).EditorId ?? Path.GetFileNameWithoutExtension(relative)} is named '{arrowName}', and an " +
+                    "arrow is no Weapon — a weapon is a sword, a bow, a staff…: an arrow is an Ammunition, in Ammunitions/, whose `Projectile:` " +
+                    "names the projectile it flies as (the game's SteelArrow names ArrowSteelProjectile). One call moves this file there: " +
+                    ToolCalls.Move(pluginDir, relative, $"Ammunitions/{parts[^1]}") +
+                    $"; then write it as readRecord {{\"record\": \"SteelArrow\"}} shows an arrow — its Model, Projectile, Flags with NonBolt, " +
+                    "Damage, Value and Weight at the margin — with a weapon's fields left out");
+                continue;
+            }
             var unknown = TopLevelKey.Matches(text).Select(m => m.Groups[1].Value).Where(key => !known.Contains(key)).Distinct().ToList();
             if (unknown.Count == 0) continue;
             if (index is not null && EffectItem(type, unknown, text, relative, texts.Value, pluginDir, index) is { } item)
@@ -1732,6 +1770,45 @@ public static class RecordFiles
                 changes.Add((relative, $"removed line {i + 1}, `{lines[i].Trim()}` — written with no value, which the reader refuses; " +
                     "the build writes a record's stamps itself"));
             foreach (var i in empty.OrderByDescending(i => i)) lines.RemoveAt(i);
+            var text = string.Join('\n', lines);
+            File.WriteAllText(file, written.Contains("\r\n") ? text.Replace("\n", "\r\n") : text);
+        }
+        return changes;
+    }
+
+    /// <summary>
+    /// A record's text written at the margin as one value — `Name: Steel Sword` — written as the two lines a text takes, its
+    /// language and its value: the one way to read it. Refused, eval round 131's quest+detailed #3 wrote it so for its sword's
+    /// Name and Description, each a build of its 25 turns, and ran out of them. A block (`|-`), a quoted empty text and a text
+    /// in a part are left to the check.
+    /// </summary>
+    public static List<(string File, string Change)> TextsInTwoLines(string pluginDir)
+    {
+        var changes = new List<(string File, string Change)>();
+        foreach (var (file, relative, type) in FlatRecords(pluginDir))
+        {
+            var texts = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                .Where(p => typeof(Mutagen.Bethesda.Strings.ITranslatedStringGetter).IsAssignableFrom(Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType))
+                .Select(p => p.Name).ToHashSet(StringComparer.Ordinal);
+            if (texts.Count == 0) continue;
+            var written = File.ReadAllText(file);
+            var lines = written.Replace("\r\n", "\n").Split('\n').ToList();
+            var changed = false;
+            for (var i = lines.Count - 1; i >= 0; i--)
+            {
+                // A flow mapping, `{TargetLanguage: English, Value: …}`, is a text already; ~ and null are none.
+                if (Regex.Match(lines[i], @"^(?<key>[A-Za-z]\w*):[ \t]+(?<value>[^\s#|>&*!'""~{\[][^#]*?|'[^']+'|""[^""]+"")[ \t]*(?:#.*)?$") is not { Success: true } one
+                    || !texts.Contains(one.Groups["key"].Value) || one.Groups["value"].Value.Equals("null", StringComparison.OrdinalIgnoreCase)) continue;
+                // A value whose lines go on below it is no one value.
+                if (i + 1 < lines.Count && lines[i + 1].Length > 0 && lines[i + 1][0] is ' ' or '\t') continue;
+                var (key, value) = (one.Groups["key"].Value, one.Groups["value"].Value);
+                lines.RemoveAt(i);
+                lines.InsertRange(i, [$"{key}:", "  TargetLanguage: English", $"  Value: {value}"]);
+                changes.Add((relative, $"line {i + 1}, `{key}: {value}`, written as a text's two lines — `{key}:`, then `TargetLanguage: English` " +
+                    $"and `Value: {value}` below it: a text written as one value is read as none"));
+                changed = true;
+            }
+            if (!changed) continue;
             var text = string.Join('\n', lines);
             File.WriteAllText(file, written.Contains("\r\n") ? text.Replace("\n", "\r\n") : text);
         }
