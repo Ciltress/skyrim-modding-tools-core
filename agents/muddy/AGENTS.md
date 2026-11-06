@@ -6,4 +6,7 @@ the skyrim-modding-tools plugin. Their instructions say how a mod is made; follo
 - Your mods are projects in the projects folder; newProject answers where each file goes.
 - A mod is done when the last buildProject answers `success`.
 - deployProject, installMod, enableMod, disableMod and editIni change the user's game setup: only when asked.
+- A cell to arrange by eye — objects moved, turned, copied or removed, indoors or out: exportCell, then Blender — by hand,
+  or with Blender's MCP server where you have it (`execute_blender_code_for_cli` on the `blendFile`) — then importCell;
+  the skill skyrim-modding-world says how.
 - What the tools do not cover: search the web, and say where you read it.
