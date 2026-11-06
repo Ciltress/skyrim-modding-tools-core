@@ -45,8 +45,8 @@ This is the engine of the Skyrim Modding Tools. Use it from your own code, or ta
 - 📚 **Teach the agent.** Skills for items and crafting, magic, NPCs, leveled lists, perks, quests and scripts, the
   world, game updates and crash analysis, and guides to which tool does what — the knowledge a model needs to mod well.
 
-The Creation Kit stays for what only it can do, like navmesh and placing objects outdoors, in a worldspace; its work
-is pulled back into the text.
+Some work still needs the Creation Kit, like navmesh, objects placed outdoors or a new NPC's face; what you make
+there, `pullProject` reads back into the project's text.
 
 ## Modding with Muddy! 🦀
 
