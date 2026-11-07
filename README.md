@@ -77,7 +77,7 @@ plugins with [Mutagen](https://github.com/Mutagen-Modding/Mutagen)), and Skyrim 
 Amethyst.
 
 ```bash
-npm install github:Ciltress/skyrim-modding-tools-core#v0.2.65
+npm install github:Ciltress/skyrim-modding-tools-core#v0.2.66
 npm --prefix node_modules/skyrim-modding-tools-core run build:helper
 ```
 
@@ -140,3 +140,8 @@ GPL-3.0. The project text is [Spriggit](https://github.com/Mutagen-Modding/Sprig
 The crash rules `readCrashLog` applies are Phostwood's [Skyrim Crash Log Analyzer](https://github.com/Phostwood/crash-analyzer)'s
 (GPL-3.0), rewritten in TypeScript. Thanks to Phostwood for years of collecting them. Details in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+What `readPapyrusLog` makes of the Papyrus log's messages follows Arthmoor's
+[Interpreting Papyrus Log Errors](https://www.afkmods.com/index.php?/topic/4129-skyrim-interpreting-papyrus-log-errors/),
+DavidJCobb's [Papyrus logging](https://ck.uesp.net/wiki/User:DavidJCobb/Papyrus_logging) on the Creation Kit wiki, and the
+wordings of Nightfallstorm's [Papyrus Tweaks NG](https://github.com/Nightfallstorm/PapyrusTweaks), which it reads as well.

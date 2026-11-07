@@ -1,6 +1,6 @@
 ---
 name: skyrim-modding-crash-analysis
-description: Crash logs - why the game crashed to desktop, read from Crash Logger SSE's log with readCrashLog, and the fix it points at, made on the user's word. Use when the user says the game crashed, closed, or froze to the desktop, or asks what a crash log means.
+description: Crash logs and the Papyrus log - why the game crashed to desktop, read from Crash Logger SSE's log with readCrashLog, and what its scripts did wrong, read from the Papyrus log with readPapyrusLog; and the fix each points at, made on the user's word. Use when the user says the game crashed, closed, or froze to the desktop, asks what a crash log means, or when a mod's scripts seem to do nothing, a quest never starts, or the game lags in scripts.
 ---
 
 # Why the game crashed
@@ -47,3 +47,21 @@ every change.
 `[P]` probable, `[S]` from the stack scan), `relevantObjects`, `modelRequests` (the model the game was
 loading, Crash Logger 1.26 on), `plugins` (the load order), `sksePlugins`, `gameState` (open menus,
 the player's cell; 1.27), `systemSpecs` (memory in use).
+
+## Scripts that fail: the Papyrus log
+
+A quest that never starts, a spell or a menu that does nothing, script lag: the game's scripts write
+what went wrong to the Papyrus log, which `readPapyrusLog` reads. It is no crash log — never put a
+crash on its lines; a crash is `readCrashLog`'s.
+
+1. **Read.** `readPapyrusLog` reads the newest log (`log: "1"` to `"3"` the sessions before). With no
+   log, or logging off, it says so with the `editIni` call that turns logging on: tell the user, make it
+   only on their yes, then they play until the problem shows, quit, and you read again. Logging costs
+   script time: offer to turn it off after.
+2. **Weigh.** `problems` come bugs first, by count; a `flood` (50 or more) is a broken mod, one or two
+   are minor. Each has its scripts by the mod whose `.pex` the game loads — `not in the setup` is a
+   script missing — and its records by plugin. Problems of class `history` are what the save holds of
+   mods removed mid-playthrough: usually harmless; reinstalling the mod or a new game ends them.
+   `load` is script lag: the events most dumped stacks run. `noise` is harmless: name it, nothing more.
+3. **Check one script** with `script`: its entries with their stacks, innermost frame first.
+4. **Tell the user** the first problem, its mod and its fix, and ask before any change, as for a crash.

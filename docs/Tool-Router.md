@@ -72,6 +72,14 @@ Workflows and the error model: [`MCP-Tools.md`](./MCP-Tools.md). The vocabulary:
 | Know which plugin defines a record a crash log names, and which changed it last | `readCrashLog` → `records`, each plugin with its mod |
 | Find an installed mod's Nexus page, or the version installed | `listMods` → `nexus.modId` (for `readNexusMod`); with `details: true`, `nexus.version` and the file |
 
+## When scripts misbehave
+
+| You want to… | Call |
+| --- | --- |
+| Find out what the game's scripts did wrong — a quest that never starts, a spell that does nothing, script lag | `readPapyrusLog` — the newest Papyrus log: problems grouped and counted, bugs first, each script by its mod; the save's leftovers of removed mods; script lag from stack dumps. Not for a crash: `readCrashLog`. Skill: `skyrim-modding-crash-analysis` |
+| One script's entries with their stacks | `readPapyrusLog` with `script` |
+| Turn Papyrus logging on, only when the user says so | the `editIni` call readPapyrusLog gives when there is no log: `bEnableLogging`, `bEnableTrace`, `bLoadDebugInformation` in `[Papyrus]` |
+
 ## When mods conflict
 
 | You want to… | Call |

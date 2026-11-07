@@ -54,3 +54,8 @@ function settingKey(line: string): string | undefined {
     const equals = line.indexOf('=');
     return equals > 0 ? line.slice(0, equals).trim() : undefined;
 }
+
+/** A setting's value as the file has it, or undefined where it has none. */
+export function iniValue(text: string, section: string, key: string): string | undefined {
+    return setIniValue(text, section, key, null).was;
+}

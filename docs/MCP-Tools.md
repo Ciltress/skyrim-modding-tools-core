@@ -141,9 +141,9 @@ arguments, see [`Tool-Reference.md`](./Tool-Reference.md), which is generated fr
 
 | profile | listed | for |
 | --- | --- | --- |
-| `core` | 18 | look up, patch, edit, build, deploy; move or delete a record file; list the mods, check them against the game, install, disable or enable one; read a crash log; find mod conflicts — small local models |
-| `readonly` | 11 | looking records and mods up, on Nexus Mods too, and reading crash logs and conflicts only; the write tools are absent, not discouraged |
-| `all` | 28 | the default; right for clients that fetch tool schemas on demand. 27 without a Nexus API key, which `downloadNexusFile` needs; the only one with `exportCell` and `importCell`, a cell in Blender and back, and with `movePlugin` and `setModPriority`, the load order and the mod order changed |
+| `core` | 19 | look up, patch, edit, build, deploy; move or delete a record file; list the mods, check them against the game, install, disable or enable one; read a crash log or the Papyrus log; find mod conflicts — small local models |
+| `readonly` | 12 | looking records and mods up, on Nexus Mods too, and reading crash logs, the Papyrus log and conflicts only; the write tools are absent, not discouraged |
+| `all` | 29 | the default; right for clients that fetch tool schemas on demand. 28 without a Nexus API key, which `downloadNexusFile` needs; the only one with `exportCell` and `importCell`, a cell in Blender and back, and with `movePlugin` and `setModPriority`, the load order and the mod order changed |
 
 Counts include `healthcheck`, which every profile lists. `profiles.test.ts` holds them to `PROFILES`.
 
@@ -480,7 +480,28 @@ crash "just now" — reads the newest log before it that day, and the nextStep s
 stamp writes it, `[Sat 2026-10-31 09:26 GMT+1]`, is read without its brackets, weekday and zone (since eval round 100). A fix is made
 with the mod tools, on the user's word: `disableMod` and `enableMod`, `installMod`, `editIni`.
 
-### 4.8 Find mods in conflict, and settle them
+### 4.8 Find out what the game's scripts did wrong
+
+```jsonc
+{"tool":"readPapyrusLog","args":{}}
+{"tool":"readPapyrusLog","args":{"script":"VDR_NPCUpdateScript"}}
+{"tool":"readPapyrusLog","args":{"log":"1"}}
+```
+
+The game writes a Papyrus log, `My Games\<game>\Logs\Script\Papyrus.0.log` (the newest; 1 to 3 the sessions before), only
+with `bEnableLogging=1` in `[Papyrus]` of the INIs it reads — the profile's under Mod Organizer's profile INIs. Without a
+log, or with logging off, `readPapyrusLog` says so and gives the `editIni` call that turns it on, made only on the user's
+word. Most of a log is harmless (docs/research/papyrus-log-format.md): the answer groups and counts rather than lists.
+`problems`, script and install problems first — a call on None, a script or framework missing, a script on the wrong kind
+of record, a native function no SKSE plugin has — then what the save holds of mods removed mid-playthrough, each with its
+count (`flood` from 50), fix, scripts by the mod whose `.pex` the game loads (loose or in an archive, or `not in the setup`),
+records by the plugin of their FormID's index in the load order now, and its first entry with its stack; `load`, the
+stack dumps and the events most of their stacks run, script lag; `noise`, the harmless messages counted by kind; `other`,
+the errors of no known kind; `settings`, the header's `[Papyrus]` values that differ from the game's. Papyrus Tweaks NG's
+rewordings are read too. `script` answers one script's entries with their stacks. The log is no crash log, and the
+`nextStep` says so: a crash is readCrashLog's. Since v0.2.66.
+
+### 4.9 Find mods in conflict, and settle them
 
 ```jsonc
 {"tool":"findConflicts","args":{}}
@@ -510,7 +531,7 @@ plugin before one of its masters or after a plugin that needs it, across the lin
 plugins (the game loads every master first, whatever the files say), or the game's own plugins, which load first in
 their own order.
 
-### 4.9 Find out what you are connected to
+### 4.10 Find out what you are connected to
 
 ```jsonc
 {"tool":"healthcheck","args":{}}
@@ -832,6 +853,9 @@ Start with `healthcheck`.
 | `addPatch` → "EnchIronSwordFire01 (049BB8:Skyrim.esm, a Weapon enchanted with EnchWeaponFireDamage01 (049BB7:Skyrim.esm)) is copied as an override: … An enchantment is a record of its own: EnchWeaponFireDamage01 (049BB7:Skyrim.esm) is the ObjectEffect this copy carries — to change it or make one like it, copy that record, addPatch {…}, or write a new ObjectEffect from it." | Each copy said as what it is since eval round 111 — its type, and an enchanted weapon's or armor's enchantment. Asked for a fire enchantment, round 111's sword+detailed #4 copied the Iron Sword of Embers, a Weapon, took it for the enchantment and answered the sword built; rounds 97 and 108 copied one so too | Copy the enchantment named, or write a new one from it, where an enchantment was meant |
 | `addPatch` → "EnchWeaponFireDamage01 (049BB7:Skyrim.esm), ObjectEffects/EnchWeaponFireDamage01 - 049BB7_Skyrim.esm.yaml is in the project already, copied before, and not copied again: that file is the copy, as it was left, with every change made to it — change it there. It is still an override, …" / "Weapons/IronSword - 012EB7_Skyrim.esm.yaml was IronSword's copy (012EB7:Skyrim.esm) and is a new record of its own now, FlameBlade — it keeps the copy's file name, so IronSword was not copied again. To change IronSword itself as well, give that file a name of its own first, moveRecord {…}, then send addPatch again." | A record the project holds a copy of already — found by the copy's file name — is left as it is, said with its own file and names since eval round 113: answered "049BB7:Skyrim.esm is copied as an override", with the call that makes `NewIronSword` and a nextStep naming IronSword — the fallbacks of an answer that copied nothing — round 113's sword+detailed #3 sent addPatch for the same enchantment four more times and ran out of turns. A copy made a new record since holds no FormKey of the record's: said so, with the move that frees the name | Change the copy in its file; to copy a record whose name a new record's file keeps, move that file first |
 | `readCrashLog` → `complete: false` | The game was gone before Crash Logger finished the log | Its first line and call stack still count; the load order is missing |
+| `readPapyrusLog` → "There is no Papyrus.0.log in …: the game writes none, Papyrus logging is off in …" | `bEnableLogging` is not 1 in `[Papyrus]` of the INIs the game reads | On the user's word, the `editIni` call the answer gives; then the game writes a log each time it starts |
+| `readPapyrusLog` → a script's `file: "not in the setup"` | No mod, overwrite or archive the game loads has `Scripts\<name>.pex`: an orphaned script of a removed mod, or a mod whose archive does not load | Reinstall the mod that had it, or accept it as the save's history |
+| `readPapyrusLog` → "Its stacks have no line numbers" | `bLoadDebugInformation` is off, so frames end in `Line ?` | On the user's word, `bLoadDebugInformation=1` in `[Papyrus]` |
 | `editIni` → "file is one of …" | Another file than the game's three INIs | Only Skyrim.ini, SkyrimPrefs.ini and SkyrimCustom.ini are edited; a mod's INI is changed in its mod |
 | `readNexusMod` → "No Nexus mod N for Skyrim Special Edition" | A guessed number, or a mod of another game (Skyrim LE, VR) | `searchNexus` for it; `modId` is the number in the page's address |
 | `buildProject` on Linux → "a Windows program … SKYRIM_PAPYRUS_COMPILER" | The Creation Kit's Papyrus compiler does not run on Linux | Install russo-2025's compiler and name it in `SKYRIM_PAPYRUS_COMPILER` ([Hosting](Hosting.md) §4) |

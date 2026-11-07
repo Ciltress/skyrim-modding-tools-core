@@ -28,7 +28,10 @@ import { buildCrashReport, crashLogSection, type CrashLogSection, type CrashRepo
 import { CRASH_RULES } from './crash/rules/index.js';
 import { BASE_MASTERS } from './crash/suspects.js';
 import type { CrashLog } from './crash/crashLog.js';
-import { setIniValue } from './gameIni.js';
+import { iniValue, setIniValue } from './gameIni.js';
+import { parsePapyrusLog } from './papyrus/papyrusLog.js';
+import { PapyrusLogNotFoundError, papyrusLogFile } from './papyrus/papyrusLogFiles.js';
+import { buildPapyrusReport, type PapyrusLogging, type PapyrusReport, type PluginOf } from './papyrus/papyrusReport.js';
 import { findCaseInsensitive } from './paths.js';
 import {
     ProjectError, assignFormIds, belongsAt, combinedFixes, orderedWarnings, correctCopiedEscapes, createProject, type CopiedEscape, deleteCall, deleteRecordFile, editCall, editedRecord, fencedRecordFiles, fileHash,
@@ -40,7 +43,7 @@ import type { SkyrimEngine } from './engine.js';
 import { NexusCatalogue, markDownloadInstalled, readDownloadMeta } from './nexus.js';
 import type {
     AddPatchRequest, AddPatchResult, BuildResult, DeleteRecordRequest, DeleteRecordResult, DeployResult, DisableModRequest, DisableModResult,
-    EditIniRequest, EditIniResult, EditRecordRequest, GameFile, EditRecordResult, EditInputRequest, EditInputResult, EnableModRequest, EnableModResult, InstallModQuestions, InstallModRequest, ReadCrashLogRequest,
+    EditIniRequest, EditIniResult, EditRecordRequest, GameFile, EditRecordResult, EditInputRequest, EditInputResult, EnableModRequest, EnableModResult, InstallModQuestions, InstallModRequest, ReadCrashLogRequest, ReadPapyrusLogRequest, PapyrusScriptEntries,
     ConflictReport, FindConflictsRequest, MergedChanges, RecordConflict, MovePluginRequest, MovePluginResult, SetModPriorityRequest,
     SetModPriorityResult,
     InstallModResult, GameVersionCheck, ModList, ModListQuery, MoveRecordRequest, MoveRecordResult,
@@ -1248,6 +1251,113 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
         } catch {
             // The log is read without them.
         }
+    }
+
+    async readPapyrusLog(request: ReadPapyrusLogRequest): Promise<PapyrusReport | PapyrusScriptEntries> {
+        const { modManager, platform } = this.engine;
+        const instance = modManager.readInstance();
+        const myGames = await myGamesDir(modManager, platform, instance);
+        const folder = this.engine.papyrusLogDir ?? (myGames && path.join(myGames, 'Logs', 'Script'));
+        if (!folder) {
+            throw new PapyrusLogNotFoundError('The Documents folder, where the game keeps My Games and its Papyrus logs, could not be found.');
+        }
+        const logging = this.papyrusLogging(instance, myGames);
+        const file = papyrusLogFile(folder, request.log);
+        const turnOn = `editIni {"set": [${['bEnableLogging', 'bEnableTrace', 'bLoadDebugInformation']
+            .map(key => `{"section": "Papyrus", "key": "${key}", "value": "1"}`).join(', ')}]}`;
+        if (!fs.existsSync(file)) {
+            throw new PapyrusLogNotFoundError(`There is no ${path.basename(file)} in ${folder}` +
+                (logging && !logging.enabled ? `: the game writes none, Papyrus logging is off in ${logging.file}. ` : '. ') +
+                `Turning it on is a change to the user's setup — on their word: ${turnOn}. Then the game writes one each time it ` +
+                'starts; play until the problem shows, quit the game, and read it again. Logging costs some script time: turn it off ' +
+                'after, with value "0".');
+        }
+        const log = parsePapyrusLog(fs.readFileSync(file, 'utf8'));
+        if (log.platform && log.platform !== 'PC') {
+            throw new PapyrusLogNotFoundError(`${path.basename(file)} is another game's (its log opened "(${log.platform})"), not Skyrim's.`);
+        }
+        const off = logging && !logging.enabled
+            ? `Papyrus logging is off now in ${logging.file}: this log, opened ${log.opened ?? 'at an unknown time'}, is from before. ` : '';
+        if (request.script) {
+            const wanted = request.script.toLowerCase();
+            const entries = log.entries.filter(entry => entry.stack.some(frame => frame.script.toLowerCase() === wanted)
+                || entry.message.toLowerCase().includes(wanted));
+            const listed = entries.slice(0, 20).map(entry => ({
+                line: entry.line, time: entry.time, ...(entry.severity ? { severity: entry.severity } : {}), message: entry.message,
+                ...(entry.stack.length ? { stack: entry.stack.map(frame => `[${frame.self}].${frame.script}.${frame.fn}() - ${frame.at}`) } : {})
+            }));
+            return {
+                log: { file, ...(log.opened ? { opened: log.opened } : {}) },
+                script: request.script,
+                entries: listed,
+                ...(entries.length > listed.length ? { more: entries.length - listed.length } : {}),
+                ...(logging ? { logging } : {}),
+                nextStep: off + (entries.length === 0 ? `No entry names ${request.script}.`
+                    : 'Each entry\'s stack runs innermost first: the first frame is where it happened, the last the event the game called.')
+            };
+        }
+        const attributor = this.attributor(instance);
+        const report = await buildPapyrusReport(file, log, async scripts => {
+            const owners = await attributor.files(scripts.map(script => `scripts\\${script}.pex`));
+            const found = new Map<string, { mod: string; file: string }>();
+            scripts.forEach(script => {
+                const owner = owners.get(`scripts\\${script}.pex`);
+                if (owner) found.set(script.toLowerCase(), { mod: owner.mod, file: owner.archive ? `in ${owner.archive}` : 'loose' });
+            });
+            return found;
+        }, await this.formIdPlugins(instance), logging);
+        if (off) report.nextStep = off + report.nextStep;
+        if (!logging?.debugInfo && log.entries.some(entry => entry.stack.some(frame => / Line \?$/.test(frame.at)))) {
+            report.nextStep += ' Its stacks have no line numbers: bLoadDebugInformation=1 in [Papyrus] gives them, on the user\'s word.';
+        }
+        return report;
+    }
+
+    /** Whether the game writes its Papyrus log, by the INIs it reads: the profile's under Mod Organizer, else My Games'. */
+    private papyrusLogging(instance: Instance, myGames: string | undefined): PapyrusLogging | undefined {
+        const folder = this.engine.modManager.profileIniDir(instance) ?? myGames;
+        if (!folder) return undefined;
+        const text = (name: string) => {
+            const file = findCaseInsensitive(folder, name);
+            return file ? fs.readFileSync(file, 'utf8') : '';
+        };
+        const [skyrim, custom] = [text('Skyrim.ini'), text('SkyrimCustom.ini')];
+        // SkyrimCustom.ini's values win over Skyrim.ini's.
+        const on = (key: string) => /^\s*(1|true)\s*$/i.test(iniValue(custom, 'Papyrus', key) ?? iniValue(skyrim, 'Papyrus', key) ?? '0');
+        return {
+            enabled: on('bEnableLogging'), trace: on('bEnableTrace'), debugInfo: on('bLoadDebugInformation'),
+            file: findCaseInsensitive(folder, 'Skyrim.ini') ?? path.join(folder, 'Skyrim.ini')
+        };
+    }
+
+    /**
+     * The plugin a runtime FormID's first digits stand for, in the load order now: a full plugin's index, or FE and a light
+     * plugin's — an .esl, or a plugin its header flags light. A Papyrus log names no plugins: one written before the load order
+     * changed maps to the plugins of now.
+     */
+    private async formIdPlugins(instance: Instance): Promise<PluginOf> {
+        const { modManager } = this.engine;
+        const order = modManager.readLoadOrder(instance).filter(plugin => plugin.active).map(plugin => plugin.name);
+        const light = new Set(order.filter(name => /\.esl$/i.test(name)).map(name => name.toLowerCase()));
+        try {
+            const files = modManager.resolvePluginFiles(instance, modManager.readModList(instance));
+            const paths = order.filter(name => !light.has(name.toLowerCase())).map(name => files.get(name.toLowerCase()))
+                .filter((file): file is string => file !== undefined);
+            if (paths.length > 0) {
+                await this.engine.ensureFresh();
+                const read = await this.engine.helper.call<{ plugins: { path: string; light?: boolean }[] }>('pluginHeaders', { paths }, BUILD_TIMEOUT_MS);
+                for (const header of read.plugins) if (header.light) light.add(path.basename(header.path).toLowerCase());
+            }
+        } catch {
+            // Light plugins by their extension alone.
+        }
+        const full = order.filter(name => !light.has(name.toLowerCase()));
+        const small = order.filter(name => light.has(name.toLowerCase()));
+        return formId => {
+            const index = Number.parseInt(formId.slice(0, 2), 16);
+            if (index === 0xfe) return small[Number.parseInt(formId.slice(2, 5), 16)];
+            return index === 0xff ? undefined : full[index];
+        };
     }
 
     async movePlugin(request: MovePluginRequest): Promise<MovePluginResult> {

@@ -63,6 +63,12 @@ export interface SkyrimBackend extends Backend {
     readCrashLog(request: ReadCrashLogRequest): Promise<CrashReport | CrashLogSection>;
 
     /**
+     * A Papyrus log of this setup read: script and install problems grouped and ranked, with the mods of their scripts and the
+     * plugins of their records, what the save holds of removed mods, script lag from stack dumps — or one script's entries.
+     */
+    readPapyrusLog(request: ReadPapyrusLogRequest): Promise<PapyrusReport | PapyrusScriptEntries>;
+
+    /**
      * Mods in conflict: the records whose winning version lost another plugin's changes, change by change, and the files two
      * mods give the game, with the one it takes — of one plugin, one mod, one record, or the whole setup.
      */
@@ -82,6 +88,8 @@ export interface SkyrimBackend extends Backend {
 export type { GameProblem, GameVersionCheck } from './sksePlugins.js';
 import type { GameVersionCheck } from './sksePlugins.js';
 export type { CrashLogSection, CrashReport, ReportedDiagnosis, ReportedRecord, Suspect } from './crash/crashReport.js';
+export type { PapyrusLogging, PapyrusProblem, PapyrusReport } from './papyrus/papyrusReport.js';
+import type { PapyrusLogging, PapyrusReport } from './papyrus/papyrusReport.js';
 import type { CrashLogSection, CrashReport } from './crash/crashReport.js';
 export type { FileConflictPair, FileConflicts } from './fileConflicts.js';
 import type { FileConflicts } from './fileConflicts.js';
@@ -127,6 +135,24 @@ export interface ReadCrashLogRequest {
     log?: string;
     /** Only this section of the log, as written. */
     section?: SectionName;
+}
+
+export interface ReadPapyrusLogRequest {
+    /** Papyrus.0.log, the newest, by default; Papyrus.1.log to Papyrus.3.log, or their numbers "1" to "3", the older sessions'. */
+    log?: string;
+    /** Only this script's entries, each with its stack: the problem's detail. */
+    script?: string;
+}
+
+/** One script's entries in a Papyrus log, as written. */
+export interface PapyrusScriptEntries {
+    log: { file: string; opened?: string };
+    script: string;
+    entries: { line: number; time: string; severity?: string; message: string; stack?: string[] }[];
+    /** Entries past those listed. */
+    more?: number;
+    logging?: PapyrusLogging;
+    nextStep: string;
 }
 
 export interface EnableModRequest {

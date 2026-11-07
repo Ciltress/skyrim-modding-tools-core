@@ -55,6 +55,41 @@ export class AnalysisHandlers extends BaseHandler {
             },
             {
                 definition: {
+                    name: 'readPapyrusLog',
+                    annotations: {
+                        title: 'Read Papyrus log',
+                        readOnlyHint: true,
+                        destructiveHint: false,
+                        idempotentHint: true,
+                        openWorldHint: false
+                    },
+                    description:
+                        'What the game\'s scripts did wrong, from its Papyrus log: script and install `problems`, grouped and ' +
+                        'counted, bugs first — a call on None, a script or framework missing, a script on the wrong record — each ' +
+                        'with its fix, its scripts by the mod whose .pex the game loads, its records by plugin; what the save still ' +
+                        'holds of mods removed mid-playthrough; script lag in `load`, from stack dumps; harmless messages counted in ' +
+                        '`noise`. Not a crash log: readCrashLog reads crashes. `script` lists one script\'s entries with their ' +
+                        'stacks. With logging off, it says the editIni call that turns it on. Reads files; changes nothing.',
+                    inputSchema: {
+                        type: 'object',
+                        properties: {
+                            log: {
+                                type: 'string',
+                                description: 'Papyrus.0.log, the newest, by default; "1" to "3" for the sessions before it.'
+                            },
+                            script: { type: 'string', description: 'Only this script\'s entries, e.g. "MyQuestScript".' }
+                        }
+                    },
+                    narrowingHint: 'Give `script` for one script\'s entries.'
+                },
+                onFailure: 'Failed to read the Papyrus log',
+                run: args => asRequestError(this.backend.readPapyrusLog({
+                    log: optionalString(args, 'log'),
+                    script: optionalString(args, 'script')
+                }))
+            },
+            {
+                definition: {
                     name: 'findConflicts',
                     annotations: {
                         title: 'Find mod conflicts',

@@ -14,9 +14,11 @@ import type {
     NexusSearchQuery, NexusSearchResult, ProjectInfo, PullResult, ExportCellRequest, ExportCellResult, ImportCellRequest, ImportCellResult, RecordQuery, RecordRequest, RecordSearchResult,
     RecordSummary, RecordVersions, ListedMod, ModList, ModListQuery, GameVersionCheck,
     CrashLogSection, CrashReport, EditIniRequest, EditIniResult, EnableModRequest, EnableModResult, ReadCrashLogRequest, GameFile,
-    ConflictReport, FindConflictsRequest, MovePluginRequest, MovePluginResult, SetModPriorityRequest, SetModPriorityResult
+    ConflictReport, FindConflictsRequest, MovePluginRequest, MovePluginResult, SetModPriorityRequest, SetModPriorityResult,
+    PapyrusReport, PapyrusScriptEntries, ReadPapyrusLogRequest
 } from '../backend/skyrim/SkyrimBackend.js';
 import { CrashLogNotFoundError } from '../backend/skyrim/crash/crashLogFiles.js';
+import { PapyrusLogNotFoundError } from '../backend/skyrim/papyrus/papyrusLogFiles.js';
 import { CORE_GUIDES } from '../lib/guides.js';
 import { CORE_INFO, CORE_ROOT, type Product } from '../lib/product.js';
 
@@ -322,6 +324,29 @@ export class InMemorySkyrimBackend implements AppBackend {
         return { mod: request.mod, moved: true, ...(request.after ? { winsOver: request.after } : {}), ...(request.before ? { losesTo: request.before } : {}) };
     }
 
+    /** A None call in the mod `sample`'s script; a log asked for by another name than its own or `sample` is not there. */
+    async readPapyrusLog(request: ReadPapyrusLogRequest): Promise<PapyrusReport | PapyrusScriptEntries> {
+        if (request.log !== undefined && request.log !== SAMPLE && request.log !== '0' && request.log !== 'Papyrus.0.log') {
+            throw new PapyrusLogNotFoundError(`There is no ${request.log} in the game's Logs\\Script folder.`);
+        }
+        const log = { file: 'Papyrus.0.log', opened: '10/30/2026 - 12:00:00PM' };
+        const stack = ['[SampleQuest (0A000D62)].SampleScript.OnInit() - "SampleScript.psc" Line 12'];
+        if (request.script) {
+            return { log, script: request.script, entries: [{ line: 4, time: '10/30/2026 - 12:00:05PM', severity: 'error', message: 'Cannot call AddItem() on a None object, aborting function call', stack }], nextStep: 'Each entry\'s stack runs innermost first.' };
+        }
+        return {
+            log: { ...log, closed: true, lines: 12, entries: 6, loads: 1, saves: 0 },
+            problems: [{
+                kind: 'none-call', class: 'bug', title: 'A call on nothing (None)', count: 3, explain: 'A function was called on a variable holding nothing.',
+                fix: 'The mod\'s author must fill the property.', scripts: [{ script: 'SampleScript', count: 3, mod: SAMPLE, file: 'loose' }],
+                forms: [{ formId: '0A000D62', plugin: 'Sample.esp' }],
+                first: { line: 4, time: '10/30/2026 - 12:00:05PM', text: 'Cannot call AddItem() on a None object, aborting function call', stack }
+            }],
+            noise: { count: 2, kinds: { 'file-not-loaded': 2 } },
+            nextStep: 'Tell the user the first problem. The Papyrus log is a script log, not a crash log.'
+        };
+    }
+
     /** One record conflict — the Iron Sword's keyword lost — and one file conflict, whatever is asked. */
     async findConflicts(request: FindConflictsRequest): Promise<ConflictReport> {
         return {
@@ -432,7 +457,7 @@ export interface FakeBackendOptions {
 const DOMAIN_METHODS = [
     'findRecords', 'readRecord', 'newProject', 'addPatch', 'editRecord', 'buildProject', 'deployProject', 'pullProject', 'exportCell', 'importCell',
     'searchNexus', 'readNexusMod', 'downloadNexusFile', 'installMod', 'disableMod', 'enableMod', 'listMods', 'movePlugin', 'setModPriority', 'checkGameVersion',
-    'readCrashLog', 'findConflicts', 'editIni', 'findGameFiles'
+    'readCrashLog', 'readPapyrusLog', 'findConflicts', 'editIni', 'findGameFiles'
 ] as const;
 
 /**

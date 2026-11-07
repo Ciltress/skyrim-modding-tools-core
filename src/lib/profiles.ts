@@ -49,7 +49,7 @@ const MOD_WRITE = ['installMod', 'disableMod', 'enableMod'] as const;
 const NEXUS_READ = ['searchNexus', 'readNexusMod'] as const;
 
 /** Why the game misbehaves, read from what it leaves behind: in every profile, since it only reads. */
-const ANALYSIS = ['readCrashLog', 'findConflicts'] as const;
+const ANALYSIS = ['readCrashLog', 'readPapyrusLog', 'findConflicts'] as const;
 
 export interface ProfileDefinition {
     description: string;

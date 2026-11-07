@@ -32,7 +32,7 @@ export function serverInstructions(target: string): string {
         '',
         'Before modding, read the skill skyrim-modding-basics, then the skill of the records you will write: ' +
         `${FAMILY_SKILLS.map(family => `${family.skill} (${family.covers})`).join(', ')} (readSkill). ` +
-        'Mods that break after a game update: skyrim-modding-game-versions. A game that crashed: skyrim-modding-crash-analysis. ' +
+        'Mods that break after a game update: skyrim-modding-game-versions. A crash or failing scripts: skyrim-modding-crash-analysis. ' +
         'Mods in conflict: skyrim-modding-conflicts.',
         '',
         'How a mod is made:',

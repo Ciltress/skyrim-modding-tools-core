@@ -19,6 +19,8 @@ export interface EngineOptions {
     papyrusCompilerCandidates?: readonly string[];
     /** SKYRIM_CRASH_LOG_DIR: where Crash Logger's logs are read from instead of My Games' SKSE folder. */
     crashLogDir?: string;
+    /** Where the Papyrus logs are read from instead of My Games' Logs\Script folder: for tests. */
+    papyrusLogDir?: string;
     /** SKYRIM_BLENDER: the Blender exportCell saves a cell's .blend with; undefined means one found where installers put it. */
     blender?: string;
 }
@@ -51,6 +53,7 @@ export class SkyrimEngine {
     readonly papyrusCompiler?: string;
     readonly papyrusCompilerCandidates: readonly string[];
     readonly crashLogDir?: string;
+    readonly papyrusLogDir?: string;
     readonly blender?: string;
     private readonly creationKitOverride?: string;
 
@@ -69,6 +72,7 @@ export class SkyrimEngine {
         this.papyrusCompilerCandidates = options.papyrusCompilerCandidates ?? [];
         this.creationKitOverride = options.creationKitDir;
         this.crashLogDir = options.crashLogDir;
+        this.papyrusLogDir = options.papyrusLogDir;
         this.blender = options.blender;
     }
 

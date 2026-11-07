@@ -1,0 +1,54 @@
+[09/03/2022 - 10:20:49AM] Papyrus log opened (PC)
+[09/03/2022 - 10:20:49AM] Update budget: 1.200000ms (Extra tasklet budget: 1.200000ms, Load screen budget: 2000.000000ms)
+[09/03/2022 - 10:20:49AM] Memory page: 128 (min) 512 (max) 524288 (max total)
+[09/03/2022 - 10:20:52AM] Cannot open store for class "dlc1scwispwallscript", missing file?
+[09/03/2022 - 10:20:52AM] Error: Unable to bind script dlc1scwispwallscript to  (020030D0) because their base types do not match
+[09/03/2022 - 10:20:52AM] Error: Unable to bind script WIDeadBody01 (WIDeadBody01->WorldInteractionsScript->Quest->Form) to WIDeadBodyCleanup (0010E0A2) because their base types do not match
+[09/03/2022 - 10:20:53AM] warning: Property DLC2AshSpawnAttackChance on script DLC2AshSpawnAttackChanceScript attached to DLC2Init (04016E02) cannot be initialized because the script no longer contains that property
+[09/03/2022 - 10:20:54AM] error: Native static function GetItemUniqueID could find no matching static function on linked type NiOverride. Function will not be bound.
+[09/03/2022 - 10:20:58AM] VM is freezing...
+[09/03/2022 - 10:20:58AM] VM is frozen
+[09/03/2022 - 10:20:58AM] Reverting game...
+[09/03/2022 - 10:21:05AM] Loading game...
+[09/03/2022 - 10:21:05AM] warning: Unable to get type OldModQuestScript referenced by the save game. Objects of this type will not be loaded.
+[09/03/2022 - 10:21:05AM] warning: Could not find type OldModQuestScript in the type table in save
+[09/03/2022 - 10:21:05AM] Warning: Variable ::MyCount_var on script MyQuestScript loaded from save not found within the actual object. This variable will be skipped.
+[09/03/2022 - 10:21:07AM] VM is thawing...
+[09/03/2022 - 10:21:07AM] Error: File "Frostfall.esp" does not exist or is not currently loaded.
+stack:
+	<unknown self>.Game.GetFormFromFile() - "<native>" Line ?
+	[_WetQuest (34000D63)]._wetquestscript.Maintenance() - "_WetQuestScript.psc" Line 529
+[09/03/2022 - 10:21:08AM] =====Wet and Cold is finished refreshing itself and searching for addons!=====
+[09/03/2022 - 10:21:10AM] Error: Cannot call Start() on a None object, aborting function call
+stack:
+	[VDR_NPCUpdate (B8000813)].VDR_NPCUpdateScript.OnUpdate() - "VDR_NPCUpdateScript.psc" Line 5
+[09/03/2022 - 10:21:10AM] warning: Assigning None to a non-object variable named "::temp3"
+stack:
+	[VDR_NPCUpdate (B8000813)].VDR_NPCUpdateScript.OnUpdate() - "VDR_NPCUpdateScript.psc" Line 5
+[09/03/2022 - 10:21:20AM] Error: Cannot call Start() on a None object, aborting function call
+stack:
+	[VDR_NPCUpdate (B8000813)].VDR_NPCUpdateScript.OnUpdate() - "VDR_NPCUpdateScript.psc" Line 5
+[09/03/2022 - 10:21:21AM] Error: Static function IsActorInCombat not found on object Nemesis_AA. Aborting call and returning None
+stack:
+	[ (00000014)].XPMSEWeaponStyleScaleEffect.OnUpdate() - "XPMSEWeaponStyleScaleEffect.psc" Line ?
+[09/03/2022 - 10:25:14AM] Error:  (0403A06F): Actor did not have a valid Animation Graph Manager.
+[09/19/2021 - 05:49:05PM] Suspended stack count is over our warning threshold, dumping stacks:
+[09/19/2021 - 05:49:05PM] Dumping stack 1082:
+[09/19/2021 - 05:49:05PM] 	Frame count: 1 (Page count: 1)
+[09/19/2021 - 05:49:05PM] 	State: Waiting on other stack for call (Freeze state: Freezing)
+[09/19/2021 - 05:49:05PM] 	Type: Initialization Event
+[09/19/2021 - 05:49:05PM] 	Return register: None
+[09/19/2021 - 05:49:05PM] 	Has stack callback: No
+[09/19/2021 - 05:49:05PM] 	Stack trace:
+[09/19/2021 - 05:49:05PM] 		[ (00038045)].CWFieldCOCrimeFactionScript.OnInit() - "CWFieldCOCrimeFactionScript.psc" Line 11
+[09/19/2021 - 05:49:05PM] 			IP: 0	Instruction: 0	Line: 11
+[09/19/2021 - 05:49:05PM] 			[::temp0]: 0
+[09/19/2021 - 05:49:05PM] Dumping stack 1083:
+[09/19/2021 - 05:49:05PM] 	Frame count: 2 (Page count: 1)
+[09/19/2021 - 05:49:05PM] 	State: Running (Freeze state: Freezing)
+[09/19/2021 - 05:49:05PM] 	Type: Normal
+[09/19/2021 - 05:49:05PM] 	Stack trace:
+[09/19/2021 - 05:49:05PM] 		[VDR_NPCUpdate (B8000813)].VDR_NPCUpdateScript.UpdateNPC() - "VDR_NPCUpdateScript.psc" Line 22
+[09/19/2021 - 05:49:05PM] 		[VDR_NPCUpdate (B8000813)].VDR_NPCUpdateScript.OnUpdate() - "VDR_NPCUpdateScript.psc" Line 5
+[09/19/2021 - 05:49:06PM] Saving game...
+[09/19/2021 - 05:49:30PM] Log closed

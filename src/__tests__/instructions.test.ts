@@ -52,7 +52,7 @@ describe('the instructions', () => {
         for (const family of FAMILY_SKILLS) expect(text).toContain(family.skill);
         expect(text).toContain('Mods that break after a game update: skyrim-modding-game-versions.');
         // The analysis wave, 2026-10-30: crash logs get a skill of their own, named where a crash first comes up.
-        expect(text).toContain('A game that crashed: skyrim-modding-crash-analysis.');
+        expect(text).toContain('A crash or failing scripts: skyrim-modding-crash-analysis.');
     });
 
     it('say when a mod is delivered, beside the line that asks for it, and nowhere else', () => {
