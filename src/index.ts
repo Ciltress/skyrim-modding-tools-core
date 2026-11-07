@@ -7,7 +7,7 @@
 export * from './backend/index.js';
 export * from './backend/skyrim/externalTools.js';
 // Where Blender is, for a product's setup and the plugin's eval, which give Blender's MCP server its BLENDER_PATH.
-export { findBlender } from './backend/skyrim/cellScene.js';
+export { BLENDER_MCP_NO_STDIN, blenderMcpLaunch, findBlender } from './backend/skyrim/cellScene.js';
 export * from './backend/skyrim/helperClient.js';
 export * from './backend/skyrim/mo2.js';
 export * from './backend/skyrim/mo2Instances.js';

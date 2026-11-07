@@ -31,36 +31,10 @@ internal static class CellContents
         Func<FormKey, List<IModContext<ISkyrimMod, ISkyrimModGetter, IMajorRecord, IMajorRecordGetter>>>? allContexts = null)
     {
         if (contexts.Count == 0 || contexts[0].Record is not ICellGetter winner) return null;
-        var seen = new HashSet<FormKey>();
-        var placed = new List<(IPlacedGetter Reference, bool Persistent)>();
-        foreach (var context in contexts)
-        {
-            if (context.Record is not ICellGetter cell) continue;
-            foreach (var reference in cell.Persistent) if (seen.Add(reference.FormKey)) placed.Add((reference, true));
-            foreach (var reference in cell.Temporary) if (seen.Add(reference.FormKey)) placed.Add((reference, false));
-        }
-        // Outdoors, the worldspace's persistent references standing in this cell's square too: the game keeps them in the
-        // worldspace's top cell, and shows them here — Alvor's grindstone in Riverwood is one, and readRecord of Riverwood listed
-        // it nowhere (the outdoor task's second mini-round).
-        if (GridOf(winner) is { } square && allContexts is not null && contexts.Select(WorldspaceOf).FirstOrDefault(w => w is not null) is { } world)
-        {
-            foreach (var version in allContexts(world))
-            {
-                if (version.Record is not IWorldspaceGetter { TopCell: { } top }) continue;
-                foreach (var reference in top.Persistent)
-                    if (PlacementOf(reference) is { } spot && GridAt(spot.Position).Equals(square) && seen.Add(reference.FormKey))
-                        placed.Add((reference, true));
-            }
-        }
-
-        var rows = placed.Select(p => (p.Reference, p.Persistent, Base: BaseOf(p.Reference), Placement: PlacementOf(p.Reference)))
-            .Select(r => (r.Reference, r.Persistent, r.Placement,
-                Base: r.Base is { } key && index.ByFormKey.TryGetValue(key, out var entry) ? entry : null))
-            .ToList();
+        var (rows, listed) = RowsOf(contexts, index, allContexts);
+        var placed = rows;
         var byKind = rows.GroupBy(r => r.Base?.Type ?? "unknown").OrderByDescending(g => g.Count())
             .ToDictionary(g => g.Key, g => g.Count());
-        var listed = rows.Where(r => r.Base is not null && Array.IndexOf(Shown, r.Base.Type) >= 0 && r.Placement is not null)
-            .OrderBy(r => Array.IndexOf(Shown, r.Base!.Type)).Take(Listed).ToList();
 
         var references = new JsonArray(listed.Select(r => (JsonNode)new JsonObject
         {
@@ -75,7 +49,7 @@ internal static class CellContents
 
         // A new reference beside the first object listed, moved a little along x — its rotation kept, so it faces the same way.
         var near = listed.FirstOrDefault();
-        var position = near.Placement is { } at ? Triple(new P3Float(at.Position.X + 64, at.Position.Y, at.Position.Z)) : "0, 0, 0";
+        var position = near.Placement is { } at ? Triple(Beside(at.Position)) : "0, 0, 0";
         var rotation = near.Placement is { } turned ? Triple(turned.Rotation) : "0, 0, 0";
         var folder = cellFile is null ? null : cellFile[..cellFile.LastIndexOf('/')];
         var name = winner.EditorID ?? "MyCell";
@@ -103,6 +77,61 @@ internal static class CellContents
             }
         };
     }
+
+    /// <summary>A reference a cell places, with its placement and the record it places, as the index knows it.</summary>
+    private readonly record struct Row(IPlacedGetter Reference, bool Persistent, IPlacementGetter? Placement, RecordIndex.Entry? Base);
+
+    /// <summary>
+    /// What a cell places, from every version of it — outdoors with the worldspace's persistent references standing in its
+    /// square — and those its answer lists, in its order: what a new object is placed beside.
+    /// </summary>
+    private static (List<Row> Rows, List<Row> Listed) RowsOf(IReadOnlyList<IModContext<ISkyrimMod, ISkyrimModGetter, IMajorRecord, IMajorRecordGetter>> contexts,
+        RecordIndex index, Func<FormKey, List<IModContext<ISkyrimMod, ISkyrimModGetter, IMajorRecord, IMajorRecordGetter>>>? allContexts)
+    {
+        var seen = new HashSet<FormKey>();
+        var placed = new List<(IPlacedGetter Reference, bool Persistent)>();
+        foreach (var context in contexts)
+        {
+            if (context.Record is not ICellGetter cell) continue;
+            foreach (var reference in cell.Persistent) if (seen.Add(reference.FormKey)) placed.Add((reference, true));
+            foreach (var reference in cell.Temporary) if (seen.Add(reference.FormKey)) placed.Add((reference, false));
+        }
+        // Outdoors, the worldspace's persistent references standing in this cell's square too: the game keeps them in the
+        // worldspace's top cell, and shows them here — Alvor's grindstone in Riverwood is one, and readRecord of Riverwood listed
+        // it nowhere (the outdoor task's second mini-round).
+        if (contexts.Count > 0 && contexts[0].Record is ICellGetter winner && GridOf(winner) is { } square && allContexts is not null
+            && contexts.Select(WorldspaceOf).FirstOrDefault(w => w is not null) is { } world)
+        {
+            foreach (var version in allContexts(world))
+            {
+                if (version.Record is not IWorldspaceGetter { TopCell: { } top }) continue;
+                foreach (var reference in top.Persistent)
+                    if (PlacementOf(reference) is { } spot && GridAt(spot.Position).Equals(square) && seen.Add(reference.FormKey))
+                        placed.Add((reference, true));
+            }
+        }
+        var rows = placed.Select(p => new Row(p.Reference, p.Persistent, PlacementOf(p.Reference),
+            BaseOf(p.Reference) is { } key && index.ByFormKey.TryGetValue(key, out var entry) ? entry : null)).ToList();
+        var listed = rows.Where(r => r.Base is not null && Array.IndexOf(Shown, r.Base.Type) >= 0 && r.Placement is not null)
+            .OrderBy(r => Array.IndexOf(Shown, r.Base!.Type)).Take(Listed).ToList();
+        return (rows, listed);
+    }
+
+    /// <summary>The spot of a new reference beside a placed one: 64 units along x.</summary>
+    private static P3Float Beside(P3Float at) => new(at.X + 64, at.Y, at.Z);
+
+    /// <summary>
+    /// The example spot readRecord of a cell gives a new reference — beside the first object it lists — and that object's
+    /// name; null where it lists none.
+    /// </summary>
+    private static (P3Float At, string By)? ExampleSpot(List<Row> listed) =>
+        listed is [{ Placement: { } first, Base: { } by }, ..] ? (Beside(first.Position), NameOf(by)) : null;
+
+    /// <summary>A placed record's name for messages: its editor ID, else its FormID.</summary>
+    private static string NameOf(RecordIndex.Entry entry) => entry.EditorId ?? Session.FormKeyText(entry.FormKey);
+
+    /// <summary>How near across the ground two references stand that are taken for one inside the other, in game units.</summary>
+    private const float Inside = 16;
 
     /// <summary>The length of an exterior cell's side, in game units.</summary>
     internal const int CellSize = 4096;
@@ -142,7 +171,7 @@ internal static class CellContents
             // unloaded with the wrong ground.
             if (GridOf(cell) is { } grid)
             {
-                notes.AddRange(OutsideGrid(cell, grid, own, files, contexts, pluginDir));
+                notes.AddRange(OutsideGrid(cell, grid, own, files, contexts, index, pluginDir));
                 continue;
             }
             var seen = new HashSet<FormKey>();
@@ -191,7 +220,7 @@ internal static class CellContents
     /// </summary>
     private static IEnumerable<string> OutsideGrid(ICellGetter cell, P2Int grid, List<IPlacedGetter> own,
         List<(string Relative, (FormKey? FormKey, string? EditorId) Identity)> files,
-        Func<FormKey, List<IModContext<ISkyrimMod, ISkyrimModGetter, IMajorRecord, IMajorRecordGetter>>> contexts, string pluginDir)
+        Func<FormKey, List<IModContext<ISkyrimMod, ISkyrimModGetter, IMajorRecord, IMajorRecordGetter>>> contexts, RecordIndex index, string pluginDir)
     {
         var cellName = cell.EditorID ?? Session.FormKeyText(cell.FormKey);
         var versions = contexts(cell.FormKey);
@@ -199,6 +228,10 @@ internal static class CellContents
         // The ground, from the version of the cell whose landscape wins: the project's own references are held to it.
         var land = versions.Select(v => (v.Record as ICellGetter)?.Landscape?.VertexHeightMap).FirstOrDefault(m => m is not null);
         var heights = land is null ? null : CellScene.Heights(land);
+        // What the load order places there, and the example spot readRecord of the cell gave: before the project placed anything.
+        var ownPlugin = own[0].FormKey.ModKey;
+        var (rows, listed) = RowsOf(versions.Where(v => v.ModKey != ownPlugin).ToList(), index, contexts);
+        var spot = ExampleSpot(listed);
         foreach (var reference in own)
         {
             if (PlacementOf(reference) is not { } placement) continue;
@@ -208,6 +241,12 @@ internal static class CellContents
                 || reference.EditorID is { } id && string.Equals(f.Identity.EditorId, id, StringComparison.OrdinalIgnoreCase)).Relative;
             if (lies.Equals(grid))
             {
+                var at = placement.Position;
+                if (rows.FirstOrDefault(r => r.Base is not null && r.Placement is { } other && r.Reference.FormKey != reference.FormKey
+                        && Math.Abs(other.Position.X - at.X) < Inside && Math.Abs(other.Position.Y - at.Y) < Inside) is { Base: { } holder, Placement: { } held })
+                    yield return InsideAnother(name, file, at, holder, held.Position, cellName, pluginDir);
+                else if (spot is { } example && Math.Abs(at.X - example.At.X) < 1 && Math.Abs(at.Y - example.At.Y) < 1)
+                    yield return ExampleKept(name, file, at, example.By, cellName);
                 if (heights is not null && OffTheGround(name, file, placement.Position, CellScene.GroundAt(heights, grid, placement.Position.X, placement.Position.Y), pluginDir) is { } off)
                     yield return off;
                 continue;
@@ -255,6 +294,36 @@ internal static class CellContents
                   ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), file, $"{{\"path\": \"Placement.Position\", \"value\": \"{onIt}\"}}", build: true)
                 : $"Write its Position on the ground — {onIt}") +
             (above > 0 ? "; where it stands on something there — a table, a roof, a bridge — nothing to change, and this warning stays" : "");
+    }
+
+    /// <summary>
+    /// A reference placed outdoors on the example spot readRecord of its cell gave — beside the first object listed, whatever
+    /// it is — where the user may have named a place. The outdoor task's third mini-round: asked for a chest beside Riverwood's
+    /// grindstone, a run read the cell, not the grindstone, and built its chest on the example spot, beside another object.
+    /// </summary>
+    private static string ExampleKept(string name, string? file, P3Float at, string by, string cellName) =>
+        $"{file ?? name}: {name} stands at {Triple(at)}, the example spot readRecord of {cellName} gave — beside {by}, the first thing " +
+        "it lists, 64 units along x — not a place the user named. Where the user named one — beside a grindstone, by a door — read " +
+        $"that thing with `in`, readRecord {{\"record\": \"<its editor ID>\", \"in\": {ToolCalls.Quoted(cellName)}}}: its placedIn gives " +
+        "its position; set this Position 64 units from it, then build again. Where the user named no place, nothing to change, and " +
+        "this warning stays";
+
+    /// <summary>
+    /// A reference placed outdoors where another of the cell stands — the two inside each other in game — with the call that
+    /// sets it beside that one. The outdoor task's third mini-round: a run read Riverwood, took the position of the first thing
+    /// listed, Alvor's merchant chest, hidden under the ground, and built its own chest in it, not beside the grindstone asked for.
+    /// </summary>
+    private static string InsideAnother(string name, string? file, P3Float at, RecordIndex.Entry other, P3Float there, string cellName, string pluginDir)
+    {
+        var beside = Triple(new P3Float(there.X + 64, there.Y, at.Z));
+        var what = other.Name is { Length: > 0 } shown ? $"{NameOf(other)} \"{shown}\", {RecordFiles.Article(other.Type)}" : NameOf(other);
+        return $"{file ?? name}: {name} is placed at {Triple(at)}, where {what} stands, at {Triple(there)}: in game the two are " +
+            "inside each other. Place it beside what the user named — read that thing with `in` for its position, readRecord " +
+            $"{{\"record\": \"<its editor ID>\", \"in\": {ToolCalls.Quoted(cellName)}}} — 64 units from it" +
+            (file is not null
+                ? $"; or beside {NameOf(other)}, one call, which builds again: " +
+                  ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), file, $"{{\"path\": \"Placement.Position\", \"value\": \"{beside}\"}}", build: true)
+                : $"; or beside {NameOf(other)}, at {beside}");
     }
 
     /// <summary>The worldspace a cell's version lies in, through its parents.</summary>

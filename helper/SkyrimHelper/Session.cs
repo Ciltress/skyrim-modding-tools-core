@@ -407,6 +407,14 @@ public sealed class Session : IDisposable
         finally { Directory.Delete(dir, true); }
     }
 
+    /// <summary>A load-order record's file text as readRecord answers it — its winning version's first file — by editor ID; null for none.</summary>
+    private string? ExampleText(string editorId)
+    {
+        if (!Index.ByEditorId.TryGetValue(editorId, out var key) || Contexts(key) is not { Count: > 0 } contexts) return null;
+        var files = Render([contexts[0]], contexts[0].ModKey).GetAwaiter().GetResult();
+        return files.Count > 0 ? Annotated(files[0].Text) : null;
+    }
+
     private List<ISkyrimModGetter> LoadedMods(ModKey except) =>
         plugins.Where(x => x.Key != except).Select(x => (ISkyrimModGetter)x.Mod).ToList();
 
@@ -567,7 +575,7 @@ public sealed class Session : IDisposable
         List<(string File, string Copy)> leftOut;
         try
         {
-            (records, leftOut) = RecordFiles.Require(dir, Index, unneeded);
+            (records, leftOut) = RecordFiles.Require(dir, Index, unneeded, ExampleText);
             RecordLinks.Resolve(dir, Index, LinkPins.Read(dir), out _, Cache);
         }
         catch (HelperException e) when (corrected.Count > 0)
@@ -598,7 +606,7 @@ public sealed class Session : IDisposable
 
         // What the reader would skip or fail on without saying why, named first (RecordFiles); then the
         // links written by editor ID, made FormKeys the reader takes (RecordLinks) — in its copy alone.
-        RecordFiles.Require(dir, Index);
+        RecordFiles.Require(dir, Index, exampleText: ExampleText);
         var pins = LinkPins.Read(dir);
         var resolvedLinks = RecordLinks.Resolve(dir, Index, pins, out var rewrites, Cache);
         IModGetter deserialized;

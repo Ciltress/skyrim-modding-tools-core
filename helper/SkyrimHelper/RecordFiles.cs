@@ -1076,7 +1076,8 @@ public static class RecordFiles
     /// delete it, after it had written the record again in the right folder (eval probe 10 after round 11).
     /// With the load order's index, a FormKey of another plugin is checked against the record it names.
     /// </summary>
-    public static (int Records, List<string> Problems, List<(string File, string Copy)> LeftOut) Check(string pluginDir, RecordIndex? index = null, Dictionary<string, string>? unneeded = null)
+    public static (int Records, List<string> Problems, List<(string File, string Copy)> LeftOut) Check(string pluginDir, RecordIndex? index = null,
+        Dictionary<string, string>? unneeded = null, Func<string, string?>? exampleText = null)
     {
         var problems = new List<string>();
         var leftOut = new List<(string File, string Copy)>();
@@ -1259,8 +1260,13 @@ public static class RecordFiles
             // The family's skill first: its tables have the lines of each kind — told only to read Firebolt, a
             // model built its shock spell on Firebolt's fire effect (eval probe 15).
             var skill = SkillOf((kind ?? type).Name) is { } family ? $"the {family} skill's tables, readSkill {{\"skill\": \"{family}\"}}, or " : "";
-            var read = index is not null && ExampleOf(kind ?? type, index) is { } example
-                ? $" — read {skill}a vanilla one, readRecord {{\"record\": \"{example}\"}}, and write yours with its field names and nesting"
+            var example = index is not null ? ExampleOf(kind ?? type, index) : null;
+            var read = example is not null
+                ? Guessed(kind ?? type, known, text, IsNew(text, own)) && exampleText?.Invoke(example) is { } whole
+                    && WrittenAs(whole, text) is { Length: <= MaxExampleText } yours
+                    ? $" — nothing in it is {Article((kind ?? type).Name)}'s but its names. Write it as the game's {example} is written, your " +
+                      $"names in it, then change only the values the user asked for — the file's whole text:\n{yours.TrimEnd('\n')}\n(the text ends here)"
+                    : $" — read {skill}a vanilla one, readRecord {{\"record\": \"{example}\"}}, and write yours with its field names and nesting"
                 : "";
             problems.Add($"{relative}: {Droppable(kind ?? type, relative, text, texts.Value, pluginDir)}" +
                 $"{Article(type.Name)} has no field {Unknown(kind ?? type, known, unknown, text, pluginDir, relative, texts.Value)}{read}" +
@@ -1449,6 +1455,41 @@ public static class RecordFiles
             "this file — two calls and a build: " +
             ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), namer, string.Join(", ", paths.Select(p => $"{{\"path\": \"{p}\", \"value\": {ToolCalls.Quoted(game)}}}"))) +
             $", then {ToolCalls.Delete(pluginDir, relative)}, then buildProject";
+    }
+
+    /// <summary>The top-level lines of a record file that name the record rather than make it.</summary>
+    private static readonly HashSet<string> NamingKeys = new(StringComparer.Ordinal)
+        { "FormKey", "MutagenObjectType", "VersionControl", "Version2", "EditorID", "Name" };
+
+    /// <summary>The longest game record's text a refusal gives whole, in characters: a weapon's or an enchantment's, not an NPC's.</summary>
+    private const int MaxExampleText = 3000;
+
+    /// <summary>
+    /// A new record written of guesses: its top-level fields that its type has are only its names, and two or more are none
+    /// of its type's. Eval round 132's sword+detailed #4 wrote its enchantment so three times — ChargeAmount, EffectType,
+    /// FireDamage… — each refusal naming the fields and the game's EnchWeaponFireDamage01 to read, which it never read,
+    /// until its turns ran out.
+    /// </summary>
+    private static bool Guessed(Type type, HashSet<string> known, string text, bool isNew)
+    {
+        if (!isNew) return false;
+        var keys = TopLevelKey.Matches(text).Select(m => m.Groups[1].Value).Distinct().ToList();
+        return keys.Count(k => !known.Contains(k)) >= 2 && keys.Where(known.Contains).All(NamingKeys.Contains);
+    }
+
+    /// <summary>
+    /// A game record's file text as the project's new record: without its FormKey line, the file's EditorID and in-game name
+    /// in place of the game's — the rest, values and all, the game's.
+    /// </summary>
+    internal static string WrittenAs(string game, string text)
+    {
+        var yours = Regex.Replace(game, @"^FormKey:.*\n", "", RegexOptions.Multiline);
+        if (Identity(text).EditorId is { } id)
+            yours = Regex.Replace(yours, @"^EditorID:.*$", _ => $"EditorID: {id}", RegexOptions.Multiline);
+        if (NameOf(text) is { } name)
+            yours = Regex.Replace(yours, @"^(Name:\n(?:[ \t]+TargetLanguage:.*\n)?[ \t]+Value:[ \t]*).*$", m => m.Groups[1].Value + name,
+                RegexOptions.Multiline);
+        return yours;
     }
 
     private static string? ClosestEffect(string named, RecordIndex index)
@@ -2091,9 +2132,10 @@ public static class RecordFiles
         Enumerable.Range(1, 99).Select(n => n == 1 ? stem : $"{stem}{n}").First(free);
 
     /// <summary>Throws what is wrong with the files, as the request's fault; answers how many there are, and those left out.</summary>
-    public static (int Records, List<(string File, string Copy)> LeftOut) Require(string pluginDir, RecordIndex? index = null, Dictionary<string, string>? unneeded = null)
+    public static (int Records, List<(string File, string Copy)> LeftOut) Require(string pluginDir, RecordIndex? index = null,
+        Dictionary<string, string>? unneeded = null, Func<string, string?>? exampleText = null)
     {
-        var (records, problems, leftOut) = Check(pluginDir, index, unneeded);
+        var (records, problems, leftOut) = Check(pluginDir, index, unneeded, exampleText);
         if (problems.Count > 0)
         {
             throw new HelperException("badRecord",

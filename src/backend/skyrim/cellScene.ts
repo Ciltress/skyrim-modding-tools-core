@@ -239,6 +239,26 @@ export function cellFolderOf(pluginDir: string, cellFormId: string): string | un
     return undefined;
 }
 
+/** The script that starts Blender Lab's MCP server with no stdin for each Blender it runs in the background. */
+export const BLENDER_MCP_NO_STDIN = fileURLToPath(new URL('../../../blender/blender-mcp-no-stdin.py', import.meta.url));
+
+/**
+ * How a client starts Blender Lab's MCP server on Windows so that its background tools answer: its own Python — where uv
+ * installed it, `%APPDATA%\uv\tools\blender-mcp` — running `script` (a copy of BLENDER_MCP_NO_STDIN) before the server's
+ * arguments. Started as `blender-mcp.exe`, every `execute_blender_code_for_cli` timed out after 120 s: the Blender it runs
+ * inherits the server's stdin, the client's pipe, and on Windows never ends (the eval's first Blender runs, 2026-11-06).
+ * Undefined where nothing changes: not Windows, another server, one started so already, or no Python of uv's there.
+ */
+export function blenderMcpLaunch(server: { command?: unknown; args?: unknown }, script: string,
+    options: { windows: boolean; appData?: string; exists?: (file: string) => boolean }): { command: string; args: string[] } | undefined {
+    if (!options.windows || !options.appData || typeof server.command !== 'string') return undefined;
+    const args = Array.isArray(server.args) ? server.args.map(String) : [];
+    if (args.some(arg => /blender-mcp-no-stdin\.py$/i.test(arg))) return undefined;
+    if (!/(?:^|[\\/])blender-mcp(?:\.exe)?$/i.test(server.command)) return undefined;
+    const python = path.win32.join(options.appData, 'uv', 'tools', 'blender-mcp', 'Scripts', 'python.exe');
+    return (options.exists ?? fs.existsSync)(python) ? { command: python, args: [script, ...args] } : undefined;
+}
+
 /**
  * Where Blender is, when SKYRIM_BLENDER names none: on PATH, then where its installer and Steam put it — on Windows in
  * `Blender Foundation\Blender <version>` of Program Files or of a drive's root, the newest version first. Undefined

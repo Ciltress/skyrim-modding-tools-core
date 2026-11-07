@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
-    BLENDER_SCRIPT, cellFolderOf, copyEditorId, findBlender, initiallyDisabled, launcher, layoutChanges, newReferenceText, normalRotation,
+    BLENDER_MCP_NO_STDIN, BLENDER_SCRIPT, blenderMcpLaunch, cellFolderOf, copyEditorId, findBlender, initiallyDisabled, launcher, layoutChanges, newReferenceText, normalRotation,
     saveBlendCode,
     recordFileOf, rotationMatrix, sameRotation, texturesOf, triple, type CellSceneFile, type LayoutFile
 } from '../backend/skyrim/cellScene.js';
@@ -110,5 +110,32 @@ describe('a cell in Blender and back', () => {
         const text = launcher('C:\\Mods\\Camp\\blender\\Riverwood', 'export_layout');
         expect(text).toContain('folder = "C:\\\\Mods\\\\Camp\\\\blender\\\\Riverwood"');
         expect(text).toContain('namespace["export_layout"](folder)');
+    });
+});
+
+describe('blenderMcpLaunch', () => {
+    const appData = 'C:\\Users\\me\\AppData\\Roaming';
+    const python = 'C:\\Users\\me\\AppData\\Roaming\\uv\\tools\\blender-mcp\\Scripts\\python.exe';
+    const script = 'C:\\Users\\me\\.openclaw\\blender-mcp-no-stdin.py';
+    const has = (file: string) => file === python;
+
+    it('starts blender-mcp on Windows through its own Python and the script, its arguments after it', () => {
+        expect(blenderMcpLaunch({ command: 'C:\\Users\\me\\.local\\bin\\blender-mcp.exe', args: ['--verbose'] }, script, { windows: true, appData, exists: has }))
+            .toEqual({ command: python, args: [script, '--verbose'] });
+        expect(blenderMcpLaunch({ command: 'blender-mcp' }, script, { windows: true, appData, exists: has }))
+            .toEqual({ command: python, args: [script] });
+    });
+
+    it('changes nothing elsewhere: not Windows, another server, started so already, no Python of uv', () => {
+        expect(blenderMcpLaunch({ command: 'blender-mcp' }, script, { windows: false, appData, exists: has })).toBeUndefined();
+        expect(blenderMcpLaunch({ command: 'npx', args: ['blender-mcp'] }, script, { windows: true, appData, exists: has })).toBeUndefined();
+        expect(blenderMcpLaunch({ command: python, args: [script] }, script, { windows: true, appData, exists: has })).toBeUndefined();
+        expect(blenderMcpLaunch({ command: 'blender-mcp.exe' }, script, { windows: true, appData, exists: () => false })).toBeUndefined();
+    });
+
+    it('ships the script beside the cell bridge', () => {
+        expect(fs.existsSync(BLENDER_MCP_NO_STDIN)).toBe(true);
+        expect(path.dirname(BLENDER_MCP_NO_STDIN)).toBe(path.dirname(BLENDER_SCRIPT));
+        expect(fs.readFileSync(BLENDER_MCP_NO_STDIN, 'utf8')).toContain('subprocess.DEVNULL');
     });
 });
