@@ -247,7 +247,8 @@ internal static class CellContents
                     yield return InsideAnother(name, file, at, holder, held.Position, cellName, pluginDir);
                 else if (spot is { } example && Math.Abs(at.X - example.At.X) < 1 && Math.Abs(at.Y - example.At.Y) < 1)
                     yield return ExampleKept(name, file, at, example.By, cellName);
-                if (heights is not null && OffTheGround(name, file, placement.Position, CellScene.GroundAt(heights, grid, placement.Position.X, placement.Position.Y), pluginDir) is { } off)
+                if (heights is not null && CellScene.GroundAt(heights, grid, at.X, at.Y) is var ground
+                    && OffTheGround(name, file, at, ground, FloorsNear(rows, reference.FormKey, at, ground), pluginDir) is { } off)
                     yield return off;
                 continue;
             }
@@ -277,20 +278,51 @@ internal static class CellContents
     /// <summary>How far below it: an object's origin is its base, and the ground's heights are 128 units apart.</summary>
     private const float BelowGround = 64;
 
+    /// <summary>How far across the ground an object the game places stands from a reference to say what floor it stands on.</summary>
+    private const float FloorReach = 256;
+
+    /// <summary>The kinds of record placed standing on a floor, their origin at their base: what a floor's height is read from.</summary>
+    private static readonly string[] StandingKinds = ["Container", "Furniture", "Door", "Npc", "Flora", "Tree"];
+
+    /// <summary>
+    /// The heights of the floors the game's own objects stand on near a reference outdoors — a smithy's, a walkway's, a cliff's
+    /// top — that the landscape does not hold: of each container, piece of furniture, door, NPC, plant and tree within reach of
+    /// it, at or above the ground there. Markers float where they are placed and are left out. Eval round 134: Riverwood's
+    /// grindstone stands 144 units above the landscape, on the smithy's floor, and a chest built at its height beside it was
+    /// warned of floating, set down onto the landscape by the warning's call, and stood under the smithy.
+    /// </summary>
+    private static List<(float Z, string By)> FloorsNear(List<Row> rows, FormKey self, P3Float at, float ground) =>
+        rows.Where(r => r.Reference.FormKey != self && r.Base is { } entry && Array.IndexOf(StandingKinds, entry.Type) >= 0
+                && entry.EditorId?.Contains("Marker", StringComparison.OrdinalIgnoreCase) != true
+                && r.Placement is { } p && p.Position.Z >= ground - BelowGround
+                && Math.Abs(p.Position.X - at.X) <= FloorReach && Math.Abs(p.Position.Y - at.Y) <= FloorReach
+                && (p.Position.X - at.X) * (p.Position.X - at.X) + (p.Position.Y - at.Y) * (p.Position.Y - at.Y) <= FloorReach * FloorReach)
+            .Select(r => (r.Placement!.Position.Z, NameOf(r.Base!)))
+            .ToList();
+
     /// <summary>
     /// A reference placed outdoors far above the ground at its x and y, or below it — floating, or buried — with the call that sets
     /// it on the ground. Eval round 132's hand-made outdoor mods built a chest 311 units above Riverwood's ground with no word.
+    /// One standing at about the height of an object the game places beside it stands on that object's floor, and is not warned.
     /// </summary>
-    private static string? OffTheGround(string name, string? file, P3Float at, float ground, string pluginDir)
+    private static string? OffTheGround(string name, string? file, P3Float at, float ground, List<(float Z, string By)> floors, string pluginDir)
     {
         var above = at.Z - ground;
         if (above <= AboveGround && above >= -BelowGround) return null;
-        var onIt = Triple(new P3Float(at.X, at.Y, (float)Math.Round(ground)));
-        var how = above > 0 ? $"{Whole(above)} units above the ground there, at z {Whole(ground)}: in game it floats"
+        if (floors.Any(f => at.Z - f.Z <= AboveGround && at.Z - f.Z >= -BelowGround)) return null;
+        // Floating: set down onto the highest floor under it, the ground's or one the game's objects beside it stand on.
+        (float Z, string By)? floor = null;
+        if (above > 0)
+            foreach (var f in floors)
+                if (f.Z > ground && f.Z < at.Z && (floor is null || f.Z > floor.Value.Z)) floor = f;
+        var onIt = Triple(new P3Float(at.X, at.Y, (float)Math.Round(floor?.Z ?? ground)));
+        var how = above > 0
+            ? $"{Whole(above)} units above the ground there, at z {Whole(ground)}" +
+              (floor is { } on ? $", and {Whole(at.Z - on.Z)} above where {on.By} beside it stands, at z {Whole(on.Z)}" : "") + ": in game it floats"
             : $"{Whole(-above)} units below the ground there, at z {Whole(ground)}: in game it is buried";
         return $"{file ?? name}: {name} is placed at {Triple(at)}, {how}. " +
             (file is not null
-                ? "One call sets it on the ground and builds again: " +
+                ? (floor is { } by ? $"One call sets it at {by.By}'s height and builds again: " : "One call sets it on the ground and builds again: ") +
                   ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), file, $"{{\"path\": \"Placement.Position\", \"value\": \"{onIt}\"}}", build: true)
                 : $"Write its Position on the ground — {onIt}") +
             (above > 0 ? "; where it stands on something there — a table, a roof, a bridge — nothing to change, and this warning stays" : "");
