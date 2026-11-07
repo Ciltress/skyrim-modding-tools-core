@@ -76,6 +76,8 @@ public sealed class Session : IDisposable
         "bsaFiles" => BsaFiles.Find(p),
         "archiveFiles" => BsaFiles.List(p),
         "cellScene" => CellSceneOf(p),
+        // A crash log's records a mod changed: the model that mod gives each (readCrashLog).
+        "recordModels" => ModelFiles.Changed(p, release, Contexts),
         "extractFiles" => CellScene.Extract(p, release.ToGameRelease()),
         _ => throw new HelperException("unknownMethod", $"No method '{method}'.")
     };

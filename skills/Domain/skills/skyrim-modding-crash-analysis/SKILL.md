@@ -24,7 +24,9 @@ every change.
      crashed, the call stack how it got there, the relevant objects the records it was handling.
    - The first suspect is the mod the strongest evidence points at. A suspect with a `certain` or
      `likely` diagnosis naming its mod or file is the lead; with only `possible` ones, it is a guess.
-   - `records`: each record's defining plugin and the one that changed it last, with their mods.
+   - `records`: each record's defining plugin and the one that changed it last, with their mods. A log
+     names a record, not its mesh: where a mod draws a record with a mesh of its own, that mesh is among
+     the mod's files in `suspects`, and a mesh crash near the record names it first.
    - `setup`: advice on the setup that holds whatever crashed — Engine Fixes not installed, an old
      Crash Logger. It is never the cause of this crash: tell it last, as advice.
 2. **Check the lead**, with the tool for its kind. Done when the check has answered:

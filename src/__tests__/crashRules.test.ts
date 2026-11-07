@@ -78,6 +78,27 @@ describe('crashes with a known cause', () => {
         expect(places.slice(1).every(place => place === 'stack')).toBe(true);
     });
 
+    it('puts a crash on the mesh a mod draws a record near it with, once readCrashLog has looked the mesh up', () => {
+        // The inn crash of 2026-11-07: RusticTrophies.esp drew the game's WallMountedMudcrab01 with a broken mesh. The log
+        // names the record (R15) and a BSFadeNode, no mesh path; ranked first was a shader and ENB lead, on no ENB.
+        const log = read('crash-2026-11-07-21-22-14.log');
+        const trophy = log.records.find(record => record.formId === '0x000D9285')!;
+        expect(trophy).toMatchObject({ type: 'TESObjectSTAT', definedBy: 'Skyrim.esm', lastChangedBy: 'RusticTrophies.esp' });
+        const unresolved = rankFindings(new CrashView(log), CRASH_RULES).find(found => found.rule === 'mesh-issue');
+        expect(unresolved?.confidence).toBe('possible');
+
+        trophy.model = 'meshes\\Clutter\\RusticTrophies\\MudcrabTrophy.nif';
+        trophy.modelWas = 'meshes\\Clutter\\DeadAnimals\\WallMountedMudcrab01.nif';
+        const [top] = rankFindings(new CrashView(log), CRASH_RULES);
+        expect(top).toMatchObject({ rule: 'mesh-issue', confidence: 'likely', title: 'Crashed on MudcrabTrophy.nif, a mesh RusticTrophies.esp gives a record' });
+        expect(top.evidence[0]).toMatchObject({ place: 'relevantObjects', text: 'R15: (TESObjectSTAT*) [0x000D9285] ("RusticTrophies.esp")' });
+        expect(top.explain).toContain('drawn with meshes\\Clutter\\RusticTrophies\\MudcrabTrophy.nif, the mesh RusticTrophies.esp gives it in place of meshes\\Clutter\\DeadAnimals\\WallMountedMudcrab01.nif');
+        expect(top.fix).toMatch(/^meshes\\Clutter\\RusticTrophies\\MudcrabTrophy\.nif comes with the mod of RusticTrophies\.esp/);
+        expect(top.fix).not.toContain('Bread01A');
+        const model = candidates(log).find(candidate => candidate.kind === 'model' && /MudcrabTrophy/.test(candidate.file));
+        expect(model?.evidence[0]).toMatchObject({ place: 'relevantObjects', index: 0 });
+    });
+
     it('reports advice on the setup apart from the diagnoses: Engine Fixes not installed caused neither crash', async () => {
         // An answer ranked it first, above the logo mesh that crashed the game (eval round 87's crash-mesh #4).
         const none = { plugin: () => undefined, dll: () => undefined, files: async () => new Map() } as unknown as Attributor;

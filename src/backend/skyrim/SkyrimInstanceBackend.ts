@@ -26,6 +26,8 @@ import {
 import { CrashLogNotFoundError, chooseCrashLog } from './crash/crashLogFiles.js';
 import { buildCrashReport, crashLogSection, type CrashLogSection, type CrashReport } from './crash/crashReport.js';
 import { CRASH_RULES } from './crash/rules/index.js';
+import { BASE_MASTERS } from './crash/suspects.js';
+import type { CrashLog } from './crash/crashLog.js';
 import { setIniValue } from './gameIni.js';
 import { findCaseInsensitive } from './paths.js';
 import {
@@ -1209,7 +1211,43 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
         });
         if (request.section) return crashLogSection(chosen, request.section);
 
+        if (chosen.thisSetup) await this.changedModels(chosen.log, instance);
         return buildCrashReport(chosen, CRASH_RULES, this.attributor(instance), mod => nexusRecord(path.join(instance.modsDir, mod))?.modId);
+    }
+
+    /**
+     * The mesh each record of a crash log is drawn with where a mod's plugin changed it to one of its own, set on the record as
+     * `model`: the log names the record and the plugin that changed it last, not the mesh. Read from that plugin's file in this
+     * setup, enabled or not in the load order. The inn crash of 2026-11-07: RusticTrophies.esp gave the game's
+     * WallMountedMudcrab01 a broken mesh, and readCrashLog named the plugin but not the mesh. Left out where the helper fails.
+     */
+    private async changedModels(log: CrashLog, instance: Instance): Promise<void> {
+        const changed = log.records.filter(record => record.lastChangedBy && record.definedBy
+            && record.lastChangedBy.toLowerCase() !== record.definedBy.toLowerCase() && !BASE_MASTERS.has(record.lastChangedBy.toLowerCase()));
+        if (changed.length === 0) return;
+        const files = this.engine.modManager.resolvePluginFiles(instance, this.engine.modManager.readModList(instance));
+        const asked = changed.flatMap(record => {
+            const file = files.get(record.lastChangedBy!.toLowerCase());
+            const id = Number.parseInt(record.formId, 16);
+            if (!file || Number.isNaN(id)) return [];
+            // A light plugin's FormID is FE, its index, then 12 bits of its own; a full plugin's, 24 bits after its index.
+            const own = id >>> 24 === 0xfe ? id & 0xfff : id & 0xffffff;
+            return [{ record, formKey: `${own.toString(16).toUpperCase().padStart(6, '0')}:${record.definedBy}`, path: file }];
+        });
+        if (asked.length === 0) return;
+        try {
+            await this.engine.ensureFresh();
+            const { models } = await this.engine.helper.call<{ models: { formKey: string; model: string; was?: string | null }[] }>(
+                'recordModels', { records: asked.map(({ formKey, path: file }) => ({ formKey, path: file })) }, BUILD_TIMEOUT_MS);
+            for (const found of models) {
+                const { record } = asked.find(item => item.formKey.toLowerCase() === found.formKey.toLowerCase()) ?? {};
+                if (!record) continue;
+                record.model = `meshes\\${found.model}`;
+                if (found.was) record.modelWas = `meshes\\${found.was}`;
+            }
+        } catch {
+            // The log is read without them.
+        }
     }
 
     async movePlugin(request: MovePluginRequest): Promise<MovePluginResult> {

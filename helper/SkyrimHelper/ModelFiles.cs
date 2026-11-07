@@ -1,5 +1,7 @@
 using System.Text.Json.Nodes;
 using Loqui;
+using Mutagen.Bethesda;
+using Mutagen.Bethesda.Plugins;
 using Mutagen.Bethesda.Plugins.Cache;
 using Mutagen.Bethesda.Plugins.Records;
 using Mutagen.Bethesda.Skyrim;
@@ -108,6 +110,39 @@ internal static class ModelFiles
         IModeledGetter modeled => (Path(modeled.Model?.File.GivenPath), "Model.File"),
         _ => (null, "Model.File")
     };
+
+    /// <summary>
+    /// The model a plugin gives each record asked for, where that is another than the record's own plugin gives it: a crash
+    /// log names a record and the plugin that changed it last, not the mesh the record is drawn with. Each record is read from
+    /// its plugin's file, whether or not that plugin is in the load order now; the model it had before, from the load order's
+    /// version of the plugin that defines it. The inn crash of 2026-11-07: RusticTrophies.esp drew the game's
+    /// WallMountedMudcrab01 with a broken mesh of its own, and readCrashLog named the plugin, not the mesh.
+    /// </summary>
+    internal static JsonObject Changed(JsonObject p, SkyrimRelease release,
+        Func<FormKey, List<IModContext<ISkyrimMod, ISkyrimModGetter, IMajorRecord, IMajorRecordGetter>>> contexts)
+    {
+        var models = new JsonArray();
+        foreach (var group in (p["records"] as JsonArray ?? []).OfType<JsonObject>().GroupBy(r => r["path"]?.GetValue<string>()))
+        {
+            if (group.Key is not { } file || !File.Exists(file)) continue;
+            using var mod = SkyrimMod.Create(release).FromPath(new ModPath(ModKey.FromFileName(System.IO.Path.GetFileName(file)), file)).Construct();
+            var lookup = mod.ToImmutableLinkCache();
+            foreach (var item in group)
+            {
+                if (item["formKey"]?.GetValue<string>() is not { } text || !FormKey.TryFactory(text, out var key)
+                    || !lookup.TryResolve(key, out var record) || ModelOf(record).Model is not { } model) continue;
+                string? was = null;
+                try
+                {
+                    if (contexts(key).FirstOrDefault(v => v.ModKey == key.ModKey) is { } origin) was = ModelOf(origin.Record).Model;
+                }
+                catch (Exception) { /* no load order set: the model alone */ }
+                if (string.Equals(model, was, StringComparison.OrdinalIgnoreCase)) continue;
+                models.Add(new JsonObject { ["formKey"] = text, ["model"] = model, ["was"] = was });
+            }
+        }
+        return new JsonObject { ["models"] = models };
+    }
 
     /// <summary>What a record is among its type, where its type tells: a weapon's animation, a sword's or a staff's; an armor's slots.</summary>
     private static string? Kind(IMajorRecordGetter record) => record switch

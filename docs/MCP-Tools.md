@@ -468,7 +468,10 @@ the rest (`logs`). `SKYRIM_CRASH_LOG_DIR` names another folder. The answer: `cra
 model being loaded, the game state), up to 5 `diagnoses` — Phostwood's rules, ported (ADR 0011), most certain
 first, then by where their evidence is — up to 5 `suspects`, each a mod with the files the log names (DLLs, plugins,
 meshes and textures, loose or in an archive — ADR 0012) and the lines that do, and `records`, each with its
-defining plugin and the one that changed it last. Advice on the setup that holds whatever crashed — Engine Fixes not
+defining plugin and the one that changed it last. A log names a record, not the mesh it is drawn with: for this
+setup's log, a record a mod's plugin draws with a mesh of its own is looked up in that plugin's file (since v0.2.65),
+the mesh joins the mod's files in `suspects`, and a mesh crash near the record names it first — the inn crash of
+2026-11-07, RusticTrophies.esp's broken mesh for the game's WallMountedMudcrab01, named only the plugin before. Advice on the setup that holds whatever crashed — Engine Fixes not
 installed, an outdated Crash Logger, .NET Script Framework beside it, an Intel CPU without its microcode update — is
 no diagnosis: it comes in `setup`, up to 3, so it never ranks above the crash's cause. `section` answers one part of
 the log as written; its names are in the description, not an enum, since OpenClaw's argument check turns a null into

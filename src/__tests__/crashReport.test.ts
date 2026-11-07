@@ -305,4 +305,45 @@ describe('readCrashLog', () => {
         expect(before.log.file).toBe(report.log.file);
         expect(before.nextStep).toMatch(/^No crash log is dated '2026-10-01 12:42'; this is the newest before it that day, crash-2026-10-01-09-00-00\.log\. /);
     });
+
+    it('looks up the mesh a mod draws a record of the log with, and puts the crash on it and the mod', async () => {
+        // The inn crash of 2026-11-07: the log names RusticTrophies.esp's change to the game's WallMountedMudcrab01, no mesh.
+        const fixture = makeInstance();
+        const trophies = path.join(fixture.instanceDir, 'mods', 'RusticTrophies');
+        write(path.join(trophies, 'RusticTrophies.esp'));
+        write(path.join(trophies, 'meshes', 'Clutter', 'RusticTrophies', 'MudcrabTrophy.nif'));
+        const profile = path.join(fixture.instanceDir, 'profiles', 'Default');
+        write(path.join(profile, 'modlist.txt'), '+RusticTrophies\r\n+Overrider\r\n+CrashTestMesh\r\n+CrashTestDll\r\n-Sleeping\r\n');
+        write(path.join(profile, 'loadorder.txt'), 'Skyrim.esm\r\nUpdate.esm\r\nCrashTestMesh.esp\r\nRusticTrophies.esp\r\n');
+        write(path.join(profile, 'plugins.txt'), '*CrashTestMesh.esp\r\n*RusticTrophies.esp\r\n');
+        const name = 'crash-2026-11-07-21-22-14.log';
+        write(path.join(fixture.logs, name), fs.readFileSync(path.join(FIXTURES, name), 'utf8')
+            .replace(/G:\\Steam\\steamapps\\common\\Skyrim Special Edition/g, () => asGameSees(fixture.game)));
+        const asked: any[] = [];
+        let running = false;
+        const helper: HelperTransport = {
+            get running() { return running; },
+            async start() { running = true; },
+            stop() { running = false; },
+            async call(method: string, params: any = {}): Promise<any> {
+                if (method === 'hello') return { helper: 'test', protocol: 1 };
+                if (method === 'gameVersion') return { version: '1.7.104.0' };
+                if (method === 'setLoadOrder') return { plugins: params.plugins.length, missing: [] };
+                if (method === 'bsaFiles') return bsaStandIn([])(params);
+                if (method === 'recordModels') {
+                    asked.push(...params.records);
+                    return { models: [{ formKey: '0D9285:Skyrim.esm', model: 'Clutter\\RusticTrophies\\MudcrabTrophy.nif', was: 'Clutter\\DeadAnimals\\WallMountedMudcrab01.nif' }] };
+                }
+                throw new Error(`unexpected ${method}`);
+            }
+        };
+        const engine = new SkyrimEngine(fixture.manager, helper, path.join(fixture.root, 'projects'), { platform, crashLogDir: fixture.logs });
+        const report = await new SkyrimInstanceBackend({ engine }).readCrashLog({});
+        if (!('crash' in report)) throw new Error('a section came back');
+
+        expect(asked).toEqual([{ formKey: '0D9285:Skyrim.esm', path: path.join(trophies, 'RusticTrophies.esp') }]);
+        expect(report.diagnoses[0]).toMatchObject({ rule: 'mesh-issue', confidence: 'likely', title: 'Crashed on MudcrabTrophy.nif, a mesh RusticTrophies.esp gives a record' });
+        expect(report.suspects[0]).toMatchObject({ mod: 'RusticTrophies' });
+        expect(report.suspects[0].files).toEqual(expect.arrayContaining(['RusticTrophies.esp (plugin)', expect.stringMatching(/^meshes\\Clutter\\RusticTrophies\\MudcrabTrophy\.nif/)]));
+    });
 });

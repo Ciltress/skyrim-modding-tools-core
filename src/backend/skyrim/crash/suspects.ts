@@ -19,7 +19,7 @@ export interface Candidate {
 }
 
 /** The game's own masters: in every log, never the suspect (Phostwood's neverDisplay). */
-const BASE_MASTERS = new Set(['skyrim.esm', 'update.esm', 'dawnguard.esm', 'hearthfires.esm', 'dragonborn.esm']);
+export const BASE_MASTERS = new Set(['skyrim.esm', 'update.esm', 'dawnguard.esm', 'hearthfires.esm', 'dragonborn.esm']);
 
 /** The game, Crash Logger and SKSE themselves: in every log of a game with mods. */
 const NOT_SUSPECTS = new Set(['skyrimse.exe', 'skyrimvr.exe', 'crashlogger.dll']);
@@ -61,6 +61,8 @@ export function candidates(log: CrashLog): Candidate[] {
             for (const plugin of [record.lastChangedBy, record.definedBy]) {
                 if (plugin && !BASE_MASTERS.has(plugin.toLowerCase())) add(plugin, 'plugin', 'relevantObjects', index, line.trim());
             }
+            // The mesh the plugin that changed it gives it: the log names the record, readCrashLog looked its model up.
+            if (record.model) add(record.model, 'model', 'relevantObjects', index, line.trim());
         }
     });
 

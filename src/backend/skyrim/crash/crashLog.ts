@@ -60,6 +60,12 @@ export interface NamedRecord {
     lastChangedBy?: string;
     /** The plugin its FormID's load-order index stands for, by the log's own PLUGINS list. */
     definedBy?: string;
+    /**
+     * The mesh `lastChangedBy` draws it with, `meshes\…`, where that plugin gave it another than `definedBy` does — looked
+     * up in this setup by readCrashLog, since a log names the record, not its mesh; `modelWas` the one it had before.
+     */
+    model?: string;
+    modelWas?: string;
 }
 
 export interface LoadOrderEntry {

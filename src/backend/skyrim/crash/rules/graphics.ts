@@ -1,4 +1,5 @@
 import { placeRank, type CrashRule, type CrashView, type Evidence, type Finding, type Line, type View } from '../crashRules.js';
+import type { NamedRecord } from '../crashLog.js';
 import type { GameAddress, GameAddressCode } from '../gameAddresses.js';
 
 /**
@@ -184,6 +185,20 @@ const PHYSICS_NAMES = ['HDT-SMP', 'hdtSMP', 'CBPC', 'Physics'];
 function modelInProgress(view: CrashView): { path: string; evidence: Evidence[] } | undefined {
     const model = view.log.models.find(entry => entry.inProgress);
     return model ? { path: model.path, evidence: view.find('modelRequests', /\(in progress\)\s*$/i) } : undefined;
+}
+
+/**
+ * A record among the relevant objects that a mod's plugin draws with a mesh of its own, and the record's line: the log names the
+ * record, not its mesh, which readCrashLog looks up in the setup (`model`). The inn crash of 2026-11-07 named
+ * RusticTrophies.esp's WallMountedMudcrab01 beside a BSFadeNode and no mesh path: the mod's mesh of it was broken.
+ */
+function changedModel(view: CrashView): { path: string; was?: string; record: NamedRecord; evidence: Evidence[] } | undefined {
+    const objects = view.log.sections.relevantObjects ?? [];
+    for (const [index, line] of objects.entries()) {
+        const record = view.log.records.find(candidate => candidate.model && line.includes(`[${candidate.formId}]`));
+        if (record?.model) return { path: record.model, was: record.modelWas, record, evidence: [{ place: 'relevantObjects', index, text: line.trim() }] };
+    }
+    return undefined;
 }
 
 export const graphicsRules: CrashRule[] = [
@@ -411,42 +426,56 @@ export const graphicsRules: CrashRule[] = [
             const onStack = loading ? undefined : view.find('modelPaths', /\.nif\b/i)[0];
             const found = indicators(view, ['topHalf', 'modelPaths'], MESH_CODES);
             if (!hex && !loading && !onStack && found.length === 0) return undefined;
+            // Not Phostwood's: a record near the crash that a mod draws with a mesh of its own, the log naming the record and
+            // not the mesh — readCrashLog looked it up. Meshes near the crash then point at that one first.
+            const changed = changedModel(view);
 
             const files = distinctFiles([
                 ...(loading ? [loading.path] : []),
+                ...(changed ? [changed.path] : []),
                 ...view.log.models.filter(model => model.section === 'modelPaths').map(model => model.path),
                 ...mentionedFiles(view, 'topHalf', 'nif(?:\\.dm)?|tri|bto|bsa')
             ]);
             const skeleton = found.some(item => item.code === 'ninode');
             const stackModel = onStack?.text.replace(/^\[RSP\+0x[0-9A-F]+\]\s+/i, '');
+            const changer = changed?.record.lastChangedBy;
             const title = loading ? `Crashed while loading the model ${fileName(loading.path)}`
                 : stackModel ? `Crashed while handling the model ${fileName(stackModel)}`
+                : changed ? `Crashed on ${fileName(changed.path)}, a mesh ${changer} gives a record`
                 : hex ? `Mesh crash: ${hex.short}` : 'Possible mesh problem near the crash';
             const explain = [
                 ...(hex ? [`Where the game crashed points to ${hex.long}.`] : []),
                 ...(loading ? [`The game crashed in the middle of loading ${loading.path}.`] : []),
                 ...(stackModel ? [`The crashing thread was working on ${stackModel}.`] : []),
+                ...(changed ? [`The ${changed.record.type.replace(/^TESObject|^TES|^BGS/, '')} record [${changed.record.formId}] near the ` +
+                    `crash is drawn with ${changed.path}, the mesh ${changer} gives it` +
+                    `${changed.was ? ` in place of ${changed.was}` : ''}.`] : []),
                 ...(found.length > 0 ? [`Mesh names are near the crash: ${list(found.map(item => item.code))}.`] : [])
             ].join(' ');
             const skeletonFile = files.slice(0, 3).some(file => /skeleton/i.test(fileName(file)));
             const fix = [
-                `Find which mod has ${files.length > 0 ? list(files, 3) : 'the meshes named in the log'}` +
-                `${skeletonFile ? ' (a skeleton mesh is a less likely cause)' : ''}, download it again and reinstall it, ` +
-                'and check it for updates and patches; the same mesh in later crash logs makes it the cause.',
+                changed
+                    ? `${changed.path} comes with the mod of ${changer}: download it again and reinstall it, and check it for ` +
+                      'updates and patches. With that mod disabled the game draws the record with its own mesh: if the crash ' +
+                      'then stops at the same place, the mod\'s mesh is the cause.'
+                    : `Find which mod has ${files.length > 0 ? list(files, 3) : 'the meshes named in the log'}` +
+                      `${skeletonFile ? ' (a skeleton mesh is a less likely cause)' : ''}, download it again and reinstall it, ` +
+                      'and check it for updates and patches; the same mesh in later crash logs makes it the cause.',
                 'If that does not help, repair the mesh with Cathedral Assets Optimizer (Nexus 23316) or SSE NIF Optimizer ' +
                 '(Nexus 4089).',
                 ...(hex?.code === '132BEF' ? ['For a head mesh, reinstall or update the mod of the NPCs named near the crash, ' +
                     'or regenerate their FaceGen in the Creation Kit.'] : []),
                 ...(skeleton ? ['NiNode points to the skeleton: make sure one skeleton mod is installed and not overwritten.'] : [])
             ].join(' ');
-            const confidence: Finding['confidence'] = hex || onStack || (loading && /\.nif$/i.test(loading.path)) ? 'likely' : 'possible';
+            const confidence: Finding['confidence'] = hex || onStack || (loading && /\.nif$/i.test(loading.path))
+                || (changed && found.length > 0) ? 'likely' : 'possible';
             return {
                 title: cut(title),
                 confidence,
                 explain,
                 fix,
-                evidence: strongest([...(hex?.evidence ?? []), ...(loading?.evidence ?? []), ...(onStack ? [onStack] : [])],
-                    found.flatMap(item => item.evidence))
+                evidence: strongest([...(hex?.evidence ?? []), ...(loading?.evidence ?? []), ...(onStack ? [onStack] : []),
+                    ...(changed?.evidence ?? [])], found.flatMap(item => item.evidence))
             };
         }
     },
