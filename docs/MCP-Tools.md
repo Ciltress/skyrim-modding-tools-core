@@ -464,7 +464,7 @@ it. `missingMasters` lists plugins the game cannot load until another mod is ins
 
 Crash Logger SSE writes `crash-<time>.log` into My Games' SKSE folder, which every setup of the game on the
 computer shares; `readCrashLog` reads the newest whose PROCESS INFO names this instance's game folder, and counts
-the rest (`logs`). `SKYRIM_CRASH_LOG_DIR` names another folder. The answer: `crash` (the exception, where, the
+the rest (`logs`). `SKYRIM_CRASH_LOG_DIR` names another folder (`SKYRIM_PAPYRUS_LOG_DIR` the Papyrus logs'). The answer: `crash` (the exception, where, the
 model being loaded, the game state), up to 5 `diagnoses` — Phostwood's rules, ported (ADR 0011), most certain
 first, then by where their evidence is — up to 5 `suspects`, each a mod with the files the log names (DLLs, plugins,
 meshes and textures, loose or in an archive — ADR 0012) and the lines that do, and `records`, each with its

@@ -19,7 +19,7 @@ export interface EngineOptions {
     papyrusCompilerCandidates?: readonly string[];
     /** SKYRIM_CRASH_LOG_DIR: where Crash Logger's logs are read from instead of My Games' SKSE folder. */
     crashLogDir?: string;
-    /** Where the Papyrus logs are read from instead of My Games' Logs\Script folder: for tests. */
+    /** SKYRIM_PAPYRUS_LOG_DIR: where the Papyrus logs are read from instead of My Games' Logs\Script folder. */
     papyrusLogDir?: string;
     /** SKYRIM_BLENDER: the Blender exportCell saves a cell's .blend with; undefined means one found where installers put it. */
     blender?: string;
