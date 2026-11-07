@@ -216,6 +216,60 @@ public static class RecordFiles
         }
     }
 
+    /// <summary>A dialogue topic's own file: RecordData.yaml in its folder below DialogTopics/, as Spriggit writes a topic.</summary>
+    internal static bool IsTopicFile(string[] parts) => parts is ["DialogTopics", _, "RecordData.yaml"];
+
+    /// <summary>One of a topic's responses, a line someone says: a file in the topic's folder's Responses/.</summary>
+    internal static bool IsResponseFile(string[] parts) => parts is ["DialogTopics", _, "Responses", _];
+
+    /// <summary>
+    /// The records a project keeps in a dialogue topic's folder: the topic's own RecordData.yaml and each response in its
+    /// Responses/ — read apart from the groups' records (FlatRecords), as a cell's are (CellRecords). A hand-made topic went
+    /// unread by every check (2026-11-07): its branch's StartingTopic, written as the topic's editor ID, was refused as naming
+    /// no record, and the topic's own `Branch:` by the reader as a malformed FormKey, naming only RecordData.yaml.
+    /// </summary>
+    public static IEnumerable<(string File, string Relative, Type Type)> DialogRecords(string pluginDir)
+    {
+        var folder = Path.Combine(pluginDir, "DialogTopics");
+        if (!Directory.Exists(folder)) yield break;
+        foreach (var file in Directory.EnumerateFiles(folder, "*.yaml", SearchOption.AllDirectories).Order(StringComparer.Ordinal))
+        {
+            var relative = Path.GetRelativePath(pluginDir, file).Replace('\\', '/');
+            var parts = relative.Split('/');
+            if (IsTopicFile(parts)) yield return (file, relative, typeof(DialogTopic));
+            else if (IsResponseFile(parts)) yield return (file, relative, typeof(DialogResponses));
+        }
+    }
+
+    /// <summary>
+    /// The project's records outside the groups' folders, each with its type: a cell's and what is placed in it of a kind the
+    /// reader knows (CellRecords), and a dialogue topic's and its responses (DialogRecords).
+    /// </summary>
+    public static IEnumerable<(string File, string Relative, Type Type)> NestedRecords(string pluginDir) =>
+        CellRecords(pluginDir).Where(c => c.Type is not null).Select(c => (c.File, c.Relative, Type: c.Type!)).Concat(DialogRecords(pluginDir));
+
+    /// <summary>
+    /// A file in DialogTopics/ the reader takes for nothing: a topic is a folder — its own RecordData.yaml, its responses in its
+    /// Responses/ — and a file anywhere else in it is no record. Null for a file where a topic's or a response's goes.
+    /// </summary>
+    private static string? DialogProblem(string relative, string text, string[] parts, string pluginDir)
+    {
+        if (IsTopicFile(parts) || IsResponseFile(parts)) return null;
+        var name = Path.GetFileNameWithoutExtension(parts[^1]);
+        // A response written where its topic's own file goes, or a topic's where a response's: by the fields each has.
+        var response = Regex.IsMatch(text, @"^Responses:", RegexOptions.Multiline) && !Regex.IsMatch(text, @"^(Branch|Category|Subtype):", RegexOptions.Multiline);
+        var layout = "a topic is a folder in DialogTopics/ — its own file DialogTopics/<topic>/RecordData.yaml, and what is said in it one file " +
+            "per response in DialogTopics/<topic>/Responses/";
+        if (parts.Length == 2)
+            return response
+                ? $"{relative} is a response, and {layout}: move it into its topic's Responses/ folder"
+                : $"{relative} is read as nothing: {layout} — " + ToolCalls.Move(pluginDir, relative, $"DialogTopics/{name}/RecordData.yaml");
+        var topic = parts[1];
+        return response
+            ? $"{relative} is read as nothing: {layout} — " + ToolCalls.Move(pluginDir, relative, $"DialogTopics/{topic}/Responses/{parts[^1]}")
+            : $"{relative} is read as nothing: {layout} — " + ToolCalls.Move(pluginDir, relative, $"DialogTopics/{topic}/RecordData.yaml");
+    }
+
     /// <summary>
     /// What the reader skips in an interior cell's files without a word: fields a cell or a placed reference has not, and a
     /// reference's file that names no placed kind. Eval round 125's world #4 wrote a chest into Breezehome's file as `Items`,
@@ -1139,6 +1193,16 @@ public static class RecordFiles
                 problems.Add($"{relative} is in no group folder: move it into its type's, as {ToolCalls.Move(pluginDir, relative, $"Weapons/{relative}")} does for a weapon");
                 continue;
             }
+            // A topic's responses in a folder of their own: they are no group, but the folder of the topic they are said in holds them.
+            if (Regex.IsMatch(parts[0], @"^(Dialog|Dialogue)?Responses?$|^(Dialog|Dialogue)?Infos?$", RegexOptions.IgnoreCase))
+            {
+                var topics = Directory.Exists(Path.Combine(pluginDir, "DialogTopics"))
+                    ? Directory.GetDirectories(Path.Combine(pluginDir, "DialogTopics")).Select(Path.GetFileName).OfType<string>().ToList() : [];
+                problems.Add($"{relative}: a response is no record of a group's folder — it is said in a topic, and goes in that topic's folder, " +
+                    "DialogTopics/<topic>/Responses/, beside the topic's own DialogTopics/<topic>/RecordData.yaml" +
+                    (topics is [var only] ? $": {ToolCalls.Move(pluginDir, relative, $"DialogTopics/{only}/Responses/{parts[^1]}")}" : ""));
+                continue;
+            }
             if (!Groups.TryGetValue(parts[0], out var type))
             {
                 var editorId = parts.Length == 2 ? Identity(File.ReadAllText(file)).EditorId : null;
@@ -1193,7 +1257,18 @@ public static class RecordFiles
                     (formKeys.TryGetValue(formKey, out var holders) ? holders : formKeys[formKey] = []).Add(relative);
             }
             if (CellDepth(parts) > 0 && CellProblem(relative, text, parts, pluginDir) is { } cellProblem) problems.Add(cellProblem);
-            if (type is null || parts.Length != 2) continue;
+            // A dialogue topic's own file and its responses are checked as the groups' records are; any other file in DialogTopics/
+            // is read as nothing.
+            if (parts[0] == "DialogTopics")
+            {
+                if (DialogProblem(relative, text, parts, pluginDir) is { } dialogProblem)
+                {
+                    problems.Add(dialogProblem);
+                    continue;
+                }
+                type = IsResponseFile(parts) ? typeof(DialogResponses) : typeof(DialogTopic);
+            }
+            else if (type is null || parts.Length != 2) continue;
             if (Identity(text) is { EditorId: { } recordId } identity)
                 (editorIds.TryGetValue(recordId, out var sharing) ? sharing : editorIds[recordId] = []).Add((relative, identity.FormKey, type));
             // The reader takes a record's first line for its FormKey — after the kind, where a group has
@@ -2012,6 +2087,18 @@ public static class RecordFiles
             if (Identity(text) is not { FormKey: null, EditorId: { } editorId } || !index.ByEditorId.TryGetValue(editorId, out var key)
                 || key.ModKey == own || !index.ByFormKey.TryGetValue(key, out var entry) || EditorIdLine.Match(text) is not { Success: true } line)
                 continue;
+            // A game setting or a global of the game's name is the game's changed: the game reads a setting by its name alone, and a
+            // renamed copy is one it never reads — `fJumpHeightMin` written anew was built as fJumpHeightMinHigherJump, and the jump
+            // stayed as it was (2026-11-07). Its FormKey written in, the file is the game's record's override, as addPatch copies it.
+            if (entry.Type.StartsWith("GameSetting", StringComparison.Ordinal) || entry.Type.StartsWith("Global", StringComparison.Ordinal))
+            {
+                var at = Regex.Match(text, @"\A(?:MutagenObjectType:[^\n]*\n)?").Length;
+                File.WriteAllText(file, $"{text[..at]}FormKey: {Session.FormKeyText(key)}\n{text[at..]}");
+                changes.Add((relative, $"wrote `FormKey: {Session.FormKeyText(key)}` — {editorId} is {key.ModKey.FileName}'s " +
+                    $"{(entry.Type.StartsWith("Global", StringComparison.Ordinal) ? "global" : "game setting")}, and this file changes it: " +
+                    "the game knows its own by the name and reads no second one, so the file is that one's override, as addPatch copies it"));
+                continue;
+            }
             // From the in-game name, or the old name and the plugin's.
             var name = EditorIdFromName(ProjectNotes.NameIn(text), Free)
                 ?? Numbered(editorId + (own is { } plugin ? Regex.Replace(plugin.Name, "[^A-Za-z0-9]", "") : "New"), Free);

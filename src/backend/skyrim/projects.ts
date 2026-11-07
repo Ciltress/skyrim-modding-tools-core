@@ -648,9 +648,10 @@ export function assignFormIds(pluginDir: string, plugin: string, light: boolean,
         if (/^FormKey:/m.test(text)) {
             const own = ownKey.exec(text);
             if (own) used.push(parseInt(own[1], 16));
-        } else if (!/^(Group)?RecordData\.yaml$/.test(path.basename(file))) {
+        } else if (!/^(Group)?RecordData\.yaml$/.test(path.basename(file)) || isTopicFile(pluginDir, file)) {
             // The files Spriggit heads a block of cells or a cell's folder with are no new records:
             // numbered and renamed, they broke the next build of every project with a cell in it.
+            // A dialogue topic's own file is one: a new topic is written as its folder's RecordData.yaml.
             fresh.push({ file, text });
         }
     }
@@ -690,6 +691,12 @@ export function keepRecordTexts(pluginDir: string): () => void {
             if (fs.existsSync(file) && fs.readFileSync(file, 'utf8') !== text) fs.writeFileSync(file, text);
         }
     };
+}
+
+/** A dialogue topic's own file: RecordData.yaml in a topic's folder, DialogTopics/<topic>/, where Spriggit writes a topic. */
+function isTopicFile(pluginDir: string, file: string): boolean {
+    const parts = relativeTo(pluginDir, file).split('/');
+    return parts.length === 3 && parts[0] === 'DialogTopics' && parts[2] === 'RecordData.yaml';
 }
 
 // A comment after either line is no part of it: `FormKey: 000123:Skyrim.esm # Placeholder` went unread (eval round 14).

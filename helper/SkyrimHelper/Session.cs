@@ -40,7 +40,7 @@ public sealed class Session : IDisposable
         // Overlays are read by one thread at a time: whatever reads plugins waits for the background index.
         // Downloaded files and plugin headers are read from files of their own, and need not wait; record
         // files do, since a FormKey of another plugin's is checked against the record it names.
-        if (method is not ("hello" or "gameVersion" or "setLoadOrder" or "readArchive" or "extractArchive" or "pluginHeaders" or "bsaFiles" or "extractFiles")
+        if (method is not ("hello" or "gameVersion" or "setLoadOrder" or "readArchive" or "extractArchive" or "pluginHeaders" or "bsaFiles" or "archiveFiles" or "extractFiles")
             && indexing is { } running)
         {
             try { await running; } catch { /* surfaced by the call that needs the index */ }
@@ -62,6 +62,7 @@ public sealed class Session : IDisposable
         "extractArchive" => Archives.Extract(p),
         "pluginHeaders" => PluginHeaders(p),
         "checkRecords" => await CheckRecords(Required(p, "projectPluginDir")),
+        "findConflicts" => await FindConflicts(p),
         // With the load order's records where one is set: a path below a link is refused naming the record linked there.
         "editRecord" => RecordEdits.Edit(Required(p, "projectPluginDir"), Required(p, "record"), p["set"] as JsonObject, p["remove"] as JsonArray,
             indexing is null ? null : Index),
@@ -73,6 +74,7 @@ public sealed class Session : IDisposable
             p["remove"] as JsonArray, p["among"] as JsonArray, indexing is null ? null : Index),
         "sksePlugins" => SksePlugins.Read(p),
         "bsaFiles" => BsaFiles.Find(p),
+        "archiveFiles" => BsaFiles.List(p),
         "cellScene" => CellSceneOf(p),
         "extractFiles" => CellScene.Extract(p, release.ToGameRelease()),
         _ => throw new HelperException("unknownMethod", $"No method '{method}'.")
@@ -87,6 +89,8 @@ public sealed class Session : IDisposable
     {
         var exe = Required(p, "exePath");
         if (!File.Exists(exe)) throw new HelperException("notFound", $"No game executable at '{exe}'.");
+        // Kept for the build: the settings the engine knows are named in it (GameSettings.EngineKnows).
+        GameSettings.GameExe = exe;
         return new JsonObject { ["version"] = PeVersion.Read(exe) };
     }
 
@@ -352,6 +356,8 @@ public sealed class Session : IDisposable
         var cellFile = versions.OfType<JsonObject>().SelectMany(v => v["files"]!.AsArray().OfType<JsonObject>())
             .Select(f => f["path"]!.GetValue<string>()).FirstOrDefault(f => RecordFiles.IsCellFile(f.Split('/')));
         if (CellContents.Of(contexts, Index, cellFile, Contexts) is { } placed) answer["placed"] = placed;
+        // A dialogue topic with what is said in it: its responses are records of their own.
+        else if (DialogContents.Of(contexts, Index, Contexts) is { } said) answer["responses"] = said;
         // A thing that can be placed: where the load order places it (PlacedIndex).
         else if (winner is IPlaceableObjectGetter or INpcGetter)
         {
@@ -429,6 +435,126 @@ public sealed class Session : IDisposable
     private static string? PluginNamed(string? given) =>
         given is not null && FormKey.TryFactory(given.Trim(), out var formKey) ? formKey.ModKey.FileName.String : given;
 
+    // ---------------------------------------------------------------- conflicts
+
+    /// <summary>The most records findConflicts compares in one call: each plugin's versions are rendered once, together.</summary>
+    private const int MaxConflictRecords = 4000;
+
+    /// <summary>Each plugin's masters, as its header names them.</summary>
+    private Dictionary<ModKey, HashSet<ModKey>> MastersOfPlugins() => plugins.ToDictionary(x => x.Key,
+        x => ((ISkyrimModGetter)x.Mod).ModHeader.MasterReferences.Select(m => m.Master).ToHashSet());
+
+    /// <summary>
+    /// A record's versions that lose changes, each with the version it was made from — the last earlier one of its masters'
+    /// — and the winner: the overrides before the winner whose plugin the winner's does not name as a master. A patch that
+    /// masters both is the conflict resolved, and none of its masters' lose anything to it.
+    /// </summary>
+    private static List<(ModKey Loser, ModKey Made)> Losers(RecordIndex.Entry entry, IReadOnlyDictionary<ModKey, HashSet<ModKey>> masters, ModKey? except = null)
+    {
+        var order = entry.Plugins.Where(k => k != except).ToList();
+        if (order.Count < 3) return [];
+        var winner = order[^1];
+        var winnerMasters = masters.GetValueOrDefault(winner) ?? [];
+        var losers = new List<(ModKey, ModKey)>();
+        for (var i = 1; i < order.Count - 1; i++)
+        {
+            if (winnerMasters.Contains(order[i])) continue;
+            var own = masters.GetValueOrDefault(order[i]) ?? [];
+            var made = Enumerable.Range(0, i).Reverse().Select(j => order[j]).FirstOrDefault(k => own.Contains(k), order[0]);
+            losers.Add((order[i], made));
+        }
+        return losers;
+    }
+
+    /// <summary>Each plugin's version of these records as project text, by plugin and FormKey: one render a plugin.</summary>
+    private async Task<Dictionary<(ModKey Plugin, FormKey Record), string>> VersionTexts(IEnumerable<(ModKey Plugin, FormKey Record)> wanted)
+    {
+        var texts = new Dictionary<(ModKey, FormKey), string>();
+        foreach (var group in wanted.Distinct().GroupBy(w => w.Plugin))
+        {
+            var records = group.Select(w => w.Record).ToHashSet();
+            var contexts = records.Select(r => Contexts(r).FirstOrDefault(c => c.ModKey == group.Key))
+                .OfType<IModContext<ISkyrimMod, ISkyrimModGetter, IMajorRecord, IMajorRecordGetter>>().ToList();
+            if (contexts.Count == 0) continue;
+            foreach (var (_, text) in await Render(contexts, group.Key))
+                if (Regex.Match(text, @"^FormKey:[ \t]*(\S+)", RegexOptions.Multiline) is { Success: true } line
+                    && FormKey.TryFactory(line.Groups[1].Value, out var key) && records.Contains(key))
+                    texts[(group.Key, key)] = text;
+        }
+        return texts;
+    }
+
+    /// <summary>FormIDs in a change's text said with the editor ID of the record each names.</summary>
+    private string WithEditorIds(string text) => Regex.Replace(text, @"[0-9A-Fa-f]{6}:[^\s,\]\}]+?\.es[mpl]", m =>
+        FormKey.TryFactory(m.Value, out var key) && Index.ByFormKey.TryGetValue(key, out var entry) && entry.EditorId is { } id ? id : m.Value,
+        RegexOptions.IgnoreCase);
+
+    /// <summary>
+    /// The load order's record conflicts: the records whose winning version lost another plugin's changes — of one plugin's
+    /// records, of one record, or of the whole load order — each with those changes, plugin by plugin (Conflicts).
+    /// </summary>
+    private async Task<JsonNode> FindConflicts(JsonObject p)
+    {
+        var plugin = PluginNamed(p["plugin"]?.GetValue<string>());
+        var limit = Math.Clamp(p["limit"]?.GetValue<int>() ?? 25, 1, 200);
+        var masters = MastersOfPlugins();
+        if (plugin is not null && !plugins.Any(x => x.Key.FileName.String.Equals(plugin, StringComparison.OrdinalIgnoreCase)))
+            throw new HelperException("notFound", $"{plugin} is no plugin of the load order: listMods names the plugins there are.");
+        List<RecordIndex.Entry> entries = p["record"]?.GetValue<string>() is { } record
+            ? [Index.ByFormKey[Resolve(record, byName: true)]]
+            // The navmesh info map every plugin with a navmesh changes, which no patch merges: the game builds it anew from the
+            // navmeshes, as xEdit's users leave it.
+            : Index.ByFormKey.Values.Where(e => e.Plugins.Count >= 3 && e.Type != "NavigationMeshInfoMap").ToList();
+        if (plugin is not null)
+            entries = entries.Where(e => e.Plugins.Any(k => k.FileName.String.Equals(plugin, StringComparison.OrdinalIgnoreCase))).ToList();
+        var candidates = entries.Select(e => (Entry: e, Losers: Losers(e, masters))).Where(c => c.Losers.Count > 0).ToList();
+        var compared = candidates.Count;
+        candidates = candidates.Take(MaxConflictRecords).ToList();
+
+        var texts = await VersionTexts(candidates.SelectMany(c => c.Losers.SelectMany(l => new[] { (l.Loser, c.Entry.FormKey), (l.Made, c.Entry.FormKey) })
+            .Append((c.Entry.Plugins[^1], c.Entry.FormKey))));
+        var rows = new JsonArray();
+        var total = 0;
+        foreach (var (entry, losers) in candidates)
+        {
+            if (!texts.TryGetValue((entry.Plugins[^1], entry.FormKey), out var winnerText)) continue;
+            var winner = Conflicts.Flatten(winnerText);
+            var lostRows = new JsonArray();
+            var clash = false;
+            foreach (var (loser, made) in losers)
+            {
+                if (!texts.TryGetValue((loser, entry.FormKey), out var mineText) || !texts.TryGetValue((made, entry.FormKey), out var madeText)) continue;
+                var lost = Conflicts.Lost(Conflicts.Flatten(madeText), Conflicts.Flatten(mineText), winner);
+                if (lost.Count == 0) continue;
+                clash |= lost.Any(c => c.Clash);
+                var lostRow = new JsonObject
+                {
+                    ["plugin"] = loser.FileName.String,
+                    ["changes"] = new JsonArray(lost.Take(8).Select(c => (JsonNode)Conflicts.Said(c, WithEditorIds)).ToArray())
+                };
+                if (lost.Count > 8) lostRow["more"] = lost.Count - 8;
+                lostRows.Add(lostRow);
+            }
+            if (lostRows.Count == 0) continue;
+            total++;
+            if (rows.Count >= limit) continue;
+            var row = new JsonObject
+            {
+                ["formId"] = FormKeyText(entry.FormKey),
+                ["editorId"] = entry.EditorId,
+                ["type"] = entry.Type,
+                ["winner"] = entry.Plugins[^1].FileName.String,
+                ["lost"] = lostRows
+            };
+            if (entry.EditorId is null) row.Remove("editorId");
+            if (clash) row["clash"] = true;
+            rows.Add(row);
+        }
+        var answer = new JsonObject { ["total"] = total, ["records"] = rows };
+        if (compared > MaxConflictRecords) answer["compared"] = $"the first {MaxConflictRecords} of {compared} records two plugins change: name a plugin to see its own";
+        return answer;
+    }
+
     // ---------------------------------------------------------------- patching
 
     private async Task<JsonNode> AddOverrides(JsonObject p)
@@ -441,6 +567,8 @@ public sealed class Session : IDisposable
 
         var added = new JsonArray();
         var already = new JsonArray();
+        // Each copy with the changes other plugins made that its winning version lost put back (MergeLost): a conflict patch.
+        var merge = p["merge"]?.GetValue<bool>() ?? false;
         // A record named twice — the model's ["012EB7:Skyrim.esm", "IronSword"] — is copied once, not reported in the project as well.
         foreach (var formKey in requested.Select(raw => Resolve(raw)).Distinct())
         {
@@ -471,16 +599,61 @@ public sealed class Session : IDisposable
                 await File.WriteAllTextAsync(target, Annotated(text));
                 files.Add(path);
             }
-            added.Add(new JsonObject
+            var row = new JsonObject
             {
                 ["formId"] = FormKeyText(formKey),
                 ["editorId"] = source.Record.EditorID,
                 ["type"] = RecordIndex.TypeName(source.Record),
                 ["from"] = source.ModKey.FileName.String,
                 ["files"] = files
-            });
+            };
+            if (merge && from is null && await MergeLost(formKey, source.ModKey, pluginName, projectDir, files) is { } merged) row["merged"] = merged;
+            added.Add(row);
         }
         return new JsonObject { ["added"] = added, ["alreadyInProject"] = already };
+    }
+
+    /// <summary>
+    /// A copy addPatch just wrote, given back the changes the other plugins made that its winning version lost — each plugin's
+    /// changed values, and the items it put into a list or took out of one, as findConflicts names them (Conflicts.Lost) —
+    /// written in by editRecord's own edits. A field two plugins changed each its own way keeps the later one's, and is named.
+    /// Null where nothing was lost: the copy is the winner's as it is.
+    /// </summary>
+    private async Task<JsonObject?> MergeLost(FormKey formKey, ModKey winner, ModKey project, string projectDir, JsonArray files)
+    {
+        if (!Index.ByFormKey.TryGetValue(formKey, out var entry)) return null;
+        var losers = Losers(entry, MastersOfPlugins(), except: project);
+        if (losers.Count == 0) return null;
+        var texts = await VersionTexts(losers.SelectMany(l => new[] { (l.Loser, formKey), (l.Made, formKey) }).Append((winner, formKey)));
+        if (!texts.TryGetValue((winner, formKey), out var winnerText)) return null;
+        var winnerShape = Conflicts.Flatten(winnerText);
+        var lost = losers.Where(l => texts.ContainsKey((l.Loser, formKey)) && texts.ContainsKey((l.Made, formKey)))
+            .Select(l => (Plugin: l.Loser.FileName.String, Made: Conflicts.Flatten(texts[(l.Made, formKey)]), Mine: Conflicts.Flatten(texts[(l.Loser, formKey)])))
+            .Select(l => (l.Plugin, l.Made, l.Mine, Lost: Conflicts.Lost(l.Made, l.Mine, winnerShape)))
+            .Where(l => l.Lost.Count > 0).ToList();
+        if (lost.Count == 0) return null;
+        var (set, clashes) = Conflicts.Merge(winnerShape, lost, WithEditorIds);
+        // The record's own file among those written: a cell's copy brings its worldspace's frame beside it.
+        var own = files.Select(f => f!.GetValue<string>()).FirstOrDefault(f =>
+            Regex.Match(File.ReadAllText(Path.Combine(projectDir, f)), @"^FormKey:[ \t]*(\S+)", RegexOptions.Multiline) is { Success: true } line
+            && FormKey.TryFactory(line.Groups[1].Value, out var key) && key == formKey);
+        var answer = new JsonObject
+        {
+            ["plugins"] = new JsonArray(lost.Select(l => (JsonNode)l.Plugin).ToArray()),
+            ["changes"] = new JsonArray(lost.SelectMany(l => l.Lost.Select(c => (JsonNode)$"{l.Plugin}: {Conflicts.Said(c, WithEditorIds)}")).Take(30).ToArray())
+        };
+        if (clashes.Count > 0) answer["clashes"] = new JsonArray(clashes.Select(c => (JsonNode)c).ToArray());
+        if (own is null || set.Count == 0) return answer;
+        try
+        {
+            RecordEdits.Edit(projectDir, own, set, null, Index);
+        }
+        catch (HelperException e)
+        {
+            // The copy stays the winner's: the changes are named, for editRecord by hand.
+            answer["notWritten"] = $"the changes could not be written into {own}: {e.Message}";
+        }
+        return answer;
     }
 
     /// <summary>A cell as exportCell lays it out in Blender (CellScene): its references, the project's built plugin over the load order's.</summary>
@@ -544,6 +717,8 @@ public sealed class Session : IDisposable
         corrected.AddRange(RecordFiles.NameFromFiles(dir, Index));
         var unneeded = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         corrected.AddRange(RecordFiles.RenameTakenEditorIds(dir, Index, unneeded));
+        // Then a game setting's kind, once a setting of the game's name is that one's override.
+        corrected.AddRange(GameSettings.Kinds(dir, Index));
         // And one of two new records of different types under one editor ID, which a link of the other names.
         corrected.AddRange(RecordFiles.RenameSharedEditorIds(dir, Index));
         // Before the moves: what is left of another record type may break the reader they use.
@@ -596,6 +771,9 @@ public sealed class Session : IDisposable
         };
     }
 
+    /// <summary>Each dialogue topic subtype's code, as the load order's topics carry it (DialogContents.SubtypeCodes); read once.</summary>
+    private Dictionary<DialogTopic.SubtypeEnum, RecordType>? subtypeCodes;
+
     private async Task<JsonNode> Build(JsonObject p)
     {
         var dir = Required(p, "projectPluginDir");
@@ -626,6 +804,8 @@ public sealed class Session : IDisposable
         }
         if (deserialized is not ISkyrimMod mod) throw new HelperException("badRequest", "The project is not a Skyrim plugin.");
         mod.ModHeader.Stats.Version = headerVersion;
+        subtypeCodes ??= DialogContents.SubtypeCodes(plugins.Select(x => (ISkyrimModGetter)x.Mod));
+        DialogContents.FillSubtypeNames(mod, subtypeCodes);
         // xEdit's Check for Errors requires an author in the header; the Creation Kit writes this one.
         if (string.IsNullOrWhiteSpace(mod.ModHeader.Author)) mod.ModHeader.Author = "DEFAULT";
 
@@ -695,8 +875,10 @@ public sealed class Session : IDisposable
             .Concat(MadeNotes.CopiedNames(mod, Index, dir)).Concat(MadeNotes.RecipePerks(mod, lookup, dir)).Concat(MadeNotes.PlayerCopy(mod, dir))
             .Concat(MadeNotes.NpcItems(mod, lookup, dir)).Concat(MadeNotes.ListEntries(mod, lookup, dir)).Concat(MadeNotes.Words(mod, dir))
             .Concat(MadeNotes.Unplayable(mod, dir))
-            .Concat(CellContents.PlacedNotes(mod, Contexts, Index, dir))
+            .Concat(CellContents.PlacedNotes(mod, Contexts, Index, dir)).Concat(DialogContents.Notes(mod, lookup, Index, dir)).Concat(GameSettings.Notes(mod, Index, dir))
             .Select(n => (JsonNode)n).ToArray();
+        // The sequence file the plugin's start-game-enabled quests need for their dialogue, beside it in the build.
+        var seq = DialogContents.WriteSeq(written, lookup, output);
         return new JsonObject
         {
             ["output"] = output,
@@ -707,6 +889,7 @@ public sealed class Session : IDisposable
             ["built"] = new JsonArray(BuiltRecords.Lines(written, lookup).Select(l => (JsonNode)l).ToArray()),
             ["models"] = ModelFiles.Unknown(mod, lookup, Index, dir),
             ["scripts"] = AttachedScripts.List(mod, dir),
+            ["seq"] = seq,
             ["notes"] = new JsonArray(notes),
             ["fixes"] = new JsonArray(fixes.Select(f => (JsonNode)f).ToArray())
         };
@@ -1041,6 +1224,7 @@ public sealed class Session : IDisposable
         cache = null;
         indexing = null;
         placedIndex = null;
+        subtypeCodes = null;
     }
 
     public void Dispose() => DisposePlugins();

@@ -1,3 +1,4 @@
+import type { Where } from './orderMoves.js';
 /**
  * The seam between the server and the program that keeps the user's mods (docs/adr/0007): Mod
  * Organizer 2, on Windows or under Proton, or Amethyst on Linux. Chosen by configuration, never by
@@ -138,6 +139,13 @@ export interface ModManager {
      * what the mod manager itself writes for a plugin no enabled mod has any more.
      */
     disable(instance: Instance, mod: string, plugins: readonly string[]): ModDisabled;
+    /**
+     * Moves a plugin to just before or after another in plugins.txt and loadorder.txt, as a drag in the manager's plugin
+     * list writes them (orderMoves.ts). False where it stood there already.
+     */
+    movePlugin(instance: Instance, plugin: string, where: Where, target: string): boolean;
+    /** Moves a mod to just before or after another in the mod order — after wins: its files are the game's. False where it stood there. */
+    moveMod(instance: Instance, mod: string, where: Where, target: string): boolean;
     /** Tells the mod manager what a deploy or an install changed, or says what the user has to do in it. */
     afterDeploy(instance: Instance): Promise<ModManagerNotice>;
     /** Remarks for healthcheck — something about the instance the user should know. */

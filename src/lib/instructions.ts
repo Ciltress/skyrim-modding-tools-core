@@ -24,7 +24,7 @@ export function serverInstructions(target: string): string {
     return [
         'This server authors and analyses Skyrim Special Edition mods: it looks records up across the ' +
         'load order, builds mods kept as text projects into plugins deployed to the mod manager (Mod Organizer or Amethyst), ' +
-        'and installs downloaded mods, which it finds on Nexus Mods — and downloads with a premium account\'s Nexus API key. ' +
+        'and installs mods it finds on Nexus Mods. ' +
         `It is bound to ${target} and cannot be switched to another at runtime.`,
         '',
         'Don\'t overthink: decide, then deliver the task. A mod is delivered when the buildProject after your last change ' +
@@ -32,7 +32,8 @@ export function serverInstructions(target: string): string {
         '',
         'Before modding, read the skill skyrim-modding-basics, then the skill of the records you will write: ' +
         `${FAMILY_SKILLS.map(family => `${family.skill} (${family.covers})`).join(', ')} (readSkill). ` +
-        'Mods that break after a game update: skyrim-modding-game-versions. A game that crashed: skyrim-modding-crash-analysis.',
+        'Mods that break after a game update: skyrim-modding-game-versions. A game that crashed: skyrim-modding-crash-analysis. ' +
+        'Mods in conflict: skyrim-modding-conflicts.',
         '',
         'How a mod is made:',
         '- A mod is a project. newProject creates it and answers the full path where each record file goes: write the ' +
@@ -46,12 +47,13 @@ export function serverInstructions(target: string): string {
         '- buildProject checks and builds. A refusal names the line to write: fix it, build again. `built_with_warnings`: ' +
         'the plugin is built — fix what each warning says and build again, that is part of the task. A warning stays ' +
         'only where the user asked for just what it names.',
-        '- deployProject, installMod, disableMod, enableMod and editIni change the user\'s setup: only when asked.',
+        '- deployProject, installMod, disableMod, enableMod, movePlugin, setModPriority and editIni change the user\'s setup: ' +
+        'only when asked.',
         '- Answer short: what you made, each file you wrote by its full path, what is left to do.',
         '',
         'If you know the job but not the tool, call readServerGuide with `{"guide":"router"}`; with no ' +
-        'arguments it lists every guide and its sections. healthcheck reports what this server is bound ' +
-        'to, the active tool profile, and anything withheld. An answer marked status:"truncated" was too large ' +
-        'for this profile: narrow the request as its nextStep says instead of repeating it.'
+        'arguments it lists the guides. healthcheck reports the binding, the tool profile ' +
+        'and anything withheld. An answer marked status:"truncated" was too large: ' +
+        'narrow the request as its nextStep says instead of repeating it.'
     ].join('\n');
 }

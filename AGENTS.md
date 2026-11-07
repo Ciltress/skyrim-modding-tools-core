@@ -110,6 +110,8 @@ src/
   backend/skyrim/installer.ts       what installMod decides before writing: a plain file's Data folder, a
                                     FOMOD installer's questions and the files its choices install
   backend/skyrim/externalTools.ts   the Papyrus compilers (the Creation Kit's, russo-2025's) and git
+  backend/skyrim/fileConflicts.ts    two mods giving the game one file, loose or in an archive, and which one it takes
+  backend/skyrim/orderMoves.ts      a plugin moved in the load order, a mod in the mod order: the rules a move keeps
   backend/skyrim/scriptChecks.ts    a build's Papyrus scripts held against their sources and the game's scripts:
                                     what compiles and builds, and does nothing in game
   backend/skyrim/platform.ts        everything that differs by operating system (ADR-0007) — the only
@@ -124,7 +126,9 @@ src/
   handlers/RecordsHandlers.ts       findRecords, readRecord
   handlers/ProjectsHandlers.ts      newProject, addPatch, editRecord, buildProject, deployProject, pullProject
   handlers/NexusHandlers.ts         searchNexus, readNexusMod, downloadNexusFile
-  handlers/ModsHandlers.ts          listMods, checkGameVersion, installMod, disableMod
+  handlers/ModsHandlers.ts          listMods, checkGameVersion, installMod, disableMod, enableMod, movePlugin, setModPriority,
+                                    editIni
+  handlers/AnalysisHandlers.ts      readCrashLog, findConflicts
   handlers/DocsHandlers.ts, SkillsHandlers.ts   readServerGuide and readSkill
   types/tools.ts           ToolDefinition / ToolProperty / ToolAnnotations — the inputSchema contract
   lib/product.ts           Product, CORE_ROOT, CORE_INFO, resourceScheme()
@@ -143,7 +147,10 @@ helper/SkyrimHelper/       the C# plugin helper: Session.cs (the methods), Recor
                            (what is placed in a cell, for readRecord; a reference of the project placed under its floor
                            or outside its walls, for the build), MadeNotes.cs (a shout's words with no spell or
                            spells that are no Voice spells, a recipe's copy of a game record, a recipe's perk condition
-                           turned around), AttachedScripts.cs (each record's scripts, for the build's script checks)
+                           turned around), AttachedScripts.cs (each record's scripts, for the build's script checks),
+                           DialogContents.cs (a topic's responses for readRecord; the build's dialogue warnings and
+                           the SEQ file), GameSettings.cs (a setting's kind by its name, one the game does not know),
+                           Conflicts.cs (what each plugin changed in a record, and what the winner lost; the merge)
 skills/Domain              the modding skills — ours, edit freely
 agents/muddy               Muddy's soul, identity, working rules and avatar: what every product installs; small,
                            as a small local model reads them every turn

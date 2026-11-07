@@ -4,6 +4,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { canonical, type IniPaths } from './mo2.js';
 import type { Instance } from './modManager.js';
+import { moveLine, type Where } from './orderMoves.js';
 import type { Platform } from './platform.js';
 
 const run = promisify(execFile);
@@ -89,6 +90,38 @@ export function insertPlugin(lines: string[], line: string, beforePlugin: string
     const at = beforePlugin === undefined ? -1 : lines.findIndex(samePlugin(beforePlugin));
     if (at < 0) lines.push(line);
     else lines.splice(at, 0, line);
+}
+
+/**
+ * Moves a plugin before or after another in plugins.txt and loadorder.txt, each file where it lists both (plugins.txt
+ * leaves the game's own plugins out). True when either changed.
+ */
+export function movePlugin(instance: Instance, plugin: string, where: Where, target: string): boolean {
+    let changed = false;
+    for (const [name, encoding] of [['plugins.txt', 'latin1'], ['loadorder.txt', 'utf8']] as const) {
+        const file = path.join(instance.profileDir, name);
+        const lines = readLines(file, encoding);
+        if (moveLine(lines, samePlugin(plugin), samePlugin(target), where)) {
+            writeLines(file, lines, encoding);
+            changed = true;
+        }
+    }
+    return changed;
+}
+
+/** A modlist.txt line's mod, whatever its mark: `+` enabled, `-` disabled, `*` the game's or locked. */
+export const sameMod = (mod: string) => (line: string) => /^[+\-*]/.test(line) && line.slice(1) === mod;
+
+/**
+ * Moves a mod in modlist.txt, which lists the highest priority first: after another in the mod order — its files win — is
+ * above it in the file. True when it changed.
+ */
+export function moveMod(instance: Instance, mod: string, where: Where, target: string): boolean {
+    const file = path.join(instance.profileDir, 'modlist.txt');
+    const lines = readLines(file, 'utf8');
+    if (!moveLine(lines, sameMod(mod), sameMod(target), where === 'after' ? 'before' : 'after')) return false;
+    writeLines(file, lines, 'utf8');
+    return true;
 }
 
 /** Disables a mod where it stands: `+Name` becomes `-Name`. Returns true when something changed. */

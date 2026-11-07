@@ -47,6 +47,12 @@ export interface SkyrimBackend extends Backend {
     /** A disabled mod enabled where it stands, its plugins back in the load order. */
     enableMod(request: EnableModRequest): Promise<EnableModResult>;
 
+    /** A plugin moved to just before or after another in the load order: after wins, its records are the game's. */
+    movePlugin(request: MovePluginRequest): Promise<MovePluginResult>;
+
+    /** A mod moved to just before or after another in the mod order: after wins, its files are the game's. */
+    setModPriority(request: SetModPriorityRequest): Promise<SetModPriorityResult>;
+
     /** The selected profile's mods, lowest priority first: each one's plugins, Nexus record and SKSE plugins. */
     listMods(query: ModListQuery): Promise<ModList>;
 
@@ -55,6 +61,12 @@ export interface SkyrimBackend extends Backend {
 
     /** A Crash Logger SSE log of this setup read: the crash, ranked diagnoses and suspect mods — or one raw section. */
     readCrashLog(request: ReadCrashLogRequest): Promise<CrashReport | CrashLogSection>;
+
+    /**
+     * Mods in conflict: the records whose winning version lost another plugin's changes, change by change, and the files two
+     * mods give the game, with the one it takes — of one plugin, one mod, one record, or the whole setup.
+     */
+    findConflicts(request: FindConflictsRequest): Promise<ConflictReport>;
 
     /**
      * Where the game finds each file, by its path under Data (`meshes\weapons\iron\longsword.nif`; a .nif without its top
@@ -71,10 +83,44 @@ export type { GameProblem, GameVersionCheck } from './sksePlugins.js';
 import type { GameVersionCheck } from './sksePlugins.js';
 export type { CrashLogSection, CrashReport, ReportedDiagnosis, ReportedRecord, Suspect } from './crash/crashReport.js';
 import type { CrashLogSection, CrashReport } from './crash/crashReport.js';
+export type { FileConflictPair, FileConflicts } from './fileConflicts.js';
+import type { FileConflicts } from './fileConflicts.js';
 /** Where the game finds a file: the mod that has it loose, or the archive that holds it and the mod the archive is in. */
 export type { Owner as GameFile } from './crash/attribution.js';
 import type { Owner as GameFile } from './crash/attribution.js';
 import type { SectionName } from './crash/crashLog.js';
+
+export interface FindConflictsRequest {
+    /** Only the record conflicts of this plugin: the records it changes. */
+    plugin?: string;
+    /** Only this mod's: the files it gives the game, and the record conflicts of its plugins. */
+    mod?: string;
+    /** Only this record's conflict, by FormID or editor ID. */
+    record?: string;
+    /** Only record conflicts, or only file conflicts. */
+    kind?: 'records' | 'files';
+    /** How many of each to list, 1–200; 25 by default. */
+    limit?: number;
+}
+
+/** A record whose winning version lost changes another plugin made. */
+export interface RecordConflict {
+    formId: string;
+    editorId?: string;
+    type: string;
+    /** The plugin whose version the game uses. */
+    winner: string;
+    /** Each plugin whose changes the winner does not carry, with those changes: `Keywords + WeapMaterialSilver`, a field's value. */
+    lost: { plugin: string; changes: string[]; more?: number }[];
+    /** A field the winner changed too, to a value of its own: which one is meant is a choice. */
+    clash?: true;
+}
+
+export interface ConflictReport {
+    records?: { total: number; records: RecordConflict[]; compared?: string };
+    files?: FileConflicts;
+    nextStep: string;
+}
 
 export interface ReadCrashLogRequest {
     /** A log by its file name, or by a time its name starts with: `2026-10-30`, `2026-10-30 14:02`. The newest of this setup's by default. */
@@ -99,6 +145,45 @@ export interface EnableModResult {
     missingMasters?: { plugin: string; masters: string[] }[];
     warnings?: string[];
     profile: { name: string } & ModEnabled;
+    modManager?: ModManagerNotice;
+}
+
+export interface MovePluginRequest {
+    plugin: string;
+    /** The plugin to load just after: the moved one's records win over it. */
+    after?: string;
+    /** The plugin to load just before: its records win over the moved one's. */
+    before?: string;
+}
+
+export interface MovePluginResult {
+    plugin: string;
+    /** False where it stood there already. */
+    moved: boolean;
+    /** Where it loads now: its place of how many, and the plugins either side. */
+    position: number;
+    of: number;
+    loadsAfter?: string;
+    loadsBefore?: string;
+    note?: string;
+    modManager?: ModManagerNotice;
+}
+
+export interface SetModPriorityRequest {
+    mod: string;
+    /** The mod to come just after in the mod order: the moved mod's files win over its. */
+    after?: string;
+    /** The mod to come just before: its files win over the moved mod's. */
+    before?: string;
+}
+
+export interface SetModPriorityResult {
+    mod: string;
+    /** False where it stood there already. */
+    moved: boolean;
+    /** The mods either side of it now: the one whose files it wins over, the one whose files win over its. */
+    winsOver?: string;
+    losesTo?: string;
     modManager?: ModManagerNotice;
 }
 
@@ -277,8 +362,19 @@ export interface AddPatchRequest {
     records: string[];
     /** Copy that plugin's version instead of the winning one. */
     from?: string;
+    /** Put back into each copy the changes other plugins made that its winning version lost: a conflict patch. */
+    merge?: boolean;
     /** Plugin file name when the project is created here. Defaults to `<project>.esp`. */
     plugin?: string;
+}
+
+/** What a merged copy was given back: each plugin's lost changes, and the fields two plugins changed each its own way. */
+export interface MergedChanges {
+    plugins: string[];
+    changes: string[];
+    clashes?: string[];
+    /** Set where the changes could not be written into the copy: they are named for editRecord. */
+    notWritten?: string;
 }
 
 /** A file in a project: the full path a file tool opens as it stands, and what it holds. */
@@ -355,7 +451,7 @@ export interface DeleteRecordResult {
 
 export interface AddPatchResult {
     project: ProjectInfo;
-    added: { formId: string; editorId: string | null; type: string; from: string; files: ProjectFile[] }[];
+    added: { formId: string; editorId: string | null; type: string; from: string; files: ProjectFile[]; merged?: MergedChanges }[];
     alreadyInProject: { formId: string; files: ProjectFile[] }[];
     /** Set when some files come without their text. */
     textLeftOut?: string;
@@ -640,6 +736,16 @@ export interface RecordVersions {
     versions: RecordVersion[];
     /** A cell's: what the load order places in it, and the lines a new reference is written with (CellContents.cs). */
     placed?: CellPlaced;
+    /** A dialogue topic's: what is said in it, each response a record of its own in the topic's Responses/ (DialogContents.cs). */
+    responses?: TopicResponses;
+}
+
+/** A topic's responses, gathered from every plugin's version of it, each as its winning version says it. */
+export interface TopicResponses {
+    count: number;
+    /** At most 30: each response's lines, and its conditions as the Creation Kit lists them — `GetIsID(Hulda) == 1`. */
+    responses: { formId: string; editorId?: string; says: string[]; conditions?: string[]; winner?: string }[];
+    note: string;
 }
 
 /** What is placed in a cell, gathered from every plugin's version of it. */

@@ -119,6 +119,13 @@ export class ProjectsHandlers extends BaseHandler {
                                 type: 'string',
                                 description: 'Copy this plugin\'s version instead of the winning one, e.g. "Update.esm".'
                             },
+                            merge: {
+                                type: 'boolean',
+                                description: 'Make a conflict patch: each copy from its winning version, with the changes other ' +
+                                    'plugins made that it lost put back — their values, and the items they put into a list or took ' +
+                                    'out (findConflicts names them). `added[].merged` says what was put back, and each field two ' +
+                                    'plugins changed each its own way, where the later one\'s is kept. Not with `from`.'
+                            },
                             plugin: {
                                 type: 'string',
                                 description: 'The new project\'s own plugin file name, used only when this call creates the ' +
@@ -139,6 +146,7 @@ export class ProjectsHandlers extends BaseHandler {
                         project: requireString(args, 'project'),
                         records,
                         from: optionalString(args, 'from'),
+                        ...(args?.merge === true ? { merge: true } : {}),
                         plugin: optionalString(args, 'plugin')
                     })).then(async result => {
                         // Asked for a new sword "like the Iron Sword", a model patched the Iron Sword and renamed it:

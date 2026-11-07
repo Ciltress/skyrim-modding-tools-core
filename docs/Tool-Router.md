@@ -72,6 +72,15 @@ Workflows and the error model: [`MCP-Tools.md`](./MCP-Tools.md). The vocabulary:
 | Know which plugin defines a record a crash log names, and which changed it last | `readCrashLog` → `records`, each plugin with its mod |
 | Find an installed mod's Nexus page, or the version installed | `listMods` → `nexus.modId` (for `readNexusMod`); with `details: true`, `nexus.version` and the file |
 
+## When mods conflict
+
+| You want to… | Call |
+| --- | --- |
+| Find which mods conflict, and what each loses | `findConflicts` — the records whose winning version lost another plugin's changes, change by change, and the files two mods both give the game; of one `plugin`, `mod` or `record`, or the whole setup. Skill: `skyrim-modding-conflicts` |
+| Keep both plugins' changes to a record | `addPatch` with `merge: true` and the records findConflicts named, then `buildProject` — a patch that loads last |
+| Let one plugin's version of a record win, only when the user says so | `movePlugin` with `after` the plugin it is to win over (or `before` the one that is to win) |
+| Let one mod's files win, only when the user says so | `setModPriority` with `after` the mod it is to win over — loose files only; archives follow the load order |
+
 ## Mods on Nexus Mods
 
 | You want to… | Call |

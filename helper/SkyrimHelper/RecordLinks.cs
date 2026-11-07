@@ -61,8 +61,8 @@ public static class RecordLinks
 
         // An interior cell's own file and the references placed in it as well: a chest placed by its editor ID, `Base: HuntersChest`,
         // was refused by the reader as a malformed FormKey, naming the cell's file (the eval's hand-made world mods, 2026-11-04).
-        var cellRecords = RecordFiles.CellRecords(pluginDir).Where(c => c.Type is not null).Select(c => (c.File, c.Relative, Type: c.Type!));
-        foreach (var (file, relative, type) in RecordFiles.FlatRecords(pluginDir).Concat(cellRecords))
+        // A dialogue topic's own file and its responses too (RecordFiles.DialogRecords).
+        foreach (var (file, relative, type) in RecordFiles.FlatRecords(pluginDir).Concat(RecordFiles.NestedRecords(pluginDir)))
         {
             var text = File.ReadAllText(file);
             var yaml = new YamlStream();
@@ -1296,7 +1296,8 @@ public static class RecordLinks
     {
         var own = new Dictionary<string, Target>(StringComparer.OrdinalIgnoreCase);
         var unnamed = new List<(string, Type)>();
-        foreach (var (file, relative, type) in RecordFiles.FlatRecords(pluginDir))
+        // A dialogue topic's and its responses as well: a branch's StartingTopic names its topic by editor ID.
+        foreach (var (file, relative, type) in RecordFiles.FlatRecords(pluginDir).Concat(RecordFiles.DialogRecords(pluginDir)))
         {
             var (formKey, editorId) = RecordFiles.Identity(File.ReadAllText(file));
             if (editorId is null) unnamed.Add((relative, type));

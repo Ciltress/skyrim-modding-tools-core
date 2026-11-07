@@ -103,10 +103,14 @@ describe('resolveSkill', () => {
         expect(named('container')).toBe('skyrim-modding-world');
         expect(named('perk')).toBe('skyrim-modding-perks');
         expect(named('perks')).toBe('skyrim-modding-perks');
+        expect(named('dialogue')).toBe('skyrim-modding-quests-and-scripts');
+        expect(named('game settings')).toBe('skyrim-modding-settings');
+        expect(named('globals')).toBe('skyrim-modding-settings');
+        expect(named('conflicts')).toBe('skyrim-modding-conflicts');
     });
 
     it('answers nothing for a word no skill has', () => {
-        expect(resolveSkill('dialogue')).toBeUndefined();
+        expect(resolveSkill('necromancy')).toBeUndefined();
         expect(resolveSkill('')).toBeUndefined();
     });
 });

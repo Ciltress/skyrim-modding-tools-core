@@ -24,10 +24,10 @@ type Stubs = ReturnType<typeof recordingBackend>;
 const handlersFrom = (stubs: Stubs) => createHandlers(stubs.backend, CORE_PRODUCT);
 
 /**
- * The arguments whose values the handler checks against a list the schema leaves out — readCrashLog's section, as a
+ * The arguments whose values the handler checks against a list the schema leaves out — readCrashLog's section and findConflicts' kind, as a
  * client turns a null into "" against an enum — with one of those values.
  */
-const LISTED_VALUES: Record<string, string> = { section: 'callStack' };
+const LISTED_VALUES: Record<string, string> = { section: 'callStack', kind: 'records' };
 
 /** A plausible value for one declared argument, derived from its schema. */
 function sampleValue(name: string, property: ToolProperty): any {

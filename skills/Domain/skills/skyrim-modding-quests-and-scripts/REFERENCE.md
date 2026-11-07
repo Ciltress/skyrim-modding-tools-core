@@ -93,6 +93,44 @@ The game's own, each on what its script calls it on:
 | run code again in 5 s | `RegisterForSingleUpdate(5.0)`, then `Event OnUpdate()` |
 | a record no property names, by its FormID | `Game.GetFormFromFile(0x0000000F, "Skyrim.esm")` |
 
+## Dialogue: branch, topic, response
+
+Three records of a quest, each linking up to it:
+
+| Record | Folder | What it is | Its lines |
+|---|---|---|---|
+| DialogBranch (DLBR) | `DialogBranches/<Branch>.yaml` | a conversation the player starts | `Quest`, `Category: Player`, `Flags: [TopLevel]`, `StartingTopic` |
+| DialogTopic (DIAL) | `DialogTopics/<Topic>/RecordData.yaml` | a line the player says — or, of no branch, a greeting, an idle, a combat line | `Name` (the player's line), `Branch`, `Quest`; `Category`, `Subtype` for no player's line |
+| DialogResponses (INFO) | `DialogTopics/<Topic>/Responses/<Info>.yaml` | what is said back, and when | `Responses` (the lines), `Conditions`, `Flags`, `LinkTo` |
+
+- A topic the player says is `Category: Topic` (written as no line at all) of `Subtype: Custom`; the build writes the
+  code beside it, `SubtypeName: CUST`, as the game's topics carry it.
+- A greeting is a topic of no branch with `Category: Misc`, `Subtype: Hello`; the quest's own, its responses each
+  conditioned on the NPC who says it.
+- A follow-up — the player's choice after an answer — is a second topic in the same branch, named in the answer's
+  `LinkTo:` list. A branch that is not `TopLevel` is reached only so.
+- A response's `Flags`: `Goodbye` ends the conversation after it, `SayOnce` says it once a game, `Random` picks among
+  the responses so flagged.
+- The responses of a topic are tried in their order; the first whose conditions all hold is said.
+
+## Conditions on a response
+
+Each is a `ConditionFloat` holding the function in `Data`, compared with `ComparisonValue` (`CompareOperator`
+`EqualTo` unless written). A condition runs on the speaker; `RunOnType: Target` in its `Data` runs it on the one
+spoken to — the player in a conversation. `Flags: [OR]` ors it with the next.
+
+| To say it only | Data |
+|---|---|
+| by one NPC | `MutagenObjectType: GetIsIDConditionData`, `Object: <NPC>` |
+| by the members of a faction | `GetInFactionConditionData`, `Faction: <faction>` |
+| by one voice — every guard | `GetIsVoiceTypeConditionData`, `VoiceTypeOrList: <voice type or list>` |
+| once a quest reached a stage | `GetStageDoneConditionData`, `Quest: <quest>`, `Stage: 20` |
+| while a quest is at a stage or later | `GetStageConditionData`, `Quest: <quest>`, `CompareOperator: GreaterThanOrEqualTo`, value the stage |
+| to a player of a sex | `GetIsSexConditionData`, `MaleFemaleGender: Female`, `RunOnType: Target` |
+
+readRecord of a game topic lists its responses with their conditions — `GetInFaction(CWImperialFaction) == 1` — the
+way to find the condition a line like yours uses.
+
 ## Typical bugs
 
 Each builds and compiles, and the build warns of all but the last:
@@ -104,3 +142,8 @@ Each builds and compiles, and the build warns of all but the last:
 - **A script the game does not have:** a record names a script with no source in the project and none in the game.
 - **It runs again:** a quest without `RunOnce` started again by another script, or OnInit of a quest not
   `StartGameEnabled`, which runs at load and again when the quest starts.
+- **A line nobody says, or everybody:** a topic in no branch, a branch not `TopLevel`, a quest neither
+  `StartGameEnabled` nor started by anything — nobody; a response with no condition — every NPC. The build warns of
+  each.
+- **A line shown for a blink:** a response without a voice file; the user installs *Fuz Ro D-oh* for unvoiced
+  dialogue.

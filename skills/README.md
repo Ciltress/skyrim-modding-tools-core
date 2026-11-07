@@ -22,9 +22,11 @@ one, at any depth; every directory containing a `SKILL.md` is one skill, and eve
 | `skyrim-modding-npcs` | NPCs, templates, FaceGen, outfits, factions, AI packages, followers | `REFERENCE.md` |
 | `skyrim-modding-leveled-lists` | Leveled items, NPCs and spells: how a pick works, the conflict problem | `REFERENCE.md` |
 | `skyrim-modding-perks` | Perks: what one changes (its entry points — damage, spell cost, prices), its conditions, its ranks, how the player gets it | `REFERENCE.md` |
-| `skyrim-modding-quests-and-scripts` | Quests that start with the game, Papyrus scripts on quests, items, magic effects and NPCs, their properties and the events the game sends them | `REFERENCE.md` |
+| `skyrim-modding-quests-and-scripts` | Quests that start with the game, Papyrus scripts on quests, items, magic effects and NPCs, their properties and the events the game sends them; dialogue — branches, topics, responses and their conditions | `REFERENCE.md` |
+| `skyrim-modding-settings` | Game settings (the engine's numbers by name, those of the engine alone too), globals and saves, the keywords the game checks on an item | — |
 | `skyrim-modding-world` | Cells and what is placed in them — containers, furniture, doors, NPCs — indoors and outdoors, a new object placed in one, and a cell arranged in Blender and brought back | `REFERENCE.md` |
 | `skyrim-modding-game-versions` | Mods whose SKSE plugins do not fit the game version: checking, a fitting file or disabling, saves | `REFERENCE.md` (game versions, SKSE builds, the rules) |
+| `skyrim-modding-conflicts` | Two plugins changing one record, two mods giving the game one file: found with findConflicts, settled by a merged patch or by the order | — |
 | `skyrim-modding-crash-analysis` | A game that crashed: Crash Logger SSE's log read, diagnoses and suspect mods weighed, the fix on the user's word | — |
 
 Each `SKILL.md` stays short and points at its `REFERENCE.md`, where the record family's fields,

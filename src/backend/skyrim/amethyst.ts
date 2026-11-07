@@ -5,7 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { parseIni, parseModList, primaryPlugins, readLoadOrder, resolveDataFiles, resolvePluginFiles } from './mo2.js';
-import { insertPlugin, samePlugin } from './mo2Profile.js';
+import { insertPlugin, sameMod, samePlugin } from './mo2Profile.js';
+import { moveLine, type Where } from './orderMoves.js';
 import {
     InstanceConfigError, type Instance, type ModEntry, type ModManager, type ModManagerNotice, type PluginEntry,
     type ModDisabled, type ModEnabled, type ProfileWrite
@@ -284,6 +285,29 @@ export class AmethystManager implements ModManager {
         const order = readTextLines(orderFile, 'utf8');
         if (order.some(listed)) writeTextLines(orderFile, order.filter(line => !listed(line)), 'utf8');
         return { modDisabled: at >= 0, deactivated };
+    }
+
+    /** A plugin moved in plugins.txt and loadorder.txt, each file where it lists both; written whole and renamed into place, LF. */
+    movePlugin(instance: Instance, plugin: string, where: Where, target: string): boolean {
+        let changed = false;
+        for (const [name, encoding] of [['plugins.txt', 'latin1'], ['loadorder.txt', 'utf8']] as const) {
+            const file = path.join(instance.profileDir, name);
+            const lines = readTextLines(file, encoding);
+            if (moveLine(lines, samePlugin(plugin), samePlugin(target), where)) {
+                writeTextLines(file, lines, encoding);
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
+    /** A mod moved in modlist.txt, the highest priority first as Mod Organizer's: after another is above it in the file. */
+    moveMod(instance: Instance, mod: string, where: Where, target: string): boolean {
+        const file = path.join(instance.profileDir, 'modlist.txt');
+        const lines = readTextLines(file, 'utf8');
+        if (!moveLine(lines, sameMod(mod), sameMod(target), where === 'after' ? 'before' : 'after')) return false;
+        writeTextLines(file, lines, 'utf8');
+        return true;
     }
 
     /**

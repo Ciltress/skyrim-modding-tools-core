@@ -312,7 +312,8 @@ public static class MisplacedFields
     {
         var changes = new List<(string File, string Change)>();
         var files = RecordFiles.FlatRecords(pluginDir).Select(f => (f.File, f.Relative))
-            .Concat(RecordFiles.CellRecords(pluginDir).Select(c => (c.File, c.Relative)));
+            .Concat(RecordFiles.CellRecords(pluginDir).Select(c => (c.File, c.Relative)))
+            .Concat(RecordFiles.DialogRecords(pluginDir).Select(d => (d.File, d.Relative)));
         foreach (var (file, relative) in files)
         {
             var written = File.ReadAllText(file);

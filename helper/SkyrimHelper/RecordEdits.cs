@@ -268,8 +268,7 @@ public static class RecordEdits
         found = null;
         // An interior cell's copy and what is placed in it too: told "No record file" for the cell addPatch had just copied, eval
         // round 128's world runs sent the edit again and again, 12 calls in 5 runs.
-        var flat = RecordFiles.FlatRecords(pluginDir)
-            .Concat(RecordFiles.CellRecords(pluginDir).Where(c => c.Type is not null).Select(c => (c.File, c.Relative, Type: c.Type!))).ToList();
+        var flat = RecordFiles.FlatRecords(pluginDir).Concat(RecordFiles.NestedRecords(pluginDir)).ToList();
         var wanted = (Path.IsPathRooted(record) ? Path.GetRelativePath(pluginDir, record) : record).Replace('\\', '/').Trim();
         var hit = flat.FirstOrDefault(f => f.Relative.Equals(wanted, StringComparison.OrdinalIgnoreCase));
         // A cell's folder, or its name before the FormID — `WhiterunBreezehome - 0165A8_Skyrim.esm` — is its RecordData.yaml.
@@ -279,6 +278,10 @@ public static class RecordEdits
             && (string.Join('/', cell.Take(depth)).Equals(wanted.TrimEnd('/'), StringComparison.OrdinalIgnoreCase)
                 || cell[depth - 1].Equals(wanted, StringComparison.OrdinalIgnoreCase)
                 || cell[depth - 1].Split(" - ")[0].Equals(wanted, StringComparison.OrdinalIgnoreCase)));
+        // A dialogue topic's folder, or its name before the FormID, is its RecordData.yaml as well.
+        if (hit == default) hit = flat.FirstOrDefault(f => f.Type == typeof(Mutagen.Bethesda.Skyrim.DialogTopic) && f.Relative.Split('/') is [_, var topic, _]
+            && ($"DialogTopics/{topic}".Equals(wanted.TrimEnd('/'), StringComparison.OrdinalIgnoreCase)
+                || topic.Equals(wanted, StringComparison.OrdinalIgnoreCase) || topic.Split(" - ")[0].Equals(wanted, StringComparison.OrdinalIgnoreCase)));
         if (hit == default) hit = flat.FirstOrDefault(f => Path.GetFileName(f.Relative).Equals(wanted, StringComparison.OrdinalIgnoreCase)
             || Path.GetFileNameWithoutExtension(f.Relative).Equals(wanted, StringComparison.OrdinalIgnoreCase));
         if (hit == default) hit = flat.FirstOrDefault(f => string.Equals(RecordFiles.Identity(File.ReadAllText(f.File)).EditorId, wanted, StringComparison.OrdinalIgnoreCase));

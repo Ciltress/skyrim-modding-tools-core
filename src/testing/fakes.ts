@@ -13,7 +13,8 @@ import type {
     NewProjectRequest, NexusDownload, NexusMod, NexusModSummary,
     NexusSearchQuery, NexusSearchResult, ProjectInfo, PullResult, ExportCellRequest, ExportCellResult, ImportCellRequest, ImportCellResult, RecordQuery, RecordRequest, RecordSearchResult,
     RecordSummary, RecordVersions, ListedMod, ModList, ModListQuery, GameVersionCheck,
-    CrashLogSection, CrashReport, EditIniRequest, EditIniResult, EnableModRequest, EnableModResult, ReadCrashLogRequest, GameFile
+    CrashLogSection, CrashReport, EditIniRequest, EditIniResult, EnableModRequest, EnableModResult, ReadCrashLogRequest, GameFile,
+    ConflictReport, FindConflictsRequest, MovePluginRequest, MovePluginResult, SetModPriorityRequest, SetModPriorityResult
 } from '../backend/skyrim/SkyrimBackend.js';
 import { CrashLogNotFoundError } from '../backend/skyrim/crash/crashLogFiles.js';
 import { CORE_GUIDES } from '../lib/guides.js';
@@ -311,6 +312,33 @@ export class InMemorySkyrimBackend implements AppBackend {
         };
     }
 
+    /** The plugin moved, where asked: second of three. */
+    async movePlugin(request: MovePluginRequest): Promise<MovePluginResult> {
+        return { plugin: request.plugin, moved: true, position: 2, of: 3, loadsAfter: request.after ?? 'Skyrim.esm', loadsBefore: request.before ?? 'Last.esp' };
+    }
+
+    /** The mod moved, where asked. */
+    async setModPriority(request: SetModPriorityRequest): Promise<SetModPriorityResult> {
+        return { mod: request.mod, moved: true, ...(request.after ? { winsOver: request.after } : {}), ...(request.before ? { losesTo: request.before } : {}) };
+    }
+
+    /** One record conflict — the Iron Sword's keyword lost — and one file conflict, whatever is asked. */
+    async findConflicts(request: FindConflictsRequest): Promise<ConflictReport> {
+        return {
+            ...(request.kind !== 'files' ? {
+                records: {
+                    total: 1,
+                    records: [{ formId: '012EB7:Skyrim.esm', editorId: 'IronSword', type: 'Weapon', winner: 'Sharper.esp',
+                        lost: [{ plugin: 'Silvered.esp', changes: ['Keywords + WeapMaterialSilver'] }] }]
+                }
+            } : {}),
+            ...(request.kind !== 'records' && !request.plugin && !request.record ? {
+                files: { pairs: [{ winner: 'Better Swords', loser: 'Sample Mod', how: 'mod order' as const, files: 1, examples: ['meshes\\weapons\\iron\\longsword.nif'] }], total: 1 }
+            } : {}),
+            nextStep: 'addPatch with merge: true keeps both plugins\' changes.'
+        };
+    }
+
     /** The game's Iron Sword mesh, in its archive; nothing else. */
     async findGameFiles(files: string[]): Promise<Record<string, GameFile>> {
         return Object.fromEntries(files.filter(file => /^(meshes\\)?weapons\\iron\\longsword\.nif$/i.test(file))
@@ -403,8 +431,8 @@ export interface FakeBackendOptions {
 
 const DOMAIN_METHODS = [
     'findRecords', 'readRecord', 'newProject', 'addPatch', 'editRecord', 'buildProject', 'deployProject', 'pullProject', 'exportCell', 'importCell',
-    'searchNexus', 'readNexusMod', 'downloadNexusFile', 'installMod', 'disableMod', 'enableMod', 'listMods', 'checkGameVersion',
-    'readCrashLog', 'editIni', 'findGameFiles'
+    'searchNexus', 'readNexusMod', 'downloadNexusFile', 'installMod', 'disableMod', 'enableMod', 'listMods', 'movePlugin', 'setModPriority', 'checkGameVersion',
+    'readCrashLog', 'findConflicts', 'editIni', 'findGameFiles'
 ] as const;
 
 /**

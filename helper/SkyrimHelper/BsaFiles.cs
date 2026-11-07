@@ -43,6 +43,31 @@ public static class BsaFiles
         return new JsonObject { ["found"] = found, ["errors"] = errors };
     }
 
+    /// <summary>
+    /// Every file each archive holds, as <see cref="Key"/> gives them: for the file conflicts between mods' archives, and between
+    /// an archive and a mod's loose files (src/backend/skyrim/fileConflicts.ts).
+    /// </summary>
+    public static JsonNode List(JsonObject p)
+    {
+        var archives = p["archives"]?.AsArray().Select(a => a!.GetValue<string>()).ToList()
+            ?? throw new HelperException("badRequest", "archiveFiles needs 'archives', the archive paths.");
+        var release = p["release"]?.GetValue<string>() == "SkyrimSEGog" ? GameRelease.SkyrimSEGog : GameRelease.SkyrimSE;
+        var files = new JsonObject();
+        var errors = new JsonArray();
+        foreach (var archive in archives)
+        {
+            try
+            {
+                files[archive] = new JsonArray(FilesOf(release, archive).Order(StringComparer.Ordinal).Select(f => (JsonNode)f).ToArray());
+            }
+            catch (Exception e) when (e is IOException or InvalidDataException or ArgumentException or NotImplementedException or UnauthorizedAccessException or EndOfStreamException)
+            {
+                errors.Add(new JsonObject { ["archive"] = archive, ["error"] = e.Message });
+            }
+        }
+        return new JsonObject { ["files"] = files, ["errors"] = errors };
+    }
+
     /// <summary>An archive's files as <see cref="Key"/> gives them, read again only once the archive changed.</summary>
     private static HashSet<string> FilesOf(GameRelease release, string archive)
     {

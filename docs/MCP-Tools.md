@@ -141,9 +141,9 @@ arguments, see [`Tool-Reference.md`](./Tool-Reference.md), which is generated fr
 
 | profile | listed | for |
 | --- | --- | --- |
-| `core` | 17 | look up, patch, edit, build, deploy; move or delete a record file; list the mods, check them against the game, install, disable or enable one; read a crash log — small local models |
-| `readonly` | 10 | looking records and mods up, on Nexus Mods too, and reading crash logs only; the write tools are absent, not discouraged |
-| `all` | 25 | the default; right for clients that fetch tool schemas on demand. 24 without a Nexus API key, which `downloadNexusFile` needs; the only one with `exportCell` and `importCell`, a cell in Blender and back |
+| `core` | 18 | look up, patch, edit, build, deploy; move or delete a record file; list the mods, check them against the game, install, disable or enable one; read a crash log; find mod conflicts — small local models |
+| `readonly` | 11 | looking records and mods up, on Nexus Mods too, and reading crash logs and conflicts only; the write tools are absent, not discouraged |
+| `all` | 28 | the default; right for clients that fetch tool schemas on demand. 27 without a Nexus API key, which `downloadNexusFile` needs; the only one with `exportCell` and `importCell`, a cell in Blender and back, and with `movePlugin` and `setModPriority`, the load order and the mod order changed |
 
 Counts include `healthcheck`, which every profile lists. `profiles.test.ts` holds them to `PROFILES`.
 
@@ -477,7 +477,37 @@ crash "just now" — reads the newest log before it that day, and the nextStep s
 stamp writes it, `[Sat 2026-10-31 09:26 GMT+1]`, is read without its brackets, weekday and zone (since eval round 100). A fix is made
 with the mod tools, on the user's word: `disableMod` and `enableMod`, `installMod`, `editIni`.
 
-### 4.8 Find out what you are connected to
+### 4.8 Find mods in conflict, and settle them
+
+```jsonc
+{"tool":"findConflicts","args":{}}
+{"tool":"findConflicts","args":{"plugin":"Dawnguard.esm"}}
+{"tool":"addPatch","args":{"project":"ConflictPatch","records":["DeepFolkCrossingLocation"],"merge":true}}
+```
+
+A conflict is two plugins changing one record, or two mods giving the game one file; the later wins, and the other's
+changes are lost. `findConflicts` names them, of one `plugin`, one `mod`, one `record` or the whole setup:
+
+- **`records`:** each record whose winning version lost another plugin's changes. Each plugin's version is held
+  against the version it was made from — the last earlier one of its masters' — and every change the winner does not
+  carry is named: a field's value, an item a list gained or lost, as `Keywords + LocSetDwarvenRuin`. A winner that
+  names the other plugin as a master saw it and chose — a patch — and is no conflict. Fields the game reads nothing
+  from are left out: a condition's `Unknown1`/`Unknown2`, an exterior cell's grid flags, a worldspace's height map,
+  the navmesh info map. A record marked `clash` has a field both changed, each its own way. The whole test instance
+  (80 plugins) takes about 18 s, at most 4,000 records compared a call.
+- **`files`:** each pair of mods giving the game the same files, the winner, the loser, how many and a few of them,
+  and how the winner wins: the mod order for loose files, the load order for files in archives, and a loose file over
+  any archive. The game's own files are no conflict.
+
+A record conflict is settled by a patch that loads last: `addPatch` with `merge` copies each record from its winning
+version and puts back every lost change (`added[].merged` names them, and a clash's field keeps the later plugin's,
+named under `clashes`). A file conflict, or a record one where only one side is wanted, is settled by the order —
+`setModPriority` and `movePlugin`, each on the user's word. `movePlugin` refuses what the game would not load so: a
+plugin before one of its masters or after a plugin that needs it, across the line between master-flagged and plain
+plugins (the game loads every master first, whatever the files say), or the game's own plugins, which load first in
+their own order.
+
+### 4.9 Find out what you are connected to
 
 ```jsonc
 {"tool":"healthcheck","args":{}}
@@ -695,6 +725,15 @@ Start with `healthcheck`.
 | `buildProject` of a new enchantment of guessed fields → "… nothing in it is an ObjectEffect's but its names. Write it as the game's EnchWeaponFireDamage01 is written, your names in it … the file's whole text: …" | Since v0.2.61 a new record whose fields its type has are only its names, and two or more none of its type's, is given the everyday game record's whole text with its EditorID and name in it, where that text is 3,000 characters or fewer. Round 132's sword+detailed #4 was told the fields and the record to read three times, never read it, and ran out of turns | Write the text given, then its values |
 | `buildProject` → "SmithsChestRef is placed at 20470.668, -45648.043, -314.7278, where MerchantRiverwoodAlvorBlacksmithChest \"Chest\", a Container stands … in game the two are inside each other" | Since v0.2.61 a reference placed outdoors within 16 units across the ground of one the game places there is warned, with how to place it beside what the user named and the call that places it beside that one; one on the example spot readRecord of the cell gives, beside the first thing it lists, is warned where the user named a place. Round 132's outdoor mini-rounds built a chest in Alvor's merchant chest and one in the grindstone | Place it beside what the user named |
 | Blender's MCP server on Windows → every `execute_blender_code_for_cli` "Blender CLI timed out after 120s" | Blender Lab's server starts Blender with the client's pipe as its stdin, and on Windows that Blender never ends. Since v0.2.61 the core ships `blender/blender-mcp-no-stdin.py`, and `blenderMcpLaunch` says how a client starts the server through it — the server's own Python, where uv installed it: the OpenClaw plugin's setup does so, the MCP server's guide shows how. Since v0.2.62 it takes the Python beside a virtual environment's launcher, and leaves a server alone whose blmcp gives Blender no stdin itself — Blender Lab's pull request #48, applied | Start the server through the script, or install a blmcp with the fix |
+| `buildProject` → "RecordData.yaml cannot be read as a record: Malformed FormKey string: HuldaRumorsTopic" | Before v0.2.63 a new dialogue topic — its folder's `RecordData.yaml` — got no FormID, and no link could name it or its responses by editor ID | Since v0.2.63 a topic's own file and its responses are numbered, checked and linked as every record is |
+| `buildProject` → "… the response HuldaRumorsInfo … has no condition, so every NPC who speaks says it" | Since v0.2.63 a new response of a topic every NPC offers — a top-level branch's first topic, a greeting — with no condition is warned, with the condition that gives it to one NPC; and a player's topic in no branch, a branch nothing reaches, a topic of no quest, and a quest of dialogue nothing starts | Write the condition, or nothing where every NPC is meant |
+| The game offers no dialogue of a start-game-enabled quest | The game reads such a quest's dialogue only where the plugin's SEQ file names the quest | Since v0.2.63 the build writes `Seq/<plugin>.seq` beside the plugin for every start-game-enabled quest of the plugin's own (or one it makes start so), as xEdit's Create SEQ File does; deploy takes it into the mod |
+| `buildProject` → corrected: "wrote `FormKey: 0ABEF6:Skyrim.esm` — fJumpHeightMin is Skyrim.esm's game setting" | Since v0.2.63 a new game setting or global of the game's name is that one's override: the game knows a setting by its name, and renamed, the copy did nothing | — |
+| `buildProject` → "fMyJumpHeight is no setting of the game …" | Since v0.2.63 a new game setting of a name neither the load order nor the game's executable holds is warned, with the closest settings by name; a setting of the engine alone, `iTrainingNumAllowedPerLevel`, is not. A setting's kind is corrected to the one its name's first letter says | Copy the setting meant in with addPatch |
+| `findConflicts` → `records.compared` "the first 4000 of …" | The whole load order changes more records than one call compares | Give `plugin` or `mod` |
+| `addPatch` with `merge` → `merged.notWritten` | A lost change could not be written into the copy as editRecord writes it | Write the changes `merged.changes` names with editRecord |
+| `movePlugin` → "… names … as a master, and a plugin loads after its masters" | The move would load a plugin before its master, or after one that needs it | Move the other plugin, or both |
+| `movePlugin` → "… is flagged master and … is not" | The game loads every master-flagged plugin before every plain one, whatever the order says | Nothing to move: the order of those two is fixed |
 | `importCell` → "… holds no layout.json yet: in Blender, run …export_layout.py" | The layout is written in Blender: run the exportScript exportCell named — the Scripting tab's Run Script, or its text through Blender's MCP server — after arranging, then call importCell again | Run the exportScript |
 | `exportCell` → `missing` lists meshes or textures | No mod and no archive of the setup has them: those objects stay empties in Blender (a mesh), or grey (a texture), and are moved and copied as any other | — |
 | `editRecord` of `WorldModel.Male.Model.File` on an armor → "added WorldModel.Male.Model.File: …" | Since v0.2.51: a part whose type is an interface no class takes as it is — an armor's WorldModel, an IGenderedItem — is read by its own fields, Male and Female; it was refused as "a list" | — |

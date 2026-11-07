@@ -280,6 +280,20 @@ describe('changing an Amethyst profile', () => {
         expect(am.disable(instance, 'Immersive Weapons', ['Immersive Weapons.esp'])).toEqual({ modDisabled: false, deactivated: [] });
     });
 
+    it('moves a plugin and a mod as Amethyst writes them: whole, LF, the highest priority first in modlist.txt', () => {
+        const setup = makeSetup();
+        const am = manager(setup);
+        const instance = am.readInstance();
+        expect(am.movePlugin(instance, 'SkyUI_SE.esp', 'after', 'SeranaDialogueExpansion.esp')).toBe(true);
+        expect(fs.readFileSync(path.join(setup.profile, 'plugins.txt'), 'utf8')).toMatch(/\*SeranaDialogueExpansion\.esp\n\*SkyUI_SE\.esp\n$/);
+        expect(fs.readFileSync(path.join(setup.profile, 'loadorder.txt'), 'utf8')).toMatch(/SeranaDialogueExpansion\.esp\nSkyUI_SE\.esp\n$/);
+        expect(am.moveMod(instance, 'Address Library All in One (1.7.104.0) v13', 'after', 'UIExtensions v1')).toBe(true);
+        expect(fs.readFileSync(path.join(setup.profile, 'modlist.txt'), 'utf8').split('\n').slice(0, 2))
+            .toEqual(['+Address Library All in One (1.7.104.0) v13', '+UIExtensions v1']);
+        expect(fs.readdirSync(setup.profile).some(f => f.endsWith('.tmp'))).toBe(false);
+        expect(am.moveMod(instance, 'Address Library All in One (1.7.104.0) v13', 'after', 'UIExtensions v1')).toBe(false);
+    });
+
     it('refuses a change to lines it knows while its window is open, but not an addition', async () => {
         const setup = makeSetup();
         const open = manager(setup, { isRunning: async () => true });

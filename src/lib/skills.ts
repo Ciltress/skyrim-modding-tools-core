@@ -40,17 +40,18 @@ export interface Skill {
  * family's skill passed in eval round 12; a model skipped it in three of nine.
  */
 export const FAMILY_SKILLS = [
-    { skill: 'skyrim-modding-items-and-crafting', covers: 'weapons, armor, other items, their enchantments and recipes' },
+    { skill: 'skyrim-modding-items-and-crafting', covers: 'weapons, armor, other items, enchantments, recipes' },
     { skill: 'skyrim-modding-magic', covers: 'spells, magic effects, enchantments, shouts' },
     { skill: 'skyrim-modding-npcs', covers: 'NPCs' },
     // Asked for bandits carrying a sword, eval round 128's 5 runs of the plain prompt read the NPC and item skills, never
     // this one, and changed the bandit NPCs.
     { skill: 'skyrim-modding-leveled-lists', covers: 'leveled lists: what NPCs carry, loot, merchant stock' },
-    { skill: 'skyrim-modding-quests-and-scripts', covers: 'quests and Papyrus scripts: anything given or done when a game starts' },
+    { skill: 'skyrim-modding-quests-and-scripts', covers: 'quests, Papyrus scripts, dialogue: anything given or done when a game starts' },
     // Asked for a chest like the player houses', 3 of round 128's detailed world runs read the items skill and made a
     // HearthFires recipe.
-    { skill: 'skyrim-modding-world', covers: 'cells and what is placed in them, indoors or out: a chest, furniture or NPC; a cell in Blender' },
-    { skill: 'skyrim-modding-perks', covers: 'perks' }
+    { skill: 'skyrim-modding-world', covers: 'cells and what is placed in them, indoors or out: a chest, an NPC; a cell in Blender' },
+    { skill: 'skyrim-modding-perks', covers: 'perks' },
+    { skill: 'skyrim-modding-settings', covers: 'game settings, globals, keywords' }
 ] as const;
 
 /** URI prefix for the resource form of a skill, as a product serves it. */

@@ -5,7 +5,7 @@ import { ToolError, ToolErrorCode } from './errors.js';
 import { SECTION_NAMES, type SectionName } from '../backend/skyrim/crash/crashLog.js';
 
 /**
- * Why the game misbehaves, read from what it leaves behind: Crash Logger SSE's crash logs. Reading only —
+ * Why the game misbehaves, read from what it leaves behind: Crash Logger SSE's crash logs, and the mods in conflict. Reading only —
  * a fix it points at is made with the mod tools, on the user's word.
  */
 export class AnalysisHandlers extends BaseHandler {
@@ -52,6 +52,45 @@ export class AnalysisHandlers extends BaseHandler {
                     log: optionalString(args, 'log'),
                     section: sectionArg(args)
                 }))
+            },
+            {
+                definition: {
+                    name: 'findConflicts',
+                    annotations: {
+                        title: 'Find mod conflicts',
+                        readOnlyHint: true,
+                        destructiveHint: false,
+                        idempotentHint: true,
+                        openWorldHint: false
+                    },
+                    description:
+                        'Mods in conflict, as the game sees them. `records`: each record whose winning version lost another ' +
+                        'plugin\'s changes, with those changes plugin by plugin — a field\'s value, an item a list gained or lost ' +
+                        '(`Keywords + WeapMaterialSilver`); a patch that names both plugins as masters settles a conflict, and ' +
+                        'is not listed. `files`: each pair of mods giving the game the same files, the one it takes and how — ' +
+                        'the mod order for loose files, the load order for archives, a loose file over any archive. Of one ' +
+                        '`plugin`, one `mod`, one `record`, or the whole setup. `nextStep` says how to settle them: addPatch with ' +
+                        '`merge` for records. Reads only; changes nothing.',
+                    inputSchema: {
+                        type: 'object',
+                        properties: {
+                            plugin: { type: 'string', description: 'Only the record conflicts of this plugin, e.g. "Dawnguard.esm".' },
+                            mod: { type: 'string', description: 'Only this mod\'s: its files, and the record conflicts of its plugins — its name as listMods shows it.' },
+                            record: { type: 'string', description: 'Only this record\'s conflict: a FormID like 012EB7:Skyrim.esm, or an editor ID.' },
+                            kind: { type: 'string', description: 'Only "records" or only "files".' },
+                            limit: { type: 'number', description: 'How many of each to list, 1-200.', default: 25 }
+                        }
+                    },
+                    narrowingHint: 'Give `plugin`, `mod` or `record`, or a smaller `limit`.'
+                },
+                onFailure: 'Failed to find the conflicts',
+                run: args => asRequestError(this.backend.findConflicts({
+                    plugin: optionalString(args, 'plugin'),
+                    mod: optionalString(args, 'mod'),
+                    record: optionalString(args, 'record'),
+                    kind: kindArg(args),
+                    limit: typeof args?.limit === 'number' ? args.limit : undefined
+                }))
             }
         ];
     }
@@ -63,4 +102,13 @@ function sectionArg(args: any): SectionName | undefined {
     const found = SECTION_NAMES.find(name => name.toLowerCase() === value.toLowerCase());
     if (!found) throw new ToolError(ToolErrorCode.InvalidParams, `'section' is one of: ${SECTION_NAMES.join(', ')}.`);
     return found;
+}
+
+/** `kind`, any letter case: records or files; nothing for both. */
+function kindArg(args: any): 'records' | 'files' | undefined {
+    const value = optionalString(args, 'kind')?.trim().toLowerCase();
+    if (!value) return undefined;
+    if (value === 'records' || value === 'record') return 'records';
+    if (value === 'files' || value === 'file') return 'files';
+    throw new ToolError(ToolErrorCode.InvalidParams, `'kind' is "records" or "files" — or leave it out for both.`);
 }

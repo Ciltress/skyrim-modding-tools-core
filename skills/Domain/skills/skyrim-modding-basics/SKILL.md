@@ -41,8 +41,9 @@ Every authoring task runs this loop.
 0. **Read the skill of the records you will write**, with `readSkill`: `skyrim-modding-items-and-crafting` for weapons,
    armor, other items, their enchantments and recipes; `skyrim-modding-magic` for spells, magic effects,
    enchantments and shouts; `skyrim-modding-npcs`; `skyrim-modding-leveled-lists` for what NPCs of a kind carry, loot
-   and merchant stock; `skyrim-modding-quests-and-scripts` for anything given or done when a game starts;
-   `skyrim-modding-world` for a chest, furniture or an NPC put into a house or room; `skyrim-modding-perks`. Each holds
+   and merchant stock; `skyrim-modding-quests-and-scripts` for anything given or done when a game starts, and for
+   dialogue; `skyrim-modding-world` for a chest, furniture or an NPC put into a house or room; `skyrim-modding-perks`;
+   `skyrim-modding-settings` for game settings, globals and keywords. Each holds
    the vanilla records and values its records are written with. Done when you have read every family the task touches.
 1. **Look up.** `findRecords` by name — `text`, narrowed with `types` such as `["WEAP"]` — or by
    FormID and editor ID with `records`. Done when you hold the FormID of every record you will change
@@ -95,8 +96,11 @@ there before installing a mod or a requirement twice.
 - [`TOOLS.md`](TOOLS.md) — the community's tools, what each is for, and when to send the user to one.
 - Record families, one skill each: `skyrim-modding-items-and-crafting`, `skyrim-modding-magic`, `skyrim-modding-npcs`, `skyrim-modding-leveled-lists`.
 - `skyrim-modding-quests-and-scripts` — a mod that does something: a quest started with the game, Papyrus scripts on
-  quests, items, effects and NPCs, their properties and events.
+  quests, items, effects and NPCs, their properties and events; dialogue — a topic the player asks, what an NPC answers.
+- `skyrim-modding-settings` — how the game plays: game settings (jump height, prices), globals (time scale), and the
+  keywords the game checks on an item.
 - `skyrim-modding-world` — cells and what is placed in them: a chest, an NPC or furniture put into a room.
 - `skyrim-modding-perks` — perks: what they change, their conditions and ranks, how the player gets one.
 - `skyrim-modding-game-versions` — mods whose SKSE plugins do not fit the game: finding them, and fixing each.
 - `skyrim-modding-crash-analysis` — a game that crashed: its crash log read, the mod behind it, the fix.
+- `skyrim-modding-conflicts` — mods in conflict: what each loses, a patch that keeps both, or the order that picks one.

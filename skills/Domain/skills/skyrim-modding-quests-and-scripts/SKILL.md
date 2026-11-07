@@ -1,12 +1,12 @@
 ---
 name: skyrim-modding-quests-and-scripts
-description: Quests and Papyrus scripts in Skyrim SE - a quest that starts with the game, scripts on quests, items, magic effects and NPCs, their properties and the events the game sends them. Use when a mod should do something rather than only add a record - give the player items, spells or perks when a game starts, react to an item being equipped or an actor dying - or when a script compiles but does nothing in game.
+description: Quests, Papyrus scripts and dialogue in Skyrim SE - a quest that starts with the game, scripts on quests, items, magic effects and NPCs, their properties and the events the game sends them, and dialogue - a topic the player can ask an NPC and what the NPC answers. Use when a mod should do something rather than only add a record - give the player items, spells or perks when a game starts, react to an item being equipped or an actor dying, give an NPC a new line - or when a script compiles or a line builds but does nothing in game.
 ---
 
-# Quests and scripts
+# Quests, scripts and dialogue
 
 Read [`REFERENCE.md`](REFERENCE.md) for the quest's fields and flags, the events each kind of script is sent, the
-property kinds and the typical bugs. Fundamentals — projects, overrides, the build — are in `skyrim-modding-basics`.
+property kinds, dialogue's records and conditions, and the typical bugs. Fundamentals — projects, overrides, the build — are in `skyrim-modding-basics`.
 
 ## How a script runs
 
@@ -77,6 +77,83 @@ EndEvent
   it from starting again; `Stop()` ends it once its work is done.
 - Give it with the game's own functions: `AddItem`, `AddSpell`, `AddPerk` and `Debug.Notification` are in
   REFERENCE, *Functions*.
+
+## Give an NPC a new line the player can ask for
+
+Dialogue belongs to a quest: the game offers a topic only while its quest runs, to the NPCs its responses' conditions
+name. Four records, Hulda of Whiterun's Bannered Mare as the NPC — each file in the plugin folder:
+
+`Quests/HuldaRumorsQuest.yaml` — the quest, started with the game:
+
+```yaml
+EditorID: HuldaRumorsQuest
+Name:
+  TargetLanguage: English
+  Value: Hulda's Rumors
+Flags:
+- StartGameEnabled
+Priority: 50
+```
+
+`DialogBranches/HuldaRumorsBranch.yaml` — the branch the player starts the conversation in:
+
+```yaml
+EditorID: HuldaRumorsBranch
+Quest: HuldaRumorsQuest
+Category: Player
+Flags:
+- TopLevel
+StartingTopic: HuldaRumorsTopic
+```
+
+`DialogTopics/HuldaRumorsTopic/RecordData.yaml` — the topic: what the player says, its name. A topic is a folder:
+
+```yaml
+EditorID: HuldaRumorsTopic
+Name:
+  TargetLanguage: English
+  Value: Heard any rumors lately?
+Branch: HuldaRumorsBranch
+Quest: HuldaRumorsQuest
+```
+
+`DialogTopics/HuldaRumorsTopic/Responses/HuldaRumorsInfo.yaml` — what the NPC answers, and to whom it is given:
+
+```yaml
+EditorID: HuldaRumorsInfo
+Responses:
+- EmotionValue: 50
+  ResponseNumber: 1
+  Flags:
+  - UseEmotionAnimation
+  Text:
+    TargetLanguage: English
+    Value: They say a dragon was seen over Helgen. Strange times.
+Conditions:
+- MutagenObjectType: ConditionFloat
+  Data:
+    MutagenObjectType: GetIsIDConditionData
+    Object: Hulda
+  ComparisonValue: 1
+```
+
+- **Who says it** is the response's conditions: `GetIsIDConditionData` with the NPC's editor ID (`findRecords` with
+  `types: ["NPC_"]` finds it) gives the line to that NPC alone. A response with no condition is said by every NPC, and
+  the topic offered by every NPC — the build warns.
+- **A longer answer** is more items under `Responses:`, `ResponseNumber` 2, 3…: one is said after the other.
+- **More answers to choose from**, each for another NPC or another state, are more files in `Responses/`, each with its
+  conditions; the game says the first whose conditions hold.
+- **A greeting** — what an NPC says when the player walks up — is a response in a topic of no branch with `Category:
+  Misc` and `Subtype: Hello`: read the game's `readRecord {"record": "DialogueGenericHello"}` and write your topic as
+  it is, your response in it conditioned on the NPC.
+- **Read the game's dialogue** with `readRecord` of a topic: its answer lists every response — what is said, and
+  the conditions, as `GetIsID(Hulda) == 1`. readRecord of a response's formId shows its whole file.
+- `StartGameEnabled` starts the quest, and its dialogue, with the game and in a save that had no mod. The build
+  writes the SEQ file such a quest needs into the build (`Seq/<plugin>.seq`): the game offers a start-game-enabled
+  quest's dialogue only when that file names it, and deploy takes it into the mod.
+- The response's text is shown as a subtitle. It has no voice: the game shows a line without a voice file only for a
+  moment, so players of unvoiced dialogue install *Fuz Ro D-oh* (SKSE), which holds each line as long as it takes to
+  read — tell the user.
 
 ## Workflow
 

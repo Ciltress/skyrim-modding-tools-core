@@ -74,6 +74,7 @@ describe('the instructions', () => {
 
     it('send a new record to a vanilla one to follow, and keep the mod manager\'s tools for when the user asks', () => {
         expect(text).toContain('is a new file you write, following a vanilla record read with readRecord: copy its values instead of guessing.');
-        expect(text).toContain('- deployProject, installMod, disableMod, enableMod and editIni change the user\'s setup: only when asked.');
+        expect(text).toContain('- deployProject, installMod, disableMod, enableMod, movePlugin, setModPriority and editIni change the ' +
+            'user\'s setup: only when asked.');
     });
 });

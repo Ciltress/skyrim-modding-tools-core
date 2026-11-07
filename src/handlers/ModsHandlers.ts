@@ -226,6 +226,74 @@ export class ModsHandlers extends BaseHandler {
             },
             {
                 definition: {
+                    name: 'movePlugin',
+                    annotations: {
+                        title: 'Move plugin in the load order',
+                        readOnlyHint: false,
+                        destructiveHint: false,
+                        // A plugin where it was asked to be already is left there.
+                        idempotentHint: true,
+                        openWorldHint: false
+                    },
+                    description:
+                        'Move a plugin in the load order of the selected profile — only when the user said so: just `after` ' +
+                        'another, so its version of a record they both change is the game\'s, or just `before` one, so that ' +
+                        'one\'s is. Refused where the game would not load it so: before one of its masters or after a plugin ' +
+                        'that needs it, across the line between master-flagged and plain plugins, or among the game\'s own. ' +
+                        'Then the mod manager is told, as for installMod. findConflicts says which plugin loses what; a patch ' +
+                        '(addPatch with `merge`) keeps both plugins\' changes, where a move keeps one\'s.',
+                    inputSchema: {
+                        type: 'object',
+                        properties: {
+                            plugin: { type: 'string', description: 'The plugin to move, e.g. "BetterSwords.esp".' },
+                            after: { type: 'string', description: 'The plugin to load just after — the moved one wins over it.' },
+                            before: { type: 'string', description: 'The plugin to load just before — it wins over the moved one.' }
+                        },
+                        required: ['plugin']
+                    }
+                },
+                onFailure: 'Failed to move the plugin',
+                run: args => asRequestError(this.backend.movePlugin({
+                    plugin: requireString(args, 'plugin', 'Give the plugin\'s file name, e.g. "BetterSwords.esp".'),
+                    after: optionalString(args, 'after'),
+                    before: optionalString(args, 'before')
+                }))
+            },
+            {
+                definition: {
+                    name: 'setModPriority',
+                    annotations: {
+                        title: 'Set mod priority',
+                        readOnlyHint: false,
+                        destructiveHint: false,
+                        idempotentHint: true,
+                        openWorldHint: false
+                    },
+                    description:
+                        'Move a mod in the mod order of the selected profile — only when the user said so: just `after` another, ' +
+                        'so its loose files win over that one\'s (below it in Mod Organizer\'s list), or just `before` one, so ' +
+                        'that one\'s win. The mod order decides loose files only: files in archives (BSAs) follow the load ' +
+                        'order of their plugins, and a loose file beats every archive. Then the mod manager is told, as for ' +
+                        'installMod. findConflicts says which mod\'s files lose to which.',
+                    inputSchema: {
+                        type: 'object',
+                        properties: {
+                            mod: { type: 'string', description: 'The mod to move, as listMods shows it.' },
+                            after: { type: 'string', description: 'The mod to come just after — the moved mod\'s files win over its.' },
+                            before: { type: 'string', description: 'The mod to come just before — its files win over the moved mod\'s.' }
+                        },
+                        required: ['mod']
+                    }
+                },
+                onFailure: 'Failed to move the mod',
+                run: args => asRequestError(this.backend.setModPriority({
+                    mod: requireString(args, 'mod', 'Give the mod\'s name as listMods shows it.'),
+                    after: optionalString(args, 'after'),
+                    before: optionalString(args, 'before')
+                }))
+            },
+            {
+                definition: {
                     name: 'editIni',
                     annotations: {
                         title: 'Edit game INI',

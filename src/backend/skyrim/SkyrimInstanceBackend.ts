@@ -13,6 +13,9 @@ import {
 } from './installer.js';
 import type { Instance, ModEntry } from './modManager.js';
 import { ModError, findMod, listedMods, nexusRecord, ownerOf, pluginFiles } from './modList.js';
+import { findFileConflicts } from './fileConflicts.js';
+import { moveRefusal, type PluginKind, type Where } from './orderMoves.js';
+import { primaryPlugins } from './mo2.js';
 import { checkGameVersion, myGamesDir } from './gameVersion.js';
 import { Attributor, dataPath } from './crash/attribution.js';
 import {
@@ -36,6 +39,8 @@ import { NexusCatalogue, markDownloadInstalled, readDownloadMeta } from './nexus
 import type {
     AddPatchRequest, AddPatchResult, BuildResult, DeleteRecordRequest, DeleteRecordResult, DeployResult, DisableModRequest, DisableModResult,
     EditIniRequest, EditIniResult, EditRecordRequest, GameFile, EditRecordResult, EditInputRequest, EditInputResult, EnableModRequest, EnableModResult, InstallModQuestions, InstallModRequest, ReadCrashLogRequest,
+    ConflictReport, FindConflictsRequest, MergedChanges, RecordConflict, MovePluginRequest, MovePluginResult, SetModPriorityRequest,
+    SetModPriorityResult,
     InstallModResult, GameVersionCheck, ModList, ModListQuery, MoveRecordRequest, MoveRecordResult,
     NewProjectRequest, NexusAccount, NexusDownload, NexusMod, NexusSearchQuery, NexusSearchResult, ProjectFile, ProjectInfo,
     PullResult, ExportCellRequest, ExportCellResult, ImportCellRequest, ImportCellResult, RecordQuery, RecordRequest, RecordSearchResult, RecordVersion, RecordVersions, SkyrimBackend
@@ -58,7 +63,7 @@ interface UnknownModel {
 
 /** What the helper's addOverrides answers: files relative to the project's plugin folder. */
 interface CopiedRecords {
-    added: { formId: string; editorId: string | null; type: string; from: string; files: string[] }[];
+    added: { formId: string; editorId: string | null; type: string; from: string; files: string[]; merged?: MergedChanges }[];
     alreadyInProject: { formId: string; file: string }[];
 }
 
@@ -396,7 +401,8 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
             plugin,
             projectPluginDir: paths.plugin,
             records: request.records,
-            from: request.from
+            from: request.from,
+            ...(request.merge ? { merge: true } : {})
         }));
         // Full paths, and the text to edit: given paths relative to the plugin folder, models joined
         // them to the project folder; given no text, they spent a call reading it. The text stops
@@ -1206,6 +1212,104 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
         return buildCrashReport(chosen, CRASH_RULES, this.attributor(instance), mod => nexusRecord(path.join(instance.modsDir, mod))?.modId);
     }
 
+    async movePlugin(request: MovePluginRequest): Promise<MovePluginResult> {
+        const { modManager } = this.engine;
+        const instance = modManager.readInstance();
+        const [where, target] = placeOf(request, 'plugin');
+        const order = modManager.readLoadOrder(instance).map(plugin => plugin.name);
+        const primary = new Set(primaryPlugins(instance.gameDir).map(name => name.toLowerCase()));
+        const same = (a: string) => (b: string) => a.toLowerCase() === b.toLowerCase();
+        const placed = (name: string, note?: string): MovePluginResult => {
+            const now = modManager.readLoadOrder(instance).map(plugin => plugin.name);
+            const at = now.findIndex(same(name));
+            return {
+                plugin: now[at] ?? name, moved: false, position: at + 1, of: now.length,
+                ...(at > 0 ? { loadsAfter: now[at - 1] } : {}), ...(at >= 0 && at < now.length - 1 ? { loadsBefore: now[at + 1] } : {}),
+                ...(note ? { note } : {})
+            };
+        };
+        const plugin = order.find(same(request.plugin));
+        // After one of the game's own plugins, every other plugin loads already.
+        if (plugin && where === 'after' && primary.has(target.toLowerCase()) && !primary.has(plugin.toLowerCase()))
+            return placed(plugin, `${plugin} loads after the game's own plugins already, ${target} among them: nothing to move.`);
+        // Each plugin's masters and master flag, for the rules a move keeps.
+        const files = modManager.resolvePluginFiles(instance, modManager.readModList(instance));
+        const paths = order.map(name => files.get(name.toLowerCase())).filter((file): file is string => file !== undefined);
+        await this.engine.ensureFresh();
+        const read = paths.length === 0 ? { plugins: [] } : await this.engine.helper.call<{ plugins: { path: string; masters?: string[]; master?: boolean }[] }>(
+            'pluginHeaders', { paths }, BUILD_TIMEOUT_MS);
+        const kinds = new Map<string, PluginKind>(read.plugins.map(header => [path.basename(header.path).toLowerCase(), {
+            masters: header.masters ?? [], master: (header.master ?? false) || /\.(esm|esl)$/i.test(header.path)
+        }]));
+        const refusal = moveRefusal(order, request.plugin, where, target, kinds, primary);
+        if (refusal) throw new ModError(refusal);
+        const writeRefusal = await modManager.writeRefusal(instance, 'change');
+        if (writeRefusal) throw new ModError(writeRefusal);
+        const moved = modManager.movePlugin(instance, plugin!, where, order.find(same(target))!);
+        const notice = moved ? await modManager.afterDeploy(instance) : undefined;
+        return { ...placed(plugin!), moved, ...(notice ? { modManager: notice } : {}) };
+    }
+
+    async setModPriority(request: SetModPriorityRequest): Promise<SetModPriorityResult> {
+        const { modManager } = this.engine;
+        const instance = modManager.readInstance();
+        const [where, target] = placeOf(request, 'mod');
+        const mods = modManager.readModList(instance);
+        const entry = findMod(mods, request.mod, instance.profile);
+        const other = findMod(mods, target, instance.profile);
+        if (entry.name === other.name) throw new ModError(`${entry.name} is the mod to move: name another to move it ${where}.`);
+        for (const mod of [entry, other])
+            if (!mod.managed) throw new ModError(`'${mod.name}' is part of the game, which the mod manager lists but does not manage: its place is fixed.`);
+        const refusal = await modManager.writeRefusal(instance, 'change');
+        if (refusal) throw new ModError(refusal);
+        const moved = modManager.moveMod(instance, entry.name, where, other.name);
+        const notice = moved ? await modManager.afterDeploy(instance) : undefined;
+        // The list is the highest priority first: the mod above it in the list wins over it.
+        const now = modManager.readModList(instance).filter(mod => !/_separator$/i.test(mod.name));
+        const at = now.findIndex(mod => mod.name === entry.name);
+        return {
+            mod: entry.name, moved,
+            ...(at < now.length - 1 ? { winsOver: now[at + 1].name } : {}),
+            ...(at > 0 ? { losesTo: now[at - 1].name } : {}),
+            ...(notice ? { modManager: notice } : {})
+        };
+    }
+
+    async findConflicts(request: FindConflictsRequest): Promise<ConflictReport> {
+        await this.engine.ensureFresh();
+        const { modManager } = this.engine;
+        const instance = modManager.readInstance();
+        const mods = modManager.readModList(instance);
+        const limit = Math.min(200, Math.max(1, Math.floor(request.limit ?? 25)));
+        const mod = request.mod ? findMod(mods, request.mod, instance.profile) : undefined;
+        const report: Omit<ConflictReport, 'nextStep'> = {};
+
+        if (request.kind !== 'files') {
+            // A mod's record conflicts are its plugins'; a mod without one has none.
+            const plugins: (string | undefined)[] = mod ? pluginFiles(path.join(instance.modsDir, mod.name)) : [request.plugin];
+            const rows = new Map<string, RecordConflict>();
+            let total = 0;
+            let compared: string | undefined;
+            for (const plugin of plugins) {
+                const found = await this.engine.helper.call<{ total: number; records: RecordConflict[]; compared?: string }>('findConflicts', {
+                    ...(plugin ? { plugin } : {}), ...(request.record ? { record: request.record } : {}), limit
+                }, BUILD_TIMEOUT_MS * 4);
+                total += found.total;
+                compared ??= found.compared;
+                for (const row of found.records) if (rows.size < limit) rows.set(row.formId, row);
+            }
+            report.records = { total, records: [...rows.values()], ...(compared ? { compared } : {}) };
+        }
+        if (request.kind !== 'records' && !request.plugin && !request.record) {
+            const loadOrder = modManager.readLoadOrder(instance).filter(plugin => plugin.active).map(plugin => plugin.name);
+            report.files = await findFileConflicts(instance, mods, loadOrder, async lists => {
+                await this.engine.ensureFresh();
+                return this.engine.helper.call('archiveFiles', lists, BUILD_TIMEOUT_MS * 4);
+            }, { mod: mod?.name, limit });
+        }
+        return { ...report, nextStep: conflictsNextStep(report) };
+    }
+
     async findGameFiles(files: string[]): Promise<Record<string, GameFile>> {
         return Object.fromEntries(await this.attributor(this.engine.modManager.readInstance()).files(files));
     }
@@ -1419,6 +1523,40 @@ function needsMastersWarning(missing: NonNullable<DisableModResult['missingMaste
     const shown = plugins.length > 5 ? `${plugins.slice(0, 5).join(', ')} and ${plugins.length - 5} more` : plugins.join(', ');
     return `The game will not start while ${shown} ${plugins.length === 1 ? 'is' : 'are'} active without ${masters.join(', ')}: ` +
         `disable ${mods.length === 1 ? 'its mod' : 'their mods'} too (${mods.join(', ')}), or enable '${mod}' again in the mod manager.`;
+}
+
+/**
+ * What to do about the conflicts found: a merged patch for the records — each winning version with the other plugins' lost
+ * changes put back — and the mod order for the files, both on the user's word where they change the setup.
+ */
+function conflictsNextStep(report: Omit<ConflictReport, 'nextStep'>): string {
+    const steps: string[] = [];
+    const records = report.records?.records ?? [];
+    if (records.length > 0) {
+        const named = records.slice(0, 5).map(row => JSON.stringify(row.editorId ?? row.formId)).join(', ');
+        steps.push(`Each record conflict is settled by a patch that loads last and carries every plugin's changes: addPatch ` +
+            `{"project": "ConflictPatch", "records": [${named}], "merge": true} copies each winning version with the lost changes ` +
+            `put back, then buildProject. Where a record is marked clash, two plugins changed a field each its own way: the patch ` +
+            `keeps the later plugin's, its answer names the field, and the user says which is meant. Deploy the patch on the user's word.`);
+    }
+    if ((report.files?.pairs.length ?? 0) > 0) {
+        steps.push('Each file conflict is settled by the order: two mods\' loose files by the mod order, the mod lower in the ' +
+            'list winning; archives by the load order of their plugins; and a loose file beats every archive. Where the losing ' +
+            'mod\'s files are the ones meant, it goes below the other with setModPriority — only on the user\'s word; a mod meant to ' +
+            'replace another\'s files, as a texture or patch mod is, is in its place already.');
+    }
+    return steps.length > 0 ? steps.join(' ')
+        : 'No conflicts: no plugin lost a change to another, and no mod\'s file is hidden by another\'s.';
+}
+
+/** A move's place: just after or just before the plugin or mod named — one of the two. */
+function placeOf(request: { after?: string; before?: string }, kind: 'plugin' | 'mod'): [Where, string] {
+    const after = request.after?.trim();
+    const before = request.before?.trim();
+    if (after && before) throw new ModError(`Give \`after\` or \`before\`, not both: the ${kind} it moves next to.`);
+    if (after) return ['after', after];
+    if (before) return ['before', before];
+    throw new ModError(`Give \`after\` — the ${kind} it is to win over — or \`before\` — the ${kind} that is to win over it.`);
 }
 
 /** Whether a mod of this name is a project's, deployed by deployProject. */
