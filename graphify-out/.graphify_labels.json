@@ -23,7 +23,6 @@
   "36": "Cells and placed objects (36)",
   "37": "crashRules.ts (37)",
   "39": "Plugin helper (C# .NET process on Mutagen) (79)",
-  "40": "BaseHandler",
   "41": "Local-model eval (OpenClaw plugin's npm run eval, nine fixed tasks) (42)",
   "43": "SkyrimInstanceBackend.ts",
   "47": "SkyrimBackend Interface (51)",
@@ -37,14 +36,11 @@
   "63": "KindParts.Notes",
   "64": "Helper Build",
   "66": "Crash Rules: Memory and Files",
-  "67": "Plugin helper (C# .NET process on Mutagen)",
   "68": "NPCs Skill",
   "69": "crashRules.ts (69)",
   "73": "skyrim-modding-items-and-crafting SKILL.md",
   "74": "Perks — reference",
   "76": "TypeScript Config",
   "77": "Conflicts",
-  "84": "Func",
-  "85": "Helper Project Dependencies",
-  "90": "0012-archives-are-read-for-attribution.md"
+  "85": "Helper Project Dependencies"
 }
