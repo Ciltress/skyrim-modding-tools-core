@@ -247,16 +247,27 @@ export const BLENDER_MCP_NO_STDIN = fileURLToPath(new URL('../../../blender/blen
  * installed it, `%APPDATA%\uv\tools\blender-mcp` — running `script` (a copy of BLENDER_MCP_NO_STDIN) before the server's
  * arguments. Started as `blender-mcp.exe`, every `execute_blender_code_for_cli` timed out after 120 s: the Blender it runs
  * inherits the server's stdin, the client's pipe, and on Windows never ends (the eval's first Blender runs, 2026-11-06).
- * Undefined where nothing changes: not Windows, another server, one started so already, or no Python of uv's there.
+ * The server's own Python is the one beside its launcher — a virtual environment's Scripts folder — else uv's.
+ * Undefined where nothing changes: not Windows, another server, one started so already, one whose blmcp gives its
+ * Blender no stdin itself (Blender Lab's pull request #48, applied), or no Python to start it with.
  */
 export function blenderMcpLaunch(server: { command?: unknown; args?: unknown }, script: string,
-    options: { windows: boolean; appData?: string; exists?: (file: string) => boolean }): { command: string; args: string[] } | undefined {
-    if (!options.windows || !options.appData || typeof server.command !== 'string') return undefined;
+    options: { windows: boolean; appData?: string; exists?: (file: string) => boolean; read?: (file: string) => string | undefined }):
+    { command: string; args: string[] } | undefined {
+    if (!options.windows || typeof server.command !== 'string') return undefined;
     const args = Array.isArray(server.args) ? server.args.map(String) : [];
     if (args.some(arg => /blender-mcp-no-stdin\.py$/i.test(arg))) return undefined;
     if (!/(?:^|[\\/])blender-mcp(?:\.exe)?$/i.test(server.command)) return undefined;
-    const python = path.win32.join(options.appData, 'uv', 'tools', 'blender-mcp', 'Scripts', 'python.exe');
-    return (options.exists ?? fs.existsSync)(python) ? { command: python, args: [script, ...args] } : undefined;
+    const exists = options.exists ?? fs.existsSync;
+    const read = options.read ?? (file => { try { return fs.readFileSync(file, 'utf8'); } catch { return undefined; } });
+    const python = [
+        path.win32.isAbsolute(server.command) ? path.win32.join(path.win32.dirname(server.command), 'python.exe') : undefined,
+        options.appData ? path.win32.join(options.appData, 'uv', 'tools', 'blender-mcp', 'Scripts', 'python.exe') : undefined
+    ].find((file): file is string => file !== undefined && exists(file));
+    if (!python) return undefined;
+    const cli = path.win32.join(path.win32.dirname(python), '..', 'Lib', 'site-packages', 'blmcp', 'tools_helpers', 'blender_cli.py');
+    if (/\bstdin\s*=\s*subprocess\.DEVNULL/.test(read(cli) ?? '')) return undefined;
+    return { command: python, args: [script, ...args] };
 }
 
 /**

@@ -133,6 +133,20 @@ describe('blenderMcpLaunch', () => {
         expect(blenderMcpLaunch({ command: 'blender-mcp.exe' }, script, { windows: true, appData, exists: () => false })).toBeUndefined();
     });
 
+    it('takes the Python beside a virtual environment\'s launcher, and leaves a blmcp alone that gives Blender no stdin itself', () => {
+        const venv = 'C:\\Users\\me\\.local\\share\\blender-mcp-pr48';
+        const launcher = `${venv}\\Scripts\\blender-mcp.exe`;
+        const own = `${venv}\\Scripts\\python.exe`;
+        const cli = path.win32.join(venv, 'Lib', 'site-packages', 'blmcp', 'tools_helpers', 'blender_cli.py');
+        const there = (file: string) => file === own || file === python;
+        const unfixed = 'proc = subprocess.run(\n    [blender, "--background"],\n    capture_output=True,\n)';
+        const fixed = 'proc = subprocess.run(\n    [blender, "--background"],\n    stdin=subprocess.DEVNULL,\n    capture_output=True,\n)';
+        expect(blenderMcpLaunch({ command: launcher }, script, { windows: true, appData, exists: there, read: file => (file === cli ? unfixed : undefined) }))
+            .toEqual({ command: own, args: [script] });
+        expect(blenderMcpLaunch({ command: launcher }, script, { windows: true, appData, exists: there, read: file => (file === cli ? fixed : undefined) }))
+            .toBeUndefined();
+    });
+
     it('ships the script beside the cell bridge', () => {
         expect(fs.existsSync(BLENDER_MCP_NO_STDIN)).toBe(true);
         expect(path.dirname(BLENDER_MCP_NO_STDIN)).toBe(path.dirname(BLENDER_SCRIPT));
