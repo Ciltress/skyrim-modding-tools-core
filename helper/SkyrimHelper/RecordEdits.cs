@@ -595,6 +595,17 @@ public static class RecordEdits
         }
         if (steps.Count > 1 && steps[^1] is { Key: "Value", Index: null } && Translated(types[^2]) && value is JsonValue)
             return Set(text, steps.SkipLast(1).ToList(), types.SkipLast(1).ToList(), value, label, changes);
+        // A link whose comment names another record than its FormID does — `01E719:Skyrim.esm # WeapMaterialSilver`, the FormID
+        // WeapMaterialSteel's, written from memory beside the name meant — refused with the call that sends the records the
+        // comments name: asked for an Iron Sword that counts as silver, eval round 135's keyword #3 set its Keywords so, the
+        // comments left out as the next lines do, and built a steel sword its answer called silver.
+        if (context.Index is { } index && RecordLinks.LinkTarget(Items(types[^1]) ?? types[^1]) is { } takes
+            && Renamed(value, takes, index) is { } renamed)
+            throw new HelperException("badRequest", $"{label}: {string.Join("; ", renamed.Said)} — a FormID written from memory names " +
+                $"another record than the one meant. One call sends {(renamed.Said.Count == 1 ? "the record the comment names" : "the records the comments name")}, " +
+                "by editor ID, and builds: " +
+                ToolCalls.Edit(ToolCalls.ProjectOf(context.PluginDir), context.Relative, $"{{\"path\": \"{path}\", \"value\": {renamed.Value.ToJsonString()}}}", build: true) +
+                " — with the call's other changes beside it. Nothing was written.");
         // A link sent with the comment a file writes after it — `013F42:Skyrim.esm # RightHand` — is the link alone: written in
         // quotes, comment and all, it was no FormID, and the build refused EquipmentType and three keywords so (eval round 92's
         // sword #2).
@@ -680,6 +691,37 @@ public static class RecordEdits
             default:
                 return null;
         }
+    }
+
+    /// <summary>A link with one name in a comment after it: `01E719:Skyrim.esm # WeapMaterialSilver`.</summary>
+    private static readonly Regex CommentNamed = new(@"^[ \t]*(?<link>[^\s#'""]+)[ \t]+#[ \t]*(?<id>[A-Za-z0-9_]+)[ \t]*$");
+
+    /// <summary>
+    /// A link, or a list of links, sent with a comment that names another record of a kind the field takes than the link does:
+    /// each said — "01E719:Skyrim.esm is WeapMaterialSteel, and the comment after it names WeapMaterialSilver (10AA1A:Skyrim.esm)"
+    /// — and the value with the comments' records in their place by editor ID, the other links as sent, their comments left
+    /// out; null where each comment names its link's record, a record of a kind the field does not take, or none.
+    /// </summary>
+    private static (List<string> Said, JsonNode Value)? Renamed(JsonNode? value, Type takes, RecordIndex index)
+    {
+        var said = new List<string>();
+        JsonNode? One(JsonNode? node)
+        {
+            if (node is not JsonValue sent || !sent.TryGetValue<string>(out var text)) return node?.DeepClone();
+            if (CommentNamed.Match(text) is not { Success: true } m) return Uncommented(sent) ?? sent.DeepClone();
+            var link = m.Groups["link"].Value;
+            var id = m.Groups["id"].Value;
+            FormKey? linked = FormKey.TryFactory(link, out var key) ? key : index.ByEditorId.TryGetValue(link, out var byId) ? byId : null;
+            if (!index.ByEditorId.TryGetValue(id, out var meant) || meant == linked
+                || !index.ByFormKey.TryGetValue(meant, out var entry) || !takes.IsAssignableFrom(entry.GetterType))
+                return JsonValue.Create(link);
+            var what = linked is { } other && index.ByFormKey.TryGetValue(other, out var found)
+                ? $"is {found.EditorId ?? Session.FormKeyText(other)}" : "names no record of the load order";
+            said.Add($"{link} {what}, and the comment after it names {id} ({Session.FormKeyText(meant)})");
+            return JsonValue.Create(id);
+        }
+        var result = value is JsonArray items ? new JsonArray(items.Select(One).ToArray()) : One(value);
+        return said.Count > 0 && result is not null ? (said, result) : null;
     }
 
     /// <summary>

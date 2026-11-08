@@ -261,15 +261,28 @@ internal static class CellContents
                 ? $"cell {lies.X}, {lies.Y}, which no plugin of the load order has"
                 : $"{other.EditorID ?? Session.FormKeyText(other.FormKey)}, cell {lies.X}, {lies.Y}";
             var move = other is null || file is null ? "" :
-                $" Where it is meant to stand there, the calls are addPatch {{\"project\": {ToolCalls.Quoted(project)}, \"records\": [\"{Session.FormKeyText(other.FormKey)}\"]}}, " +
-                $"then moveRecord of {file} into that cell's Temporary/ folder, which addPatch's answer names.";
+                $"the calls are addPatch {{\"project\": {ToolCalls.Quoted(project)}, \"records\": [\"{Session.FormKeyText(other.FormKey)}\"]}}, " +
+                $"then moveRecord of {file} into that cell's Temporary/ folder, which addPatch's answer names, and a build";
+            // What the game places beside it there: placed a step from Riverwood's grindstone, which stands in Riverwood04, and
+            // filed under Riverwood, eval round 135's outdoor+detailed #2 made the call that set the chest at Riverwood's edge,
+            // away from the grindstone, and its check found it in the wrong cell.
+            var at2 = placement.Position;
+            var beside = other is null || move.Length == 0 ? null
+                : RowsOf(contexts(other.FormKey).Where(v => v.ModKey != ownPlugin).ToList(), index, contexts).Rows
+                    .Where(r => r.Base is { } entry && entry.EditorId?.Contains("Marker", StringComparison.OrdinalIgnoreCase) != true && r.Placement is not null)
+                    .Select(r => (Row: r, Distance: Math.Sqrt(Math.Pow(r.Placement!.Position.X - at2.X, 2) + Math.Pow(r.Placement.Position.Y - at2.Y, 2))))
+                    .Where(r => r.Distance <= FloorReach).OrderBy(r => r.Distance).Select(r => NameOf(r.Row.Base!)).FirstOrDefault();
+            var edge = file is not null
+                ? $"one call places it in {cellName}, at its edge nearest to where it is, and builds again: " +
+                  ToolCalls.Edit(project, file, $"{{\"path\": \"Placement.Position\", \"value\": \"{inside}\"}}", build: true)
+                : $"write its Position in {cellName}'s cell — {inside} is";
             yield return $"{file ?? name}: {name} is placed at {Triple(placement.Position)}, in {there} — not in {cellName}, cell {grid.X}, {grid.Y}, " +
                 $"between x {grid.X * CellSize} and {(grid.X + 1) * CellSize}, y {grid.Y * CellSize} and {(grid.Y + 1) * CellSize}: the game loads it with {cellName} " +
                 "while it stands elsewhere, on ground that is not loaded with it. " +
-                (file is not null
-                    ? $"One call places it in {cellName}, at its edge nearest to where it is, and builds again: " +
-                      ToolCalls.Edit(project, file, $"{{\"path\": \"Placement.Position\", \"value\": \"{inside}\"}}", build: true) + "."
-                    : $"Write its Position in {cellName}'s cell — {inside} is.") + move;
+                (beside is not null
+                    ? $"It stands beside {beside}, which the game places in {other!.EditorID ?? Session.FormKeyText(other.FormKey)}: where it is meant " +
+                      $"to stand there, {move}; only where it was meant in {cellName}, {edge}."
+                    : $"{char.ToUpperInvariant(edge[0])}{edge[1..]}." + (move.Length > 0 ? $" Where it is meant to stand there, {move}." : ""));
         }
     }
 

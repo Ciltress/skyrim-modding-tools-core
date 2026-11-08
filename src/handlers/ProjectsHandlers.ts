@@ -37,6 +37,39 @@ function enchantmentIn(text: string | undefined): { named: string; id: string } 
     return editorId ? { named: `${editorId} (${link})`, id: editorId } : { named: link, id: link };
 }
 
+/**
+ * A text sent for several copies, split into each one's fields: the lines below a line that names a copy — its editor ID or
+ * FormID, alone or as a heading (`## LItemBanditWeapon1H`, `LItemBanditWeapon1H:`, `*** Update File: …`), or its file — up to
+ * the next such line, as the copy's file → its text; a patch's `*** Begin Patch` and `*** End Patch` lines left out. Undefined
+ * where words stand before the first such line, or none names a copy: a text that is no copy's alone is written into none.
+ */
+export function inputSections(text: string, copies: { names: string[]; file?: string }[]): Map<string, string> | undefined {
+    const fence = /^\s*\*\*\*\s*(?:Begin|End)\s+Patch\s*$/i;
+    const named = (line: string): string | undefined => {
+        const bare = line.replace(/^\s*(?:\*\*\*\s*(?:Update|Add)\s+File:\s*|[#>*=-]+\s*)/i, '').replace(/\s*(?:#.*)?$/, '')
+            .replace(/[:*]+$/, '').trim().replace(/\\/g, '/').toLowerCase();
+        if (!bare) return undefined;
+        return copies.find(copy => copy.file && (copy.names.some(name => name.toLowerCase() === bare)
+            || bare.endsWith(copy.file.toLowerCase())))?.file;
+    };
+    const sections = new Map<string, string[]>();
+    let current: string[] | undefined;
+    for (const line of text.split(/\r?\n/)) {
+        if (fence.test(line)) continue;
+        const file = named(line);
+        if (file) {
+            current = sections.get(file) ?? [];
+            sections.set(file, current);
+        } else if (current) {
+            current.push(line);
+        } else if (line.trim()) {
+            return undefined;
+        }
+    }
+    const texts = new Map([...sections].map(([file, lines]) => [file, lines.join('\n').trim()] as const).filter(([, body]) => body.length > 0));
+    return texts.size > 0 ? texts : undefined;
+}
+
 export class ProjectsHandlers extends BaseHandler {
     protected toolSpecs(): ToolSpec[] {
         return [
@@ -243,15 +276,37 @@ export class ProjectsHandlers extends BaseHandler {
                                 `with your file tools — readRecord {"record": ${JSON.stringify(name)}} lists what the game places there, and the ` +
                                 'lines a new one is written with.';
                         }).join(' ');
+                        // A merge said first, by plugin: eval round 135's conflict #2 and #5 answered with the patch built and named
+                        // neither plugin the user asked to be told of — the answer's only word on the merge was `merged` beside the note.
+                        const mergedNote = result.added.filter(record => record.merged).map(record => {
+                            const merged = record.merged!;
+                            const name = record.editorId ?? record.formId;
+                            return `${name} is copied from ${record.from}, the version that wins, with what it lost of ` +
+                                `${merged.plugins.join(' and ')}'s changes put back: ${merged.changes.join('; ')}` +
+                                (merged.clashes?.length ? `; changed by two plugins each its own way: ${merged.clashes.join('; ')}` : '') +
+                                (merged.notWritten ? ` — but ${merged.notWritten}; write them with editRecord` : '') +
+                                `. Tell the user whose changes ${record.from} wins over — ${merged.plugins.join(', ')} — and that the patch keeps them.`;
+                        }).join(' ');
                         // Arguments addPatch has not, said so; a text among them — the fields to change in the copy, `Entries:` and the
                         // items to add — written into the one copy as editRecord writes it. Eval round 130's leveled runs sent the Silver
                         // Sword's entry as `input` four times, dropped without a word: each answer said "copied", and none passed.
-                        const known = new Set(['project', 'records', 'from', 'plugin']);
+                        // `merge` among them: eval round 135's conflict runs were told it was "no argument of addPatch's: nothing
+                        // of it was used" by the call that merged their patch.
+                        const known = new Set(['project', 'records', 'from', 'plugin', 'merge']);
                         const extra = Object.keys(args).filter(key => !known.has(key));
                         const textKey = extra.find(key => typeof args[key] === 'string' && /\S/.test(args[key] as string));
                         const copyFile = (first ? inPlugin(ownFile(first.files)?.path) : undefined) ?? shown?.relative;
                         let inputNote = '';
                         let inputWritten = false;
+                        // A text for each copy, under a line naming it: eval round 135's leveled #5 copied the bandits' three weapon
+                        // lists with the Silver Sword's entry for each so, written nowhere, then deleted the copies the build warned
+                        // changed nothing, twice, and answered with no plugin.
+                        const sections = textKey && result.added.length > 1
+                            ? inputSections(args[textKey] as string, result.added.map(added => ({
+                                names: [added.editorId, added.formId].filter((name): name is string => !!name),
+                                file: inPlugin(ownFile(added.files)?.path)
+                            })))
+                            : undefined;
                         if (textKey && records.length === 1 && copyFile) {
                             const written = await this.backend.editInput({ project: result.project.project, record: copyFile, input: args[textKey] as string })
                                 .catch((error: unknown) => error instanceof Error ? error : new Error(String(error)));
@@ -268,6 +323,20 @@ export class ProjectsHandlers extends BaseHandler {
                                     `writes it: ${written.changed.join('; ')}` +
                                     (written.kept.length > 0 ? `; left out, as the copy holds them already: ${written.kept.join('; ')}` : '') + '.';
                             }
+                        } else if (textKey && sections) {
+                            const said: string[] = [];
+                            const failed: string[] = [];
+                            for (const [file, input] of sections) {
+                                const written = await this.backend.editInput({ project: result.project.project, record: file, input })
+                                    .catch((error: unknown) => error instanceof Error ? error : new Error(String(error)));
+                                if (written instanceof Error) failed.push(`${file}: ${written.message}`);
+                                else if (written.unread) failed.push(`${file}: it reads as no fields of the copy`);
+                                else if (written.changed.length === 0) said.push(`${file}: nothing, the copy holds it already (${written.kept.join('; ')})`);
+                                else said.push(`${file}: ${written.changed.join('; ')}`);
+                            }
+                            inputWritten = said.length > 0 && failed.length === 0;
+                            inputNote = `\`${textKey}\` is no argument of addPatch's — what it held for each copy is written into it, as editRecord ` +
+                                `writes it: ${said.join('. ')}` + (failed.length > 0 ? `. Not written: ${failed.join('. ')} — change those copies with editRecord` : '') + '.';
                         } else if (textKey) {
                             inputNote = `\`${textKey}\` is no argument of addPatch's, and nothing of it is written: ` +
                                 `${records.length === 1 ? 'no copy was made to write it into' : `this call copied ${records.length} records`} — ` +
@@ -277,13 +346,15 @@ export class ProjectsHandlers extends BaseHandler {
                         const ignoredNote = ignored.length === 0 ? '' :
                             `${ignored.map(key => `\`${key}\``).join(', ')} ${ignored.length === 1 ? 'is no argument' : 'are no arguments'} of addPatch's: nothing of ${ignored.length === 1 ? 'it' : 'them'} was used.`;
                         return {
-                            note: [inputNote, ignoredNote, copiedNote, keptNote, remadeNote, cellNote].filter(Boolean).join(' '),
+                            note: [mergedNote, inputNote, ignoredNote, copiedNote, keptNote, remadeNote, cellNote].filter(Boolean).join(' '),
                             nextStep: inputWritten
-                                ? `The copy holds what \`${textKey}\` sent: run buildProject next — or change it further with editRecord, {"record": ` +
+                                ? `${sections ? 'The copies hold' : 'The copy holds'} what \`${textKey}\` sent: run buildProject next — or change ${sections ? 'one' : 'it'} further with editRecord, {"record": ` +
                                   `${JSON.stringify(copyFile)}, "set": [${field}], "build": true}.`
                                 : cells.length === result.added.length && cells.length > 0
                                 ? 'Write what is placed in the cell as a file of its own in its Temporary folder, at the full path the note names, ' +
                                   'then run buildProject.'
+                                : result.added.length > 0 && result.added.every(record => record.merged && !record.merged.notWritten)
+                                ? 'The patch holds what each plugin changed: run buildProject next, then tell the user whose changes it keeps, as the note says.'
                                 : `Change a copy's fields with editRecord, which needs no old text to match — {"record": ` +
                                   `"${example}", "set": [${field}]} — then run buildProject.`,
                             ...result
@@ -748,9 +819,15 @@ export class ProjectsHandlers extends BaseHandler {
         // its call here; one that stays says "answer with the build" and is left as it is, and one whose call takes the user's
         // values in place of its own is pointed to.
         const fixing = together ? undefined : warnings.find(warning => !/answer with the build/.test(warning) && firstCall(warning));
-        const call = fixing && !/in place of/.test(fixing) ? firstCall(fixing) : undefined;
+        // A call with a value to fill in — `"<the record to add>"` — is a shape, not one to send as it is.
+        const call = fixing && !/in place of/.test(fixing) && !/"<[^"]+>"/.test(firstCall(fixing) ?? '') ? firstCall(fixing) : undefined;
         const whose = fixing ? (one ? 'its' : `the warning on ${fixing.slice(0, Math.max(0, fixing.indexOf(': ')))}'s`) : '';
+        // A reference filed under one cell and standing in another, beside what the game places there: its fix is addPatch of
+        // that cell, then the move its warning names, then a build.
+        const moved = !!call && call.startsWith('addPatch') && /\bthen moveRecord of\b/.test(fixing ?? '');
         const next = !fixing ? ''
+            : moved ? ` Not done yet: ${whose} calls fix it — ${call}, then the moveRecord it names, then buildProject — send them next, ` +
+                'then answer with what that build says.'
             : call ? ` Not done yet: ${whose} call fixes it and builds again — ${call} — send it next, then answer with what that build says.`
                 : ` Not done yet: ${whose} call fixes it and builds again, with what the user asked for in place of what it says — send ` +
                     'it next, then answer with what that build says.';

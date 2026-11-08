@@ -18,7 +18,7 @@ import { HelperError, HelperMissingError, HelperUnavailableError, type HelperTra
 import { CompilerUnavailableError, ScriptCompileError } from '../backend/skyrim/externalTools';
 import { asRequestError } from '../handlers/args';
 import { createHandlers } from '../handlers/index';
-import { firstCall } from '../handlers/ProjectsHandlers';
+import { firstCall, inputSections } from '../handlers/ProjectsHandlers';
 import { CORE_PRODUCT } from '../testing/fakes';
 import { createBackend, stopBackends, type AppBackend } from '../backend/index';
 import { ToolError, ToolErrorCode } from '../handlers/errors';
@@ -1250,6 +1250,24 @@ describe('the Skyrim backend', () => {
         expect((await patch({ input: 'just words' })).note).toMatch(/^`input` is no argument of addPatch's, and nothing of it is written: it reads as no fields/);
         // An argument it has not that holds no text is named, and used for nothing.
         expect((await patch({ build: true })).note).toMatch(/^`build` is no argument of addPatch's: nothing of it was used\./);
+    });
+
+    it('splits a text sent for several copies at the lines naming them, and splits none that is no copy\'s alone', () => {
+        // Eval round 135's leveled #5: the Silver Sword's entry for each of the bandits' three weapon lists, under each one's name.
+        const copies = ['LItemBanditWeapon1H', 'LItemBanditWeapon2H', 'LItemBanditWeaponBow'].map((name, i) => ({
+            names: [name, `037C${i}B:Skyrim.esm`], file: `LeveledItems/${name} - 037C${i}B_Skyrim.esm.yaml`
+        }));
+        const entry = 'Entries:\n- Data: { Level: 1, Reference: SilverSword, Count: 1 }';
+        const sent = `*** Begin Patch\n${copies.map(c => `${c.names[0]}\n${entry}`).join('\n')}\n*** End Patch`;
+        expect(inputSections(sent, copies)).toEqual(new Map(copies.map(c => [c.file, entry])));
+        // As headings, a FormID, a file: each its own copy's; a copy named by none is left out.
+        const headed = `## LItemBanditWeapon1H:\n${entry}\n\n*** Update File: ${copies[2].file}\n${entry}`;
+        expect(inputSections(headed, copies)).toEqual(new Map([[copies[0].file, entry], [copies[2].file, entry]]));
+        expect(inputSections(`037C1B:Skyrim.esm\n${entry}`, copies)).toEqual(new Map([[copies[1].file, entry]]));
+        // Words before the first copy's name, or no name at all: no copy's alone.
+        expect(inputSections(`${entry}\nLItemBanditWeapon1H\n${entry}`, copies)).toBeUndefined();
+        expect(inputSections(entry, copies)).toBeUndefined();
+        expect(inputSections('LItemBanditWeapon1H\n', copies)).toBeUndefined();
     });
 
     it('orders a build\'s warnings: a recipe\'s copy of a game record first, its own warnings held back, one that stays last', () => {

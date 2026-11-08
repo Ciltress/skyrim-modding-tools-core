@@ -287,6 +287,40 @@ internal static class MadeNotes
     }
 
     /// <summary>
+    /// A copy of a game's record whose Keywords hold keywords the game's has not in place of some it has: what those gave it is
+    /// gone — a weapon without WeapTypeSword is no sword to the perks, one without VendorItemWeapon bought by no merchant. Asked
+    /// for an Iron Sword that counts as silver, 4 of eval round 135's 5 keyword runs set its Keywords whole, WeapMaterialIron
+    /// left out and a FormID from memory put in, each build a plain success. A copy that only lost keywords is a removal, and
+    /// not noted.
+    /// </summary>
+    public static List<string> KeywordsReplaced(ISkyrimModGetter mod, ILinkCache lookup, string pluginDir)
+    {
+        var files = EffectCasting.Files(pluginDir);
+        var notes = new List<string>();
+        foreach (var copy in mod.EnumerateMajorRecords().Where(r => r.FormKey.ModKey != mod.ModKey))
+        {
+            if (copy is not IKeywordedGetter<IKeywordGetter> keyworded || files.GetValueOrDefault(copy.FormKey) is not { } relative) continue;
+            if (!lookup.TryResolve(copy.FormKey, copy.Registration.GetterType, out var game) || game is not IKeywordedGetter<IKeywordGetter> theirs) continue;
+            var has = (keyworded.Keywords ?? []).Select(k => k.FormKey).ToList();
+            var was = (theirs.Keywords ?? []).Select(k => k.FormKey).ToList();
+            var lost = was.Where(k => !has.Contains(k)).Distinct().ToList();
+            var added = has.Where(k => !was.Contains(k)).Distinct().ToList();
+            if (lost.Count == 0 || added.Count == 0) continue;
+            string Named(Mutagen.Bethesda.Plugins.FormKey key) =>
+                lookup.TryResolve<IKeywordGetter>(key, out var keyword) && keyword.EditorID is { } id ? id : Session.FormKeyText(key);
+            var name = copy.EditorID ?? Session.FormKeyText(copy.FormKey);
+            var sets = string.Join(", ", lost.Select((k, i) => $"{{\"path\": \"Keywords[{has.Count + i}]\", \"value\": {ToolCalls.Quoted(Named(k))}}}"));
+            var them = lost.Count == 1 ? "it" : "them";
+            notes.Add($"{relative}: this copy of {name} has the keyword{(added.Count == 1 ? "" : "s")} {string.Join(", ", added.Select(Named))} in " +
+                $"place of {lost.Count} of the game's, {string.Join(", ", lost.Select(Named))}, and in game it loses what {(lost.Count == 1 ? "that one gives" : "those give")} — Keywords " +
+                $"set whole is the list as written; Keywords[{has.Count}] adds one after the last. Where the user asked to add, not to replace, " +
+                $"one call puts {them} back and builds again: {ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, sets, build: true)}; " +
+                $"only where the user asked for {them} gone is this right as it is");
+        }
+        return notes;
+    }
+
+    /// <summary>
     /// The leveled item list an NPC's kind takes an item of this one's kind from: of the lists its Items name — or its
     /// inventory template's — and those inside them, the one that hands out the most items, every one like this one: a
     /// weapon held as it is held (one-handed, two-handed, a bow, a staff), an armor worn in a slot it fills, else a record of its

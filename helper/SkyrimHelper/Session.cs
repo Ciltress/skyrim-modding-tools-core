@@ -875,7 +875,7 @@ public sealed class Session : IDisposable
             .Concat(RecordNeeds.ListNotes(mod, dir)).Concat(BookTexts.Notes(mod, lookup, Index, dir))
             .Concat(EffectCasting.GivenBackNotes(mod, lookup, Index, dir)).Concat(MadeNotes.Shouts(mod, lookup, Index, dir))
             .Concat(MadeNotes.CopiedNames(mod, Index, dir)).Concat(MadeNotes.RecipePerks(mod, lookup, dir)).Concat(MadeNotes.PlayerCopy(mod, dir))
-            .Concat(MadeNotes.NpcItems(mod, lookup, dir)).Concat(MadeNotes.ListEntries(mod, lookup, dir)).Concat(MadeNotes.Words(mod, dir))
+            .Concat(MadeNotes.NpcItems(mod, lookup, dir)).Concat(MadeNotes.ListEntries(mod, lookup, dir)).Concat(MadeNotes.KeywordsReplaced(mod, lookup, dir)).Concat(MadeNotes.Words(mod, dir))
             .Concat(MadeNotes.Unplayable(mod, dir))
             .Concat(CellContents.PlacedNotes(mod, Contexts, Index, dir)).Concat(DialogContents.Notes(mod, lookup, Index, dir)).Concat(GameSettings.Notes(mod, Index, dir))
             .Select(n => (JsonNode)n).ToArray();
@@ -923,7 +923,12 @@ public sealed class Session : IDisposable
             .Where(f => f.Identity.EditorId is not null && (f.Identity.FormKey is not { } key || key.ModKey == own))
             .Select(f => (f.Relative, f.Type, f.Text, Id: f.Identity.EditorId!)).ToList();
         var notes = new List<string>();
-        foreach (var (relative, type, text, key, unchanged) in await Copies(records, own))
+        var copies = await Copies(records, own);
+        // Every record of the project a copy that changes nothing: deleting them leaves no plugin. Told "a copy that is neither is
+        // deleted", eval round 135's leveled #5 deleted the bandits' three list copies it had made to add to, twice, and answered
+        // with no plugin.
+        var nothingElse = made.Count == 0 && copies.Count == records.Count && copies.All(c => c.Unchanged);
+        foreach (var (relative, type, text, key, unchanged) in copies)
         {
             if (!unchanged)
             {
@@ -946,10 +951,30 @@ public sealed class Session : IDisposable
                     ? said + $"{namer.Id} ({namer.Relative}), the project's new {namer.Type.Name}, names {id}: it has the load order's {id} " +
                         $"without this copy, which is left over — delete it, {ToolCalls.Delete(dir, relative, build: true)}; where {id} itself was to " +
                         "change, write the change into this file"
+                : nothingElse
+                    ? said + $"The project holds nothing but copies that change nothing, so what the mod is to change is still to be written: a " +
+                        $"change to {id} goes into this file — {ToolCalls.Edit(ToolCalls.ProjectOf(dir), relative, ChangeExample(type, text), build: true)}, " +
+                        "a list's item after the last added at the index of its count — and a new record like it is this file without its " +
+                        "FormKey line, with an EditorID of its own. Deleting the copies leaves no plugin to build"
                 : said + $"A new record like it is this file without its FormKey line, with an EditorID of its own; a change to {id} is " +
                     $"written into this file; a copy that is neither is deleted: {ToolCalls.Delete(dir, relative, build: true)}");
         }
         return notes;
+    }
+
+    /// <summary>
+    /// A change a copy of a record of this type takes, as editRecord's `set` item: a leveled list's entry or a keyword added after
+    /// its last — at the index of the items the copy has — or a field of its kind.
+    /// </summary>
+    private static string ChangeExample(Type type, string text)
+    {
+        int Items(string field) => Regex.Match(Lf(text), $@"^{field}:[ \t]*\n((?:[ \t]*-.*\n?|[ \t]+.*\n?)*)", RegexOptions.Multiline) is { Success: true } m
+            ? Regex.Matches(m.Groups[1].Value, @"^-", RegexOptions.Multiline).Count : 0;
+        if (typeof(ILeveledItemGetter).IsAssignableFrom(type) || typeof(ILeveledNpcGetter).IsAssignableFrom(type) || typeof(ILeveledSpellGetter).IsAssignableFrom(type))
+            return $"{{\"path\": \"Entries[{Items("Entries")}]\", \"value\": {{\"Data\": {{\"Level\": 1, \"Reference\": \"<the record to add>\", \"Count\": 1}}}}}}";
+        if (typeof(Mutagen.Bethesda.Plugins.Aspects.IKeywordedGetter).IsAssignableFrom(type))
+            return $"{{\"path\": \"Keywords[{Items("Keywords")}]\", \"value\": \"<the keyword to add>\"}}";
+        return "{\"path\": \"<the field>\", \"value\": \"<its new value>\"}";
     }
 
     /// <summary>
