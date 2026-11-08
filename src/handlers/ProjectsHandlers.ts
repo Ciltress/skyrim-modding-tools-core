@@ -157,7 +157,8 @@ export class ProjectsHandlers extends BaseHandler {
                                 description: 'Make a conflict patch: each copy from its winning version, with the changes other ' +
                                     'plugins made that it lost put back — their values, and the items they put into a list or took ' +
                                     'out (findConflicts names them). `added[].merged` says what was put back, and each field two ' +
-                                    'plugins changed each its own way, where the later one\'s is kept. Not with `from`.'
+                                    'plugins changed each its own way, where the later one\'s is kept. With `from`, only where it names ' +
+                                    'the version that wins.'
                             },
                             plugin: {
                                 type: 'string',

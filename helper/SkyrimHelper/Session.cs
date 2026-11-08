@@ -609,7 +609,10 @@ public sealed class Session : IDisposable
                 ["from"] = source.ModKey.FileName.String,
                 ["files"] = files
             };
-            if (merge && from is null && await MergeLost(formKey, source.ModKey, pluginName, projectDir, files) is { } merged) row["merged"] = merged;
+            // `from` naming the winning version is the merge's own source: sent so, eval round 135's conflict+detailed #3 got
+            // Dragonborn's version unmerged, the build warned the copy changed nothing, and the model deleted it.
+            if (merge && (from is null || source == contexts[0])
+                && await MergeLost(formKey, source.ModKey, pluginName, projectDir, files) is { } merged) row["merged"] = merged;
             added.Add(row);
         }
         return new JsonObject { ["added"] = added, ["alreadyInProject"] = already };
