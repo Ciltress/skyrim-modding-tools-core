@@ -8,7 +8,6 @@
   "12": "README.md (skyrim-modding-tools-core)",
   "13": "Session.FormKeyText",
   "14": "crashRules.ts (37)",
-  "25": "RecordEdits.Set",
   "27": "skills.ts",
   "29": "Crash Rule Tests",
   "30": "Local-model eval (OpenClaw plugin's npm run eval, nine fixed tasks) (25)",
@@ -18,12 +17,10 @@
   "44": "SkyrimBackend Interface (51) (44)",
   "47": "sksePlugins.ts",
   "48": "plugins.ts (48)",
-  "49": "skyrim_cell.py (90) (49)",
   "52": "graphics.ts",
   "54": "Server Guides and Product",
   "55": "Crash Rules: Memory and Files",
   "57": "NPCs Skill",
-  "58": "crashReport.test.ts",
   "62": "KindParts.Notes",
   "63": "Helper Build",
   "64": "KeptFromSource.Notes",
@@ -33,8 +30,6 @@
   "80": "crashLog.ts",
   "83": "TypeScript Config",
   "86": "Plugin helper (C# .NET process on Mutagen) (79)",
-  "94": "Conflicts (94)",
   "98": "Helper Project Dependencies",
-  "101": "SkyrimBackend Interface (51) (101)",
-  "103": "Helper Files and Imports (2) (103)"
+  "101": "SkyrimBackend Interface (51) (101)"
 }
