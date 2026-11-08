@@ -1,7 +1,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import { loadOrderFingerprint, profileUsesLocalInis, readInstance, readLoadOrder, readModList, resolveDataFiles, resolvePluginFiles, winePrefix, type IniPaths } from './mo2.js';
-import { activatePlugins, disableMod, enableMod, moveMod, movePlugin, refreshIfRunning, removePlugins, runningMo2 } from './mo2Profile.js';
+import { activatePlugins, disableMod, enableMod, moveMod, movePlugin, refreshIfRunning, removePlugins, runningMo2, setLoadOrder } from './mo2Profile.js';
 import type { Where } from './orderMoves.js';
 import type { Instance, ModDisabled, ModEnabled, ModEntry, ModManager, ModManagerNotice, PluginEntry, ProfileWrite } from './modManager.js';
 import type { Platform } from './platform.js';
@@ -108,6 +108,10 @@ export class Mo2Manager implements ModManager {
     disable(instance: Instance, mod: string, plugins: readonly string[]): ModDisabled {
         const modDisabled = disableMod(instance, mod);
         return { modDisabled, deactivated: removePlugins(instance, plugins) };
+    }
+
+    setLoadOrder(instance: Instance, order: readonly string[]): boolean {
+        return setLoadOrder(instance, order);
     }
 
     movePlugin(instance: Instance, plugin: string, where: Where, target: string): boolean {

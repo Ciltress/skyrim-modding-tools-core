@@ -126,8 +126,8 @@ src/
   handlers/RecordsHandlers.ts       findRecords, readRecord
   handlers/ProjectsHandlers.ts      newProject, addPatch, editRecord, buildProject, deployProject, pullProject
   handlers/NexusHandlers.ts         searchNexus, readNexusMod, downloadNexusFile
-  handlers/ModsHandlers.ts          listMods, checkGameVersion, installMod, disableMod, enableMod, movePlugin, setModPriority,
-                                    editIni
+  handlers/ModsHandlers.ts          listMods, checkGameVersion, installMod, disableMod, enableMod, movePlugin, sortPlugins,
+                                    setModPriority, editIni
   handlers/AnalysisHandlers.ts      readCrashLog, findConflicts
   handlers/DocsHandlers.ts, SkillsHandlers.ts   readServerGuide and readSkill
   types/tools.ts           ToolDefinition / ToolProperty / ToolAnnotations — the inputSchema contract

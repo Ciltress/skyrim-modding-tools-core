@@ -6,7 +6,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { parseIni, parseModList, primaryPlugins, readLoadOrder, resolveDataFiles, resolvePluginFiles } from './mo2.js';
 import { insertPlugin, sameMod, samePlugin } from './mo2Profile.js';
-import { moveLine, type Where } from './orderMoves.js';
+import { moveLine, reorderedLines, type Where } from './orderMoves.js';
 import {
     InstanceConfigError, type Instance, type ModEntry, type ModManager, type ModManagerNotice, type PluginEntry,
     type ModDisabled, type ModEnabled, type ProfileWrite
@@ -294,6 +294,21 @@ export class AmethystManager implements ModManager {
             const file = path.join(instance.profileDir, name);
             const lines = readTextLines(file, encoding);
             if (moveLine(lines, samePlugin(plugin), samePlugin(target), where)) {
+                writeTextLines(file, lines, encoding);
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
+    /** A whole load order written into plugins.txt and loadorder.txt, each file's lines kept (reorderedLines). */
+    setLoadOrder(instance: Instance, order: readonly string[]): boolean {
+        let changed = false;
+        for (const [name, encoding] of [['plugins.txt', 'latin1'], ['loadorder.txt', 'utf8']] as const) {
+            const file = path.join(instance.profileDir, name);
+            if (!fs.existsSync(file)) continue;
+            const lines = reorderedLines(readTextLines(file, encoding), order);
+            if (lines) {
                 writeTextLines(file, lines, encoding);
                 changed = true;
             }

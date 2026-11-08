@@ -1,6 +1,6 @@
 ---
 name: skyrim-modding-conflicts
-description: Mod conflicts in Skyrim SE - two plugins changing one record, or two mods giving the game one file, and which one the game takes. Found with findConflicts, settled by a merged patch (addPatch with merge) or, on the user's word, by the load order or the mod order (movePlugin, setModPriority). Use when the user asks whether mods conflict, why one mod's change is missing in game, why a texture or mesh is not the one installed, or asks for a conflict patch.
+description: Mod conflicts in Skyrim SE - two plugins changing one record, or two mods giving the game one file, and which one the game takes. Found with findConflicts, settled by a merged patch (addPatch with merge) or, on the user's word, by the load order or the mod order (movePlugin, setModPriority). Use when the user asks whether mods conflict, why one mod's change is missing in game, why a texture or mesh is not the one installed, or asks for a conflict patch — and to sort the load order with LOOT (sortPlugins), or hear what LOOT says of it.
 ---
 
 # Mods in conflict
@@ -34,6 +34,20 @@ loose files; files in archives (BSAs) follow the load order of their plugins, an
 4. **Order, on the user's yes:** `movePlugin {"plugin": "A.esp", "after": "B.esp"}` makes A's records win over B's;
    `setModPriority {"mod": "A", "after": "B"}` makes A's loose files win over B's. A move the game would not load
    — a plugin before its master, a plain plugin among masters — is refused with why. Done when the tool answered.
+
+## Sorting the whole load order with LOOT
+
+Asked to sort the load order, check it, or "run LOOT": `sortPlugins {}` — LOOT's own sorter and masterlist, nothing
+written. Done when you told the user:
+
+- **The moves:** `moves` names each plugin LOOT would move and where (`after` the plugin it then follows); none means
+  the order is LOOT's already.
+- **What LOOT says:** `messages`, warnings first — an outdated plugin, a missing patch, the game or SKSE out of date;
+  `missing`, files a plugin needs that the setup lacks; `incompatible`, pairs that must not load together; `dirty`,
+  plugins with identical-to-master records or deleted references, to clean with SSEEdit (LOOT lists some of the game's
+  own Creation Club plugins too).
+- **Writing it** is the user's call: `sortPlugins {"apply": true}` only when they say so. A sort does not settle a
+  conflict LOOT has no rule for: findConflicts and a patch do.
 
 ## Rules of thumb
 

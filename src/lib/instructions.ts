@@ -33,7 +33,7 @@ export function serverInstructions(target: string): string {
         'Before modding, read the skill skyrim-modding-basics, then the skill of the records you will write: ' +
         `${FAMILY_SKILLS.map(family => `${family.skill} (${family.covers})`).join(', ')} (readSkill). ` +
         'Mods that break after a game update: skyrim-modding-game-versions. A crash or failing scripts: skyrim-modding-crash-analysis. ' +
-        'Mods in conflict: skyrim-modding-conflicts.',
+        'Conflicts, load order: skyrim-modding-conflicts.',
         '',
         'How a mod is made:',
         '- A mod is a project. newProject creates it and answers the full path where each record file goes: write the ' +
@@ -47,13 +47,13 @@ export function serverInstructions(target: string): string {
         '- buildProject checks and builds. A refusal names the line to write: fix it, build again. `built_with_warnings`: ' +
         'the plugin is built — fix what each warning says and build again, that is part of the task. A warning stays ' +
         'only where the user asked for just what it names.',
-        '- deployProject, installMod, disableMod, enableMod, movePlugin, setModPriority and editIni change the user\'s setup: ' +
+        '- deployProject, installMod, disableMod, enableMod, movePlugin, setModPriority, editIni and sortPlugins\' apply change the user\'s setup: ' +
         'only when asked.',
         '- Answer short: what you made, each file you wrote by its full path, what is left to do.',
         '',
         'If you know the job but not the tool, call readServerGuide with `{"guide":"router"}`; with no ' +
-        'arguments it lists the guides. healthcheck reports the binding, the tool profile ' +
+        'arguments it lists the guides. healthcheck reports the binding, the profile ' +
         'and anything withheld. An answer marked status:"truncated" was too large: ' +
-        'narrow the request as its nextStep says instead of repeating it.'
+        'narrow the request as its nextStep says.'
     ].join('\n');
 }

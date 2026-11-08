@@ -14,7 +14,7 @@ import type {
     NexusSearchQuery, NexusSearchResult, ProjectInfo, PullResult, ExportCellRequest, ExportCellResult, ImportCellRequest, ImportCellResult, RecordQuery, RecordRequest, RecordSearchResult,
     RecordSummary, RecordVersions, ListedMod, ModList, ModListQuery, GameVersionCheck,
     CrashLogSection, CrashReport, EditIniRequest, EditIniResult, EnableModRequest, EnableModResult, ReadCrashLogRequest, GameFile,
-    ConflictReport, FindConflictsRequest, MovePluginRequest, MovePluginResult, SetModPriorityRequest, SetModPriorityResult,
+    ConflictReport, FindConflictsRequest, MovePluginRequest, MovePluginResult, SortPluginsRequest, SortPluginsResult, SetModPriorityRequest, SetModPriorityResult,
     PapyrusReport, PapyrusScriptEntries, ReadPapyrusLogRequest
 } from '../backend/skyrim/SkyrimBackend.js';
 import { CrashLogNotFoundError } from '../backend/skyrim/crash/crashLogFiles.js';
@@ -319,6 +319,15 @@ export class InMemorySkyrimBackend implements AppBackend {
         return { plugin: request.plugin, moved: true, position: 2, of: 3, loadsAfter: request.after ?? 'Skyrim.esm', loadsBefore: request.before ?? 'Last.esp' };
     }
 
+    /** LOOT's order: Late.esp after Early.esp, one move; written where `apply` asks. */
+    async sortPlugins(request: SortPluginsRequest): Promise<SortPluginsResult> {
+        return {
+            plugins: 3, changed: true, moves: [{ plugin: 'Late.esp', from: 2, to: 3, after: 'Early.esp' }], sorted: ['Skyrim.esm', 'Early.esp', 'Late.esp'],
+            messages: [{ level: 'warn', text: 'Late.esp needs a patch for Early.esp.', plugin: 'Late.esp' }], dirty: [], missing: [], incompatible: [],
+            loot: { libloot: '0.29.7', masterlist: 'cached' }, applied: request.apply === true
+        };
+    }
+
     /** The mod moved, where asked. */
     async setModPriority(request: SetModPriorityRequest): Promise<SetModPriorityResult> {
         return { mod: request.mod, moved: true, ...(request.after ? { winsOver: request.after } : {}), ...(request.before ? { losesTo: request.before } : {}) };
@@ -456,7 +465,7 @@ export interface FakeBackendOptions {
 
 const DOMAIN_METHODS = [
     'findRecords', 'readRecord', 'newProject', 'addPatch', 'editRecord', 'buildProject', 'deployProject', 'pullProject', 'exportCell', 'importCell',
-    'searchNexus', 'readNexusMod', 'downloadNexusFile', 'installMod', 'disableMod', 'enableMod', 'listMods', 'movePlugin', 'setModPriority', 'checkGameVersion',
+    'searchNexus', 'readNexusMod', 'downloadNexusFile', 'installMod', 'disableMod', 'enableMod', 'listMods', 'movePlugin', 'sortPlugins', 'setModPriority', 'checkGameVersion',
     'readCrashLog', 'readPapyrusLog', 'findConflicts', 'editIni', 'findGameFiles'
 ] as const;
 

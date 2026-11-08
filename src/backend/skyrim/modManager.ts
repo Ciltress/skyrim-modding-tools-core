@@ -144,6 +144,8 @@ export interface ModManager {
      * list writes them (orderMoves.ts). False where it stood there already.
      */
     movePlugin(instance: Instance, plugin: string, where: Where, target: string): boolean;
+    /** Writes a whole load order, as a sort gives it, into the manager's plugin list files. False where nothing changed. */
+    setLoadOrder(instance: Instance, order: readonly string[]): boolean;
     /** Moves a mod to just before or after another in the mod order — after wins: its files are the game's. False where it stood there. */
     moveMod(instance: Instance, mod: string, where: Where, target: string): boolean;
     /** Tells the mod manager what a deploy or an install changed, or says what the user has to do in it. */

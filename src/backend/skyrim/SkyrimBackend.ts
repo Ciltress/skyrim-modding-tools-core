@@ -1,3 +1,4 @@
+import type { LootSortReport } from './loot/lootSort.js';
 import type { Backend } from '../Backend.js';
 import type { InstallerQuestions } from './installer.js';
 import type { ModDisabled, ModEnabled, ModManagerName, ModManagerNotice, ProfileChange } from './modManager.js';
@@ -49,6 +50,7 @@ export interface SkyrimBackend extends Backend {
 
     /** A plugin moved to just before or after another in the load order: after wins, its records are the game's. */
     movePlugin(request: MovePluginRequest): Promise<MovePluginResult>;
+    sortPlugins(request: SortPluginsRequest): Promise<SortPluginsResult>;
 
     /** A mod moved to just before or after another in the mod order: after wins, its files are the game's. */
     setModPriority(request: SetModPriorityRequest): Promise<SetModPriorityResult>;
@@ -191,6 +193,20 @@ export interface MovePluginResult {
     of: number;
     loadsAfter?: string;
     loadsBefore?: string;
+    note?: string;
+    modManager?: ModManagerNotice;
+}
+
+export interface SortPluginsRequest {
+    /** Write LOOT's order into the profile — only on the user's word. Without it the sort is a preview. */
+    apply?: boolean;
+}
+
+/** LOOT's sort of the load order and what LOOT says of the setup (loot/lootSort.ts), and whether it was written. */
+export interface SortPluginsResult extends LootSortReport {
+    /** libloot's version, and whether the masterlist was fetched now or is an older one kept for offline. */
+    loot: { libloot: string; masterlist: 'fetched' | 'cached' | 'stale' };
+    applied: boolean;
     note?: string;
     modManager?: ModManagerNotice;
 }

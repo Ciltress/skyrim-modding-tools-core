@@ -87,6 +87,7 @@ Workflows and the error model: [`MCP-Tools.md`](./MCP-Tools.md). The vocabulary:
 | Find which mods conflict, and what each loses | `findConflicts` — the records whose winning version lost another plugin's changes, change by change, and the files two mods both give the game; of one `plugin`, `mod` or `record`, or the whole setup. Skill: `skyrim-modding-conflicts` |
 | Keep both plugins' changes to a record | `addPatch` with `merge: true` and the records findConflicts named, then `buildProject` — a patch that loads last |
 | Let one plugin's version of a record win, only when the user says so | `movePlugin` with `after` the plugin it is to win over (or `before` the one that is to win) |
+| Sort the whole load order with LOOT, and hear what LOOT says of the setup | `sortPlugins` — a preview of LOOT's moves, its messages, dirty plugins, missing files and incompatible pairs; `apply: true` writes LOOT's order, only when the user says so |
 | Let one mod's files win, only when the user says so | `setModPriority` with `after` the mod it is to win over — loose files only; archives follow the load order |
 
 ## Mods on Nexus Mods

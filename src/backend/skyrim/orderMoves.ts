@@ -85,3 +85,47 @@ export function moveRefusal(order: readonly string[], plugin: string, where: Whe
     }
     return undefined;
 }
+
+/**
+ * A plugin list file's lines in another load order: the lines naming a plugin of `order` take the places such lines had,
+ * in that order, each with its own active mark; comments, and plugins `order` does not name, stay where they were. Undefined
+ * where nothing would change. A sort writes the whole order so: moved one by one, a plugin to go just after one of the
+ * game's own would find no line to go after in plugins.txt, which lists none of them.
+ */
+export function reorderedLines(lines: readonly string[], order: readonly string[]): string[] | undefined {
+    const rank = new Map(order.map((name, at) => [name.toLowerCase(), at]));
+    const nameOf = (line: string) => line.replace(/^\*/, '').trim().toLowerCase();
+    const slots = lines.map((line, at) => (rank.has(nameOf(line)) && !line.startsWith('#') ? at : -1)).filter(at => at >= 0);
+    const placed = slots.map(at => lines[at]).sort((a, b) => rank.get(nameOf(a))! - rank.get(nameOf(b))!);
+    const result = [...lines];
+    slots.forEach((at, i) => { result[at] = placed[i]; });
+    return result.some((line, at) => line !== lines[at]) ? result : undefined;
+}
+
+/**
+ * The fewest plugins to move to turn one order into another — those outside the longest run both share in the same order —
+ * each with the plugin it then loads just after (or, first of all, before). Positions count from 1.
+ */
+export function orderChanges(current: readonly string[], sorted: readonly string[]): { plugin: string; from: number; to: number; after?: string; before?: string }[] {
+    const from = new Map(current.map((name, at) => [name.toLowerCase(), at]));
+    const seq = sorted.map(name => from.get(name.toLowerCase()) ?? -1);
+    // Longest increasing subsequence of the current positions, in sorted order: those keep their place.
+    const tails: number[] = [];
+    const prev = new Array<number>(seq.length).fill(-1);
+    for (let i = 0; i < seq.length; i++) {
+        if (seq[i] < 0) continue;
+        let lo = 0;
+        let hi = tails.length;
+        while (lo < hi) {
+            const mid = (lo + hi) >> 1;
+            if (seq[tails[mid]] < seq[i]) lo = mid + 1; else hi = mid;
+        }
+        if (lo > 0) prev[i] = tails[lo - 1];
+        tails[lo] = i;
+    }
+    const kept = new Set<number>();
+    for (let i = tails.length ? tails[tails.length - 1] : -1; i >= 0; i = prev[i]) kept.add(i);
+    return sorted.flatMap((plugin, i) => kept.has(i) ? [] : [{
+        plugin, from: (from.get(plugin.toLowerCase()) ?? -1) + 1, to: i + 1, ...(i > 0 ? { after: sorted[i - 1] } : { before: sorted[1] })
+    }]);
+}

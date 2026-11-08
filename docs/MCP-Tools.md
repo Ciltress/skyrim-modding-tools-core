@@ -143,7 +143,7 @@ arguments, see [`Tool-Reference.md`](./Tool-Reference.md), which is generated fr
 | --- | --- | --- |
 | `core` | 19 | look up, patch, edit, build, deploy; move or delete a record file; list the mods, check them against the game, install, disable or enable one; read a crash log or the Papyrus log; find mod conflicts — small local models |
 | `readonly` | 12 | looking records and mods up, on Nexus Mods too, and reading crash logs, the Papyrus log and conflicts only; the write tools are absent, not discouraged |
-| `all` | 29 | the default; right for clients that fetch tool schemas on demand. 28 without a Nexus API key, which `downloadNexusFile` needs; the only one with `exportCell` and `importCell`, a cell in Blender and back, and with `movePlugin` and `setModPriority`, the load order and the mod order changed |
+| `all` | 30 | the default; right for clients that fetch tool schemas on demand. 29 without a Nexus API key, which `downloadNexusFile` needs; the only one with `exportCell` and `importCell`, a cell in Blender and back, and with `movePlugin`, `sortPlugins` and `setModPriority`, the load order and the mod order changed |
 
 Counts include `healthcheck`, which every profile lists. `profiles.test.ts` holds them to `PROFILES`.
 
@@ -534,6 +534,22 @@ named under `clashes`). A file conflict, or a record one where only one side is 
 plugin before one of its masters or after a plugin that needs it, across the line between master-flagged and plain
 plugins (the game loads every master first, whatever the files say), or the game's own plugins, which load first in
 their own order.
+
+The whole load order is sorted by LOOT: `sortPlugins` runs libloot — LOOT's own library, 0.29.7 (ADR 0013) — with
+LOOT's masterlist and prelude (the `v0.29` branches, fetched once a day, the last ones kept for offline) and the user's
+own LOOT `userlist.yaml` where LOOT is installed, over the game's Data and the folders the mod manager lays over it:
+Mod Organizer's overwrite and enabled mods, the highest priority first, as the game sees them. A preview by default:
+`moves`, the fewest plugins to move with where each goes, `sorted` where LOOT's order differs, and what LOOT says of the
+setup — `messages` (warnings first), `dirty` (by the plugin's CRC: identical-to-master records and deleted references to
+clean with SSEEdit), `missing` (files a plugin needs), `incompatible` (pairs LOOT knows). `apply: true`, on the user's
+word, writes LOOT's order into plugins.txt and loadorder.txt, each file's lines and active marks kept, and tells the mod
+manager. The first sort downloads libloot's build for the system — Windows or Linux, x64 — from the core's release
+`libloot-0.29.7`, checked against the SHA-256 pinned in `loot/libloot.ts`. Since v0.2.69.
+
+```jsonc
+{"tool":"sortPlugins","args":{}}
+{"tool":"sortPlugins","args":{"apply":true}}
+```
 
 ### 4.10 Find out what you are connected to
 

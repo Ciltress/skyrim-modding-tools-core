@@ -6,6 +6,7 @@ import { ProjectError } from '../backend/skyrim/projects.js';
 import { ScriptCompileError } from '../backend/skyrim/externalTools.js';
 import { CrashLogNotFoundError } from '../backend/skyrim/crash/crashLogFiles.js';
 import { PapyrusLogNotFoundError } from '../backend/skyrim/papyrus/papyrusLogFiles.js';
+import { LootUnavailableError } from '../backend/skyrim/loot/libloot.js';
 import type { ToolDefinition, ToolProperty } from '../types/tools.js';
 import { ToolError, ToolErrorCode } from './errors.js';
 
@@ -183,7 +184,8 @@ export async function asRequestError<T>(work: Promise<T> | T): Promise<T> {
             error instanceof ModError ||
             error instanceof ScriptCompileError ||
             error instanceof CrashLogNotFoundError ||
-            error instanceof PapyrusLogNotFoundError;
+            error instanceof PapyrusLogNotFoundError ||
+            error instanceof LootUnavailableError;
         if (aboutTheRequest) throw new ToolError(ToolErrorCode.InvalidParams, (error as Error).message);
         throw error;
     }

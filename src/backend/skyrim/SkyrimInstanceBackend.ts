@@ -11,7 +11,9 @@ import {
     FomodInstaller, InstallError, checkRoot, defaultModName, findDataRoot, folderName, modMetaIni, placeInLoadOrder, plainLayout, pluginOrder,
     topFolders, type ArchiveListing, type InstallEnvironment, type PluginHeader, type UnpackedFile
 } from './installer.js';
-import type { Instance, ModEntry } from './modManager.js';
+import type { Instance, ModEntry, ModManagerNotice } from './modManager.js';
+import { LIBLOOT_VERSION } from './loot/libloot.js';
+import { lootSort, lootUserlist } from './loot/lootSort.js';
 import { ModError, findMod, listedMods, nexusRecord, ownerOf, pluginFiles } from './modList.js';
 import { findFileConflicts } from './fileConflicts.js';
 import { moveRefusal, type PluginKind, type Where } from './orderMoves.js';
@@ -45,7 +47,7 @@ import type {
     AddPatchRequest, AddPatchResult, BuildResult, DeleteRecordRequest, DeleteRecordResult, DeployResult, DisableModRequest, DisableModResult,
     EditIniRequest, EditIniResult, EditRecordRequest, GameFile, EditRecordResult, EditInputRequest, EditInputResult, EnableModRequest, EnableModResult, InstallModQuestions, InstallModRequest, ReadCrashLogRequest, ReadPapyrusLogRequest, PapyrusScriptEntries,
     ConflictReport, FindConflictsRequest, MergedChanges, RecordConflict, MovePluginRequest, MovePluginResult, SetModPriorityRequest,
-    SetModPriorityResult,
+    SetModPriorityResult, SortPluginsRequest, SortPluginsResult,
     InstallModResult, GameVersionCheck, ModList, ModListQuery, MoveRecordRequest, MoveRecordResult,
     NewProjectRequest, NexusAccount, NexusDownload, NexusMod, NexusSearchQuery, NexusSearchResult, ProjectFile, ProjectInfo,
     PullResult, ExportCellRequest, ExportCellResult, ImportCellRequest, ImportCellResult, RecordQuery, RecordRequest, RecordSearchResult, RecordVersion, RecordVersions, SkyrimBackend
@@ -1403,6 +1405,54 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
         const moved = modManager.movePlugin(instance, plugin!, where, order.find(same(target))!);
         const notice = moved ? await modManager.afterDeploy(instance) : undefined;
         return { ...placed(plugin!), moved, ...(notice ? { modManager: notice } : {}) };
+    }
+
+    /**
+     * LOOT's sort of the profile's load order (loot/lootSort.ts): libloot with LOOT's masterlist and the user's own LOOT
+     * rules, over the game's Data and the folders the mod manager lays over it — Mod Organizer's overwrite and enabled mods,
+     * the highest priority first. A preview unless `apply`: then the order is written as the manager writes a sort, and the
+     * manager told.
+     */
+    async sortPlugins(request: SortPluginsRequest): Promise<SortPluginsResult> {
+        const { modManager } = this.engine;
+        const instance = modManager.readInstance();
+        const mods = modManager.readModList(instance);
+        const order = modManager.readLoadOrder(instance).map(plugin => ({ name: plugin.name, active: plugin.active }));
+        const dataPaths = [instance.overwriteDir, ...mods.filter(mod => mod.enabled && mod.managed).map(mod => path.join(instance.modsDir, mod.name))]
+            .filter(dir => fs.existsSync(dir));
+        const libloot = await this.engine.loot.library(this.engine.lootCacheDir);
+        const lists = await this.engine.loot.masterlist(this.engine.lootCacheDir);
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'skyrim-loot-'));
+        try {
+            let sorted: ReturnType<typeof lootSort>;
+            try {
+                sorted = lootSort({
+                    libloot, gameDir: instance.gameDir, order, dataPaths, masterlist: lists.masterlist, prelude: lists.prelude,
+                    userlist: lootUserlist(this.engine.platform.name), workDir
+                });
+            } catch (error) {
+                // libloot's own refusal — a cycle among the rules, a plugin it cannot read — said as LOOT says it.
+                throw new ModError(`LOOT could not sort this load order: ${(error as Error).message}`);
+            }
+            const { report } = sorted;
+            let applied = false;
+            let notice: ModManagerNotice | undefined;
+            if (request.apply && report.changed) {
+                const refusal = await modManager.writeRefusal(instance, 'change');
+                if (refusal) throw new ModError(refusal);
+                applied = modManager.setLoadOrder(instance, sorted.sorted);
+                if (applied) notice = await modManager.afterDeploy(instance);
+            }
+            return {
+                ...report,
+                loot: { libloot: libloot.liblootVersion?.() ?? LIBLOOT_VERSION, masterlist: lists.fetched ? 'fetched' : lists.stale ? 'stale' : 'cached' },
+                applied,
+                ...(request.apply && !report.changed ? { note: 'LOOT\'s order is the profile\'s already: nothing was written.' } : {}),
+                ...(notice ? { modManager: notice } : {})
+            };
+        } finally {
+            fs.rmSync(workDir, { recursive: true, force: true });
+        }
     }
 
     async setModPriority(request: SetModPriorityRequest): Promise<SetModPriorityResult> {

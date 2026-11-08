@@ -141,6 +141,9 @@ The crash rules `readCrashLog` applies are Phostwood's [Skyrim Crash Log Analyze
 (GPL-3.0), rewritten in TypeScript. Thanks to Phostwood for years of collecting them. Details in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
+`sortPlugins` sorts with [LOOT](https://loot.github.io/)'s own library, [libloot](https://github.com/loot/libloot)
+(GPL-3.0-or-later), and LOOT's masterlist: thanks to WrinklyNinja and LOOT's contributors and masterlist maintainers.
+
 What `readPapyrusLog` makes of the Papyrus log's messages follows Arthmoor's
 [Interpreting Papyrus Log Errors](https://www.afkmods.com/index.php?/topic/4129-skyrim-interpreting-papyrus-log-errors/),
 DavidJCobb's [Papyrus logging](https://ck.uesp.net/wiki/User:DavidJCobb/Papyrus_logging) on the Creation Kit wiki, and the

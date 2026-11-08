@@ -27,3 +27,14 @@ The crash-log parser reads the format of alandtse's Crash Logger SSE (Nexus mod 
 https://github.com/alandtse/CrashLoggerSSE). The logs in `src/__tests__/fixtures/crash-logs/` are its output, from
 the author's own game, with the user and hardware names removed (scripts/scrub-crash-log.mjs); the one named
 `synthetic-…` was written by hand in its 1.27 format.
+
+## libloot
+
+`sortPlugins` sorts with libloot, LOOT's library, through its Node.js wrapper libloot-nodejs, version 0.29.7, unmodified:
+built from its source (`nodejs/`, `npm run build`) for 64-bit Windows and Linux and published as the assets of this
+repository's release `libloot-0.29.7`, which the core downloads when it first sorts (docs/adr/0013). The masterlist and
+prelude it loads are LOOT's, fetched from their repositories when a sort runs. No file of either is included here.
+
+- Source: https://github.com/loot/libloot (tag 0.29.7); masterlist https://github.com/loot/skyrimse, prelude https://github.com/loot/prelude
+- Authors: Oliver Hamlet (WrinklyNinja) and LOOT's contributors
+- License: GNU General Public License v3.0 or later (libloot); the masterlist and prelude are CC0 1.0 Universal

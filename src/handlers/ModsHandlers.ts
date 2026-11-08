@@ -261,6 +261,51 @@ export class ModsHandlers extends BaseHandler {
             },
             {
                 definition: {
+                    name: 'sortPlugins',
+                    annotations: {
+                        title: 'Sort the load order with LOOT',
+                        readOnlyHint: false,
+                        destructiveHint: false,
+                        // Sorted once, LOOT's order is the profile's: a second apply writes nothing.
+                        idempotentHint: true,
+                        openWorldHint: true
+                    },
+                    description:
+                        'Sort the load order of the selected profile with LOOT — its library, libloot, LOOT\'s masterlist and the ' +
+                        'user\'s own LOOT rules — and say what LOOT says of the setup: its messages, dirty plugins to clean, files a ' +
+                        'plugin needs that are missing, plugins it knows as incompatible. A preview: `moves` names each plugin LOOT ' +
+                        'would move and where, nothing written. `apply: true` writes LOOT\'s order — only when the user said so — and ' +
+                        'tells the mod manager, as movePlugin does. The first sort downloads LOOT\'s library and masterlist.',
+                    inputSchema: {
+                        type: 'object',
+                        properties: {
+                            apply: { type: 'boolean', description: 'Write LOOT\'s order into the profile. Only on the user\'s word; leave out for a preview.' }
+                        }
+                    }
+                },
+                onFailure: 'Failed to sort the load order',
+                run: async args => {
+                    const result = await asRequestError(this.backend.sortPlugins({ apply: optionalBoolean(args, 'apply') }));
+                    const said = [
+                        result.dirty.length ? `${result.dirty.length} dirty plugin(s) to clean with ${result.dirty[0].utility}` : '',
+                        result.missing.length ? `${result.missing.length} missing file(s) a plugin needs` : '',
+                        result.incompatible.length ? `${result.incompatible.length} incompatible pair(s)` : '',
+                        result.messages.some(m => m.level !== 'info') ? 'LOOT\'s warnings in `messages`' : ''
+                    ].filter(Boolean).join(', ');
+                    const order = result.applied
+                        ? `LOOT's order is written: ${result.moves.length} plugin(s) moved.`
+                        : !result.changed
+                            ? 'LOOT\'s order is the profile\'s already: nothing to move.'
+                            : `A preview: LOOT would move ${result.moves.length} plugin(s), as \`moves\` says; nothing was written. ` +
+                              'sortPlugins with "apply": true writes LOOT\'s order — only on the user\'s word.';
+                    return {
+                        ...result,
+                        nextStep: `${order}${said ? ` Tell the user too: ${said}.` : ''} Change nothing else unless the user asks.`
+                    };
+                }
+            },
+            {
+                definition: {
                     name: 'setModPriority',
                     annotations: {
                         title: 'Set mod priority',

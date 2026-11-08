@@ -1,3 +1,4 @@
+import { loadLibloot, lootCacheDir, masterlistFiles, type LiblootModule } from './loot/libloot.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { HelperTransport } from './helperClient.js';
@@ -23,6 +24,16 @@ export interface EngineOptions {
     papyrusLogDir?: string;
     /** SKYRIM_BLENDER: the Blender exportCell saves a cell's .blend with; undefined means one found where installers put it. */
     blender?: string;
+    /** Where LOOT's library and masterlist are kept; the system's cache folder unless a test gives another. */
+    lootCacheDir?: string;
+    /** LOOT's library and masterlist as sortPlugins gets them: downloaded and cached (loot/libloot.ts) unless a test gives its own. */
+    loot?: LootSource;
+}
+
+/** Where sortPlugins gets LOOT's library and its masterlist. */
+export interface LootSource {
+    library(cacheDir: string): Promise<LiblootModule>;
+    masterlist(cacheDir: string): Promise<{ masterlist: string; prelude: string; fetched?: true; stale?: true }>;
 }
 
 /**
@@ -55,6 +66,8 @@ export class SkyrimEngine {
     readonly crashLogDir?: string;
     readonly papyrusLogDir?: string;
     readonly blender?: string;
+    readonly lootCacheDir: string;
+    readonly loot: LootSource;
     private readonly creationKitOverride?: string;
 
     /**
@@ -74,6 +87,8 @@ export class SkyrimEngine {
         this.crashLogDir = options.crashLogDir;
         this.papyrusLogDir = options.papyrusLogDir;
         this.blender = options.blender;
+        this.lootCacheDir = options.lootCacheDir ?? lootCacheDir();
+        this.loot = options.loot ?? { library: loadLibloot, masterlist: dir => masterlistFiles(dir) };
     }
 
     get creationKitDir(): string {

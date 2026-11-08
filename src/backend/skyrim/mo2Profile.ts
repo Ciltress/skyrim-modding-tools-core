@@ -4,7 +4,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { canonical, type IniPaths } from './mo2.js';
 import type { Instance } from './modManager.js';
-import { moveLine, type Where } from './orderMoves.js';
+import { moveLine, reorderedLines, type Where } from './orderMoves.js';
 import type { Platform } from './platform.js';
 
 const run = promisify(execFile);
@@ -102,6 +102,21 @@ export function movePlugin(instance: Instance, plugin: string, where: Where, tar
         const file = path.join(instance.profileDir, name);
         const lines = readLines(file, encoding);
         if (moveLine(lines, samePlugin(plugin), samePlugin(target), where)) {
+            writeLines(file, lines, encoding);
+            changed = true;
+        }
+    }
+    return changed;
+}
+
+/** Writes a whole load order into plugins.txt and loadorder.txt, each file's lines kept (reorderedLines). True when either changed. */
+export function setLoadOrder(instance: Instance, order: readonly string[]): boolean {
+    let changed = false;
+    for (const [name, encoding] of [['plugins.txt', 'latin1'], ['loadorder.txt', 'utf8']] as const) {
+        const file = path.join(instance.profileDir, name);
+        if (!fs.existsSync(file)) continue;
+        const lines = reorderedLines(readLines(file, encoding), order);
+        if (lines) {
             writeLines(file, lines, encoding);
             changed = true;
         }
