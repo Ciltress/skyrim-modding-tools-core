@@ -27,7 +27,7 @@ const handlersFrom = (stubs: Stubs) => createHandlers(stubs.backend, CORE_PRODUC
  * The arguments whose values the handler checks against a list the schema leaves out — readCrashLog's section and findConflicts' kind, as a
  * client turns a null into "" against an enum — with one of those values.
  */
-const LISTED_VALUES: Record<string, string> = { section: 'callStack', kind: 'records' };
+const LISTED_VALUES: Record<string, string> = { section: 'callStack', kind: 'records', at: '17400, -47600' };
 
 /** A plausible value for one declared argument, derived from its schema. */
 function sampleValue(name: string, property: ToolProperty): any {

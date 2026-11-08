@@ -143,6 +143,19 @@ placed as any reference, its base a vanilla door (`findRecords` with `types: ["D
 | the level of a cell's enemies and loot | `EncounterZone` in `EncounterZones/` | `MinLevel`, `MaxLevel` (0: none), `Location`, `Flags` (`NeverResets`) | a cell's `EncounterZone` — a game cell's through its copy (addPatch) |
 | weather or sound over an area outdoors | `Region` in `Regions/` | `Worldspace`, `RegionAreas` (the area's points), its weather data naming `Weather` records with a chance | the exterior cells the area covers |
 
+## Change the ground outdoors
+
+A plot flattened for a house, a hill raised, a ditch dug: `editTerrain` with the centre `at` ("x, y" in world units,
+as readRecord's positions), a `radius` and an `action` — `flatten` (to the ground's height at the centre, or `height`),
+`raise` or `lower` by an `amount`, `smooth`. It changes every cell the circle touches, blending into the ground around
+over `falloff`, and writes each cell's copy with its landscape into the project; then `buildProject`. Done when the build
+answers `success` and you told the user what the answer names:
+
+- **`gameReferences`** — the game's trees, rocks and buildings the ground moved under: they float or sink now. Keep the
+  edit where none stand, or move them (a reference's copy, as above).
+- **`navmesh`** — NPCs walk the cell's old navmesh until the Creation Kit regenerates it; small changes are fine.
+- Distant terrain (LOD) keeps the old shape until xLODGen runs.
+
 ## Arrange a cell in Blender
 
 To move, turn, copy or remove what stands in a cell by eye, the cell goes to Blender and back — Blender with the

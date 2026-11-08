@@ -2,7 +2,7 @@ import path from 'node:path';
 import { BaseHandler } from './BaseHandler.js';
 import type { ToolSpec } from './BaseHandler.js';
 import type { BuildResult, ProjectFile } from '../backend/index.js';
-import { asRequestError, optionalBoolean, optionalFieldValues, optionalString, optionalStringList, recordRef, requireString } from './args.js';
+import { asRequestError, optionalBoolean, optionalChoice, optionalFieldValues, optionalNumber, optionalString, optionalStringList, recordRef, requireString } from './args.js';
 import { ToolError, ToolErrorCode } from './errors.js';
 import { FAMILY_SKILLS } from '../lib/skills.js';
 
@@ -580,6 +580,69 @@ export class ProjectsHandlers extends BaseHandler {
                     return {
                         nextStep: nextStep?.replace(/^Built\./, 'Deleted and built: the plugin is without that record.') ?? '',
                         ...rest, deleted: result.deleted
+                    };
+                }
+            },
+            {
+                definition: {
+                    name: 'editTerrain',
+                    annotations: {
+                        title: 'Change the ground outdoors',
+                        readOnlyHint: false,
+                        destructiveHint: false,
+                        // A raise twice raises twice.
+                        idempotentHint: false,
+                        openWorldHint: false
+                    },
+                    description:
+                        'Change the ground of a worldspace in a circle: `flatten` it to a height (a plot for a house, a road), `raise` ' +
+                        'or `lower` it by an `amount`, or `smooth` it — across every exterior cell it touches, blended into the ' +
+                        'ground around over `falloff`. The project gets a copy of each cell with its landscape, heights and normals ' +
+                        'written anew, the edge two cells share kept the same; a second edit changes the copy further. Answers each ' +
+                        'cell changed and the game\'s trees, rocks and buildings there whose ground moved: they float or sink now. ' +
+                        'Positions are world units, as readRecord gives them; a cell is 4096 wide. Then buildProject.',
+                    inputSchema: {
+                        type: 'object',
+                        properties: {
+                            project: PROJECT,
+                            at: { type: 'string', description: 'The centre, "x, y" in world units — e.g. "17400, -47600"; a "x, y, z" position works too.' },
+                            radius: { type: 'number', description: 'Changed fully within this many units of the centre, e.g. 400.' },
+                            falloff: { type: 'number', description: 'Blended into the ground over this far beyond the radius; half the radius unless given.' },
+                            action: { type: 'string', enum: ['flatten', 'raise', 'lower', 'smooth'], description: 'What to do with the ground in the circle.' },
+                            height: { type: 'number', description: 'flatten: the height to flatten to; the ground\'s at the centre unless given.' },
+                            amount: { type: 'number', description: 'raise and lower: by how many units, e.g. 200.' },
+                            worldspace: { type: 'string', description: 'The worldspace by editor ID; Tamriel, Skyrim\'s, unless given.' }
+                        },
+                        required: ['project', 'at', 'radius', 'action']
+                    }
+                },
+                onFailure: 'Failed to change the ground',
+                run: async args => {
+                    const at = /^\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)/.exec(String(args?.at ?? ''));
+                    if (!at) throw new ToolError(ToolErrorCode.InvalidParams, '\'at\' is the centre as "x, y" in world units — e.g. "17400, -47600".');
+                    const radius = optionalNumber(args, 'radius');
+                    if (radius === undefined || radius <= 0) throw new ToolError(ToolErrorCode.InvalidParams, '\'radius\' is a number of units above 0, e.g. 400.');
+                    const action = optionalChoice(args, 'action', ['flatten', 'raise', 'lower', 'smooth'] as const);
+                    if (!action) throw new ToolError(ToolErrorCode.InvalidParams, '\'action\' is flatten, raise, lower or smooth.');
+                    const amount = optionalNumber(args, 'amount');
+                    if ((action === 'raise' || action === 'lower') && amount === undefined)
+                        throw new ToolError(ToolErrorCode.InvalidParams, `'amount' is how many units to ${action} the ground by, e.g. 200.`);
+                    const result = await asRequestError(this.backend.editTerrain({
+                        project: requireString(args, 'project'), x: Number(at[1]), y: Number(at[2]), radius, action,
+                        falloff: optionalNumber(args, 'falloff'), height: optionalNumber(args, 'height'), amount,
+                        worldspace: optionalString(args, 'worldspace')
+                    }));
+                    const moved = result.gameReferences.length
+                        ? ` The ground moved under ${result.gameReferences.length} of the game's references — ${result.gameReferences.slice(0, 3)
+                            .map(r => `${r.base} at ${r.position}, ${r.groundMoved > 0 ? 'now under' : 'now above'} the ground by ${Math.abs(r.groundMoved)}`).join('; ')}` +
+                          ': tell the user, or move them with the cell\'s references (skyrim-modding-world).'
+                        : '';
+                    const navmesh = result.cells.some(c => c.navmesh)
+                        ? ' NPCs walk on the cells\' navmesh, which the ground no longer fits where it moved much: the Creation Kit regenerates it.' : '';
+                    return {
+                        ...result,
+                        nextStep: `The ground of ${result.cells.length} cell(s) is changed in the project: run buildProject next.${moved}${navmesh} ` +
+                            'Distant terrain (LOD) still shows the old ground until xLODGen is run.'
                     };
                 }
             },

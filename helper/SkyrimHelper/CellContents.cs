@@ -380,7 +380,7 @@ internal static class CellContents
     }
 
     /// <summary>The cell of a worldspace at a grid, from the worldspace's versions, winning first.</summary>
-    private static ICellGetter? CellAt(IEnumerable<IModContext<ISkyrimMod, ISkyrimModGetter, IMajorRecord, IMajorRecordGetter>> worldspaces, P2Int grid)
+    internal static ICellGetter? CellAt(IEnumerable<IModContext<ISkyrimMod, ISkyrimModGetter, IMajorRecord, IMajorRecordGetter>> worldspaces, P2Int grid)
     {
         foreach (var context in worldspaces)
             if (context.Record is IWorldspaceGetter world)

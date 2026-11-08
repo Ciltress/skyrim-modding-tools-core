@@ -47,7 +47,7 @@ import type {
     AddPatchRequest, AddPatchResult, BuildResult, DeleteRecordRequest, DeleteRecordResult, DeployResult, DisableModRequest, DisableModResult,
     EditIniRequest, EditIniResult, EditRecordRequest, GameFile, EditRecordResult, EditInputRequest, EditInputResult, EnableModRequest, EnableModResult, InstallModQuestions, InstallModRequest, ReadCrashLogRequest, ReadPapyrusLogRequest, PapyrusScriptEntries,
     ConflictReport, FindConflictsRequest, MergedChanges, RecordConflict, MovePluginRequest, MovePluginResult, SetModPriorityRequest,
-    SetModPriorityResult, SortPluginsRequest, SortPluginsResult,
+    SetModPriorityResult, SortPluginsRequest, SortPluginsResult, EditTerrainRequest, EditTerrainResult,
     InstallModResult, GameVersionCheck, ModList, ModListQuery, MoveRecordRequest, MoveRecordResult,
     NewProjectRequest, NexusAccount, NexusDownload, NexusMod, NexusSearchQuery, NexusSearchResult, ProjectFile, ProjectInfo,
     PullResult, ExportCellRequest, ExportCellResult, ImportCellRequest, ImportCellResult, RecordQuery, RecordRequest, RecordSearchResult, RecordVersion, RecordVersions, SkyrimBackend
@@ -1453,6 +1453,24 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
         } finally {
             fs.rmSync(workDir, { recursive: true, force: true });
         }
+    }
+
+    /**
+     * The ground of a worldspace changed in a circle (helper Terrain.cs): the project's copies of the cells it touches,
+     * each with its Landscape, their heights and normals written anew. The build writes the plugin from them as from any
+     * record file.
+     */
+    async editTerrain(request: EditTerrainRequest): Promise<EditTerrainResult> {
+        await this.engine.ensureFresh();
+        const paths = projectPaths(this.engine.projectsDir, request.project);
+        const { plugin } = readProjectHeader(paths);
+        return this.engine.helper.call<EditTerrainResult>('editTerrain', {
+            plugin, projectPluginDir: paths.plugin, x: request.x, y: request.y, radius: request.radius, action: request.action,
+            ...(request.worldspace ? { worldspace: request.worldspace } : {}),
+            ...(request.falloff !== undefined ? { falloff: request.falloff } : {}),
+            ...(request.height !== undefined ? { height: request.height } : {}),
+            ...(request.amount !== undefined ? { amount: request.amount } : {})
+        }, BUILD_TIMEOUT_MS);
     }
 
     async setModPriority(request: SetModPriorityRequest): Promise<SetModPriorityResult> {

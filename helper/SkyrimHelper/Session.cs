@@ -58,6 +58,7 @@ public sealed class Session : IDisposable
         "addOverrides" => await AddOverrides(p),
         "build" => await Build(p),
         "serialize" => await Serialize(p),
+        "editTerrain" => await EditTerrain(p),
         "readArchive" => Archives.Read(p),
         "extractArchive" => Archives.Extract(p),
         "pluginHeaders" => PluginHeaders(p),
@@ -1059,6 +1060,166 @@ public sealed class Session : IDisposable
         // As readRecord and addPatch write them, so that a pull changes no file of theirs that the plugin holds as it is.
         foreach (var file in files) File.WriteAllText(file, TextBlocks.Literal(Lf(File.ReadAllText(file))));
         return new JsonObject { ["files"] = files.Length };
+    }
+
+    // ---------------------------------------------------------------- terrain
+
+    /// <summary>
+    /// The ground of a worldspace changed in a circle — flattened, raised, lowered or smoothed — in the project's copies of
+    /// the cells it touches, each with its Landscape (Terrain.cs): the heights read from the copy where the project has it,
+    /// else from the load order's winning cell; the falloff blending the change into the ground around it. Cells within a
+    /// vertex of the edit get their normals written too, so the edge two cells share looks the same from both. Answers each
+    /// cell changed, how far the ground moved, and the game's references there it moved under.
+    /// </summary>
+    private async Task<JsonNode> EditTerrain(JsonObject p)
+    {
+        var pluginName = ModKey.FromFileName(Required(p, "plugin"));
+        var projectDir = Required(p, "projectPluginDir");
+        var worldspace = Resolve(p["worldspace"]?.GetValue<string>() ?? "Tamriel");
+        float Number(string name, float? fallback = null) => p[name] is JsonValue value ? value.GetValue<float>()
+            : fallback ?? throw new HelperException("badRequest", $"'{name}' is required.");
+        var (x, y, radius) = (Number("x"), Number("y"), Number("radius"));
+        var falloff = Number("falloff", radius / 2);
+        var action = Required(p, "action");
+        if (action is not ("flatten" or "raise" or "lower" or "smooth"))
+            throw new HelperException("badRequest", $"'action' is flatten, raise, lower or smooth, not '{action}'.");
+        if (radius <= 0 || falloff < 0) throw new HelperException("badRequest", "'radius' is above 0, and 'falloff' 0 or more.");
+        var worlds = Contexts(worldspace).Where(c => c.Record is IWorldspaceGetter).ToList();
+        if (worlds.Count == 0) throw new HelperException("notFound", $"{FormKeyText(worldspace)} is no worldspace.");
+
+        // Every cell within a vertex of the edit's reach: its ground or its normals may change.
+        var reach = radius + falloff + Terrain.Spacing;
+        int Lo(float v) => (int)Math.Floor((v - reach) / CellContents.CellSize);
+        int Hi(float v) => (int)Math.Floor((v + reach) / CellContents.CellSize);
+        var cells = new Dictionary<Noggog.P2Int, (ICellGetter Cell, ILandscapeGetter Land, string? File, string? Text, float[,] Was, float[,] Now)>();
+        for (var gx = Lo(x); gx <= Hi(x); gx++)
+            for (var gy = Lo(y); gy <= Hi(y); gy++)
+            {
+                var grid = new Noggog.P2Int(gx, gy);
+                if (CellContents.CellAt(worlds, grid) is not { } cell) continue;
+                var land = Contexts(cell.FormKey).Select(c => (c.Record as ICellGetter)?.Landscape).FirstOrDefault(l => l?.VertexHeightMap is not null);
+                if (land is null) continue;
+                var file = CellFileFor(projectDir, cell.FormKey);
+                var text = file is null ? null : File.ReadAllText(Path.Combine(projectDir, file));
+                var was = text is not null && Terrain.HeightsIn(text) is { } own ? own : CellScene.Heights(land.VertexHeightMap!);
+                cells[grid] = (cell, land, file, text, was, (float[,])was.Clone());
+            }
+        if (cells.Count == 0) throw new HelperException("notFound", $"No cell of {FormKeyText(worldspace)} with ground lies at {x}, {y}.");
+
+        float? HeightOf(Dictionary<Noggog.P2Int, float[,]> of, Noggog.P2Int grid, int vx, int vy)
+        {
+            // A vertex beyond the cell's edge is its neighbour's: the neighbour's own index there.
+            var g = new Noggog.P2Int(grid.X + (int)Math.Floor(vx / 32.0), grid.Y + (int)Math.Floor(vy / 32.0));
+            var (ix, iy) = (vx - (g.X - grid.X) * 32, vy - (g.Y - grid.Y) * 32);
+            return of.TryGetValue(g, out var h) && ix is >= 0 and < Terrain.Size && iy is >= 0 and < Terrain.Size ? h[iy, ix] : null;
+        }
+        var before = cells.ToDictionary(c => c.Key, c => c.Value.Was);
+        var centreGrid = new Noggog.P2Int((int)Math.Floor(x / CellContents.CellSize), (int)Math.Floor(y / CellContents.CellSize));
+        var target = p["height"] is JsonValue h0 ? h0.GetValue<float>()
+            : before.TryGetValue(centreGrid, out var centre) ? CellScene.GroundAt(centre, centreGrid, x, y)
+            : throw new HelperException("notFound", $"The cell at {x}, {y} has no ground: give 'height'.");
+        var amount = Number("amount", action is "raise" or "lower" ? null : 0);
+        foreach (var (grid, cell) in cells)
+            for (var vy = 0; vy < Terrain.Size; vy++)
+                for (var vx = 0; vx < Terrain.Size; vx++)
+                {
+                    var (wx, wy) = (grid.X * CellContents.CellSize + vx * Terrain.Spacing, grid.Y * CellContents.CellSize + vy * Terrain.Spacing);
+                    var w = Terrain.Weight(MathF.Sqrt((wx - x) * (wx - x) + (wy - y) * (wy - y)), radius, falloff);
+                    if (w == 0) continue;
+                    var was = cell.Was[vy, vx];
+                    cell.Now[vy, vx] = action switch
+                    {
+                        "flatten" => was + w * (target - was),
+                        "raise" => was + w * amount,
+                        "lower" => was - w * amount,
+                        // The mean of the vertex and its eight neighbours, across cell edges where the neighbour's are read.
+                        _ => was + w * ((Enumerable.Range(-1, 3).SelectMany(dy => Enumerable.Range(-1, 3).Select(dx => HeightOf(before, grid, vx + dx, vy + dy)))
+                            .Where(v => v is not null).Select(v => v!.Value).DefaultIfEmpty(was).Average()) - was)
+                    };
+                }
+
+        var after = cells.ToDictionary(c => c.Key, c => c.Value.Now);
+        var changed = new JsonArray();
+        var moved = new JsonArray();
+        var clamped = 0;
+        foreach (var (grid, cell) in cells)
+        {
+            var encoded = Terrain.Encode(cell.Now);
+            clamped += encoded.Clamped;
+            var normals = Terrain.Normals(cell.Now, (vx, vy) => HeightOf(after, grid, vx, vy));
+            var most = 0f;
+            for (var vy = 0; vy < Terrain.Size; vy++) for (var vx = 0; vx < Terrain.Size; vx++) most = Math.Max(most, Math.Abs(cell.Now[vy, vx] - cell.Was[vy, vx]));
+            // A cell only within a vertex of the edit keeps its ground; it is written only where it is the project's already.
+            if (most < 4 && cell.File is null) continue;
+            var (file, text) = (cell.File, cell.Text);
+            var versions = Contexts(cell.Cell.FormKey).Select(c => c.Record).OfType<ICellGetter>().ToList();
+            if (text is null || !Terrain.HasLandscape(text))
+            {
+                var land = Cache.ResolveAllContexts(cell.Land.FormKey, typeof(ILandscapeGetter)).FirstOrDefault()
+                    ?? throw new HelperException("notFound", $"{FormKeyText(cell.Land.FormKey)}, the ground of {cell.Cell.EditorID ?? FormKeyText(cell.Cell.FormKey)}, is in no plugin.");
+                var rendered = await Render([land], pluginName);
+                var own = rendered.FirstOrDefault(f => f.Path.EndsWith($"{cell.Cell.FormKey.ID:X6}_{cell.Cell.FormKey.ModKey.FileName}/RecordData.yaml", StringComparison.OrdinalIgnoreCase));
+                if (own.Path is null || Terrain.LandscapeBlock(own.Text) is not { } block)
+                    throw new HelperException("badRecord", $"The ground of {cell.Cell.EditorID ?? FormKeyText(cell.Cell.FormKey)} could not be copied.");
+                // The text's rows read as the plugin's heights, or nothing is written: a height map read the other way round
+                // would write every cell's ground turned on its diagonal.
+                if (Terrain.HeightsIn(own.Text) is not { } read || !Terrain.Same(read, CellScene.Heights(cell.Land.VertexHeightMap!)))
+                    throw new HelperException("badRecord", $"The ground of {cell.Cell.EditorID ?? FormKeyText(cell.Cell.FormKey)} reads otherwise from its text than from its plugin: nothing was written.");
+                if (text is null)
+                {
+                    foreach (var (path, body) in rendered)
+                    {
+                        var target2 = Path.Combine(projectDir, path);
+                        if (File.Exists(target2)) continue;
+                        Directory.CreateDirectory(Path.GetDirectoryName(target2)!);
+                        await File.WriteAllTextAsync(target2, Annotated(body));
+                    }
+                    file = own.Path;
+                    text = Annotated(own.Text);
+                }
+                else text = Terrain.WithLandscape(text, block);
+            }
+            await File.WriteAllTextAsync(Path.Combine(projectDir, file!), Terrain.Write(text, encoded, normals));
+            var raised = 0f;
+            var lowered = 0f;
+            for (var vy = 0; vy < Terrain.Size; vy++) for (var vx = 0; vx < Terrain.Size; vx++)
+                {
+                    var d = cell.Now[vy, vx] - cell.Was[vy, vx];
+                    raised = Math.Max(raised, d);
+                    lowered = Math.Min(lowered, d);
+                }
+            changed.Add(new JsonObject
+            {
+                ["cell"] = cell.Cell.EditorID ?? FormKeyText(cell.Cell.FormKey), ["grid"] = $"{grid.X}, {grid.Y}", ["file"] = file,
+                ["raised"] = Math.Round(raised), ["lowered"] = Math.Round(-lowered), ["navmesh"] = versions.Any(v => v.NavigationMeshes.Count > 0)
+            });
+            // What the game places on the ground that moved under it: it floats or sinks now.
+            // Every version's references, the winning one of each: a cell's override in Update.esm carries few of them.
+            foreach (var placed in versions.SelectMany(v => v.Temporary.Concat(v.Persistent)).OfType<IPlacedObjectGetter>().DistinctBy(r => r.FormKey))
+            {
+                if (placed.Placement is not { } at || moved.Count >= 12) continue;
+                var shift = CellScene.GroundAt(cell.Now, grid, at.Position.X, at.Position.Y) - CellScene.GroundAt(cell.Was, grid, at.Position.X, at.Position.Y);
+                if (Math.Abs(shift) < 24) continue;
+                var name = Index.ByFormKey.TryGetValue(placed.Base.FormKey, out var entry) ? entry.EditorId ?? FormKeyText(placed.Base.FormKey) : FormKeyText(placed.Base.FormKey);
+                moved.Add(new JsonObject { ["reference"] = FormKeyText(placed.FormKey), ["base"] = name, ["position"] = $"{Math.Round(at.Position.X)}, {Math.Round(at.Position.Y)}, {Math.Round(at.Position.Z)}", ["groundMoved"] = Math.Round(shift) });
+            }
+        }
+        return new JsonObject
+        {
+            ["worldspace"] = FormKeyText(worldspace), ["action"] = action, ["height"] = action == "flatten" ? JsonValue.Create(Math.Round(target)) : null,
+            ["cells"] = changed, ["clamped"] = clamped, ["gameReferences"] = moved
+        };
+    }
+
+    /// <summary>A cell's own file in the project: the RecordData.yaml of the folder named for its FormKey.</summary>
+    private static string? CellFileFor(string projectDir, FormKey formKey)
+    {
+        if (!Directory.Exists(projectDir)) return null;
+        var suffix = $"{formKey.ID:X6}_{formKey.ModKey.FileName}";
+        return Directory.EnumerateDirectories(projectDir, "*", SearchOption.AllDirectories)
+            .Where(d => Path.GetFileName(d).EndsWith(suffix, StringComparison.OrdinalIgnoreCase) && File.Exists(Path.Combine(d, "RecordData.yaml")))
+            .Select(d => Path.GetRelativePath(projectDir, Path.Combine(d, "RecordData.yaml")).Replace('\\', '/'))
+            .FirstOrDefault();
     }
 
     // ---------------------------------------------------------------- installing

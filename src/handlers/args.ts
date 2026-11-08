@@ -128,6 +128,15 @@ export function optionalBoolean(args: any, name: string): boolean | undefined {
     return value;
 }
 
+/** A number, or a text that is one ("400"): small models send numbers either way. */
+export function optionalNumber(args: any, name: string): number | undefined {
+    const value = args?.[name];
+    if (value === undefined || value === null || value === '') return undefined;
+    const number = typeof value === 'string' ? Number(value.trim()) : value;
+    if (typeof number !== 'number' || !Number.isFinite(number)) throw new ToolError(ToolErrorCode.InvalidParams, `'${name}' must be a number.`);
+    return number;
+}
+
 export function requirePositiveInteger(args: any, name: string, hint = ''): number {
     const value = args?.[name];
     if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) {

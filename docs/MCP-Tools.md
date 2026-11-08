@@ -143,7 +143,7 @@ arguments, see [`Tool-Reference.md`](./Tool-Reference.md), which is generated fr
 | --- | --- | --- |
 | `core` | 19 | look up, patch, edit, build, deploy; move or delete a record file; list the mods, check them against the game, install, disable or enable one; read a crash log or the Papyrus log; find mod conflicts — small local models |
 | `readonly` | 12 | looking records and mods up, on Nexus Mods too, and reading crash logs, the Papyrus log and conflicts only; the write tools are absent, not discouraged |
-| `all` | 30 | the default; right for clients that fetch tool schemas on demand. 29 without a Nexus API key, which `downloadNexusFile` needs; the only one with `exportCell` and `importCell`, a cell in Blender and back, and with `movePlugin`, `sortPlugins` and `setModPriority`, the load order and the mod order changed |
+| `all` | 31 | the default; right for clients that fetch tool schemas on demand. 30 without a Nexus API key, which `downloadNexusFile` needs; the only one with `exportCell` and `importCell`, a cell in Blender and back, `editTerrain`, the ground outdoors, and `movePlugin`, `sortPlugins` and `setModPriority`, the load order and the mod order changed |
 
 Counts include `healthcheck`, which every profile lists. `profiles.test.ts` holds them to `PROFILES`.
 
@@ -425,6 +425,22 @@ Blender with the PyNifly add-on; the Blender part runs in its Scripting tab, or 
 An exterior cell (`Riverwood`) comes with its ground, a mesh of its landscape's heights that is not exported back. The
 game turns a reference by z, then y, then x, each angle clockwise: the script places it with Blender's Euler order ZYX,
 the angles negated, and turns Blender's rotation back the same way (CommonLibSSE's `NiMatrix3::SetEulerAnglesXYZ`).
+
+### 4.5b Change the ground outdoors
+
+`editTerrain` changes a worldspace's ground in a circle — `flatten` to a `height` (the ground's at the centre unless
+given), `raise` or `lower` by an `amount`, `smooth` — across every exterior cell the circle and its `falloff` touch. The
+project gets a copy of each cell with its `Landscape`: the `VertexHeightMap` (an offset and 33×33 steps of 8 units) and
+`VertexNormals` written anew in the cell's RecordData.yaml, each vertex the two cells beside an edge share given the
+same height in both. A second edit changes the copy further. A step too steep for a byte is cut (`clamped`). The answer
+names each cell, how far its ground rose and fell, whether the game has a navmesh there — NPCs walk the old one until the
+Creation Kit regenerates it — and the game's references the ground moved under by 24 units or more (`gameReferences`),
+which float or sink now. Distant terrain (LOD) shows the old ground until xLODGen runs. Since v0.2.69.
+
+```jsonc
+{"tool":"editTerrain","args":{"project":"RiverwoodPlot","at":"17400, -47600","radius":400,"action":"flatten"}}
+{"tool":"editTerrain","args":{"project":"RiverwoodPlot","at":"16384, -47600","radius":500,"action":"raise","amount":200}}
+```
 
 ### 4.6 Find a mod on Nexus, check what it needs, install it
 

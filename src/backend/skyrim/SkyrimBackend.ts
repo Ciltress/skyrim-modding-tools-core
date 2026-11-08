@@ -51,6 +51,7 @@ export interface SkyrimBackend extends Backend {
     /** A plugin moved to just before or after another in the load order: after wins, its records are the game's. */
     movePlugin(request: MovePluginRequest): Promise<MovePluginResult>;
     sortPlugins(request: SortPluginsRequest): Promise<SortPluginsResult>;
+    editTerrain(request: EditTerrainRequest): Promise<EditTerrainResult>;
 
     /** A mod moved to just before or after another in the mod order: after wins, its files are the game's. */
     setModPriority(request: SetModPriorityRequest): Promise<SetModPriorityResult>;
@@ -195,6 +196,37 @@ export interface MovePluginResult {
     loadsBefore?: string;
     note?: string;
     modManager?: ModManagerNotice;
+}
+
+export interface EditTerrainRequest {
+    project: string;
+    /** The worldspace, by editor ID or FormID; Tamriel unless given. */
+    worldspace?: string;
+    /** The centre of the edit, in world units. */
+    x: number;
+    y: number;
+    /** Changed fully within this radius… */
+    radius: number;
+    /** …and blended into the ground around over this far beyond it; half the radius unless given. */
+    falloff?: number;
+    action: 'flatten' | 'raise' | 'lower' | 'smooth';
+    /** flatten: the height to flatten to; the ground's at the centre unless given. */
+    height?: number;
+    /** raise and lower: by how many units. */
+    amount?: number;
+}
+
+export interface EditTerrainResult {
+    worldspace: string;
+    action: string;
+    /** flatten: the height flattened to. */
+    height?: number | null;
+    /** Each cell whose ground the project now changes, by how much at most, and whether the game has a navmesh there. */
+    cells: { cell: string; grid: string; file: string; raised: number; lowered: number; navmesh: boolean }[];
+    /** Steps of the ground too steep for the game's heights, cut. */
+    clamped: number;
+    /** References the game places where the ground moved under them by 24 units or more: they float or sink now. */
+    gameReferences: { reference: string; base: string; position: string; groundMoved: number }[];
 }
 
 export interface SortPluginsRequest {

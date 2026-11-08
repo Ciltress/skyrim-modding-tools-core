@@ -14,7 +14,7 @@ import type {
     NexusSearchQuery, NexusSearchResult, ProjectInfo, PullResult, ExportCellRequest, ExportCellResult, ImportCellRequest, ImportCellResult, RecordQuery, RecordRequest, RecordSearchResult,
     RecordSummary, RecordVersions, ListedMod, ModList, ModListQuery, GameVersionCheck,
     CrashLogSection, CrashReport, EditIniRequest, EditIniResult, EnableModRequest, EnableModResult, ReadCrashLogRequest, GameFile,
-    ConflictReport, FindConflictsRequest, MovePluginRequest, MovePluginResult, SortPluginsRequest, SortPluginsResult, SetModPriorityRequest, SetModPriorityResult,
+    ConflictReport, FindConflictsRequest, MovePluginRequest, MovePluginResult, EditTerrainRequest, EditTerrainResult, SortPluginsRequest, SortPluginsResult, SetModPriorityRequest, SetModPriorityResult,
     PapyrusReport, PapyrusScriptEntries, ReadPapyrusLogRequest
 } from '../backend/skyrim/SkyrimBackend.js';
 import { CrashLogNotFoundError } from '../backend/skyrim/crash/crashLogFiles.js';
@@ -328,6 +328,15 @@ export class InMemorySkyrimBackend implements AppBackend {
         };
     }
 
+    /** The ground flattened in one cell of Tamriel, a tree there left floating. */
+    async editTerrain(request: EditTerrainRequest): Promise<EditTerrainResult> {
+        return {
+            worldspace: '00003C:Skyrim.esm', action: request.action, height: request.action === 'flatten' ? (request.height ?? -300) : null,
+            cells: [{ cell: 'Riverwood', grid: '4, -12', file: 'Worldspaces/Tamriel/Riverwood/RecordData.yaml', raised: 40, lowered: 25, navmesh: true }],
+            clamped: 0, gameReferences: [{ reference: '01A2B3:Skyrim.esm', base: 'TreePineForest01', position: '17000, -48000, -280', groundMoved: -30 }]
+        };
+    }
+
     /** The mod moved, where asked. */
     async setModPriority(request: SetModPriorityRequest): Promise<SetModPriorityResult> {
         return { mod: request.mod, moved: true, ...(request.after ? { winsOver: request.after } : {}), ...(request.before ? { losesTo: request.before } : {}) };
@@ -465,7 +474,7 @@ export interface FakeBackendOptions {
 
 const DOMAIN_METHODS = [
     'findRecords', 'readRecord', 'newProject', 'addPatch', 'editRecord', 'buildProject', 'deployProject', 'pullProject', 'exportCell', 'importCell',
-    'searchNexus', 'readNexusMod', 'downloadNexusFile', 'installMod', 'disableMod', 'enableMod', 'listMods', 'movePlugin', 'sortPlugins', 'setModPriority', 'checkGameVersion',
+    'searchNexus', 'readNexusMod', 'downloadNexusFile', 'installMod', 'disableMod', 'enableMod', 'listMods', 'movePlugin', 'sortPlugins', 'editTerrain', 'setModPriority', 'checkGameVersion',
     'readCrashLog', 'readPapyrusLog', 'findConflicts', 'editIni', 'findGameFiles'
 ] as const;
 
