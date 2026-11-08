@@ -1,6 +1,6 @@
 ---
 name: skyrim-modding-world
-description: Cells and what is placed in them in Skyrim SE - interiors like a player home and the exterior cells of a worldspace like a town's streets, the references the game places there (containers, furniture, doors, NPCs, items), a new object placed in one - a static, chair, lever, plant or light of the mod's own, a locked chest - a new interior cell with the doors to it, an interior cell's navmesh, locations, encounter zones and regions, the ground outdoors, and a cell arranged in Blender and brought back. Use when a mod should put something into the world - a chest with items in Breezehome, a bedroll beside Riverwood's cooking pot, an NPC standing in a room - when objects of a cell are to be moved, copied or removed, or when an object a mod placed is missing in game.
+description: Cells and what is placed in them in Skyrim SE - interiors like a player home and the exterior cells of a worldspace like a town's streets, the references the game places there (containers, furniture, doors, NPCs, items), a new object placed in one - a static, chair, lever, plant or light of the mod's own, a locked chest - a new interior cell with the doors to it, a cell's navmesh, locations, encounter zones and regions, the ground outdoors, and a cell arranged in Blender and brought back. Use when a mod should put something into the world - a chest with items in Breezehome, a bedroll beside Riverwood's cooking pot, an NPC standing in a room - when objects of a cell are to be moved, copied or removed, or when an object a mod placed is missing in game.
 ---
 
 # Cells and placed objects
@@ -107,8 +107,8 @@ reference is placed there as indoors, in the cell's folder inside its worldspace
 - **Position**: inside the cell's square, beside the object `placedIn` or `placed` gives, at that object's z — the
   ground rises and falls, so a z from across the cell sinks it into a hill or leaves it floating. A thing near a cell's
   edge has its neighbour beside it: the new reference goes in the folder of the cell its own position lies in.
-- **Navmesh and LOD** are the Creation Kit's: a large object placed on a road blocks the NPCs' paths there, and nothing
-  placed is seen from afar. A chest, a bedroll, a barrel beside a house need neither.
+- **Navmesh and LOD**: a large object placed on a road blocks the NPCs' paths there until `generateNavmesh` makes the
+  cell's anew; LOD is xLODGen's, so nothing placed is seen from afar. A chest, a bedroll, a barrel need neither.
 
 ## A new object of the mod's own, placed
 
@@ -136,20 +136,19 @@ each cell, each with `TeleportDestination` naming the other door and where the p
 placed as any reference, its base a vanilla door (`findRecords` with `types: ["DOOR"]`).
 Then `generateNavmesh` the room (next section): without a navmesh, no follower comes in.
 
-## A navmesh for an interior cell
+## A cell's navmesh
 
 NPCs and followers walk on the cell's **navmesh**, not on its floor: a new room without one keeps followers out, and a
-room whose furniture moved keeps paths through the new table. `generateNavmesh` `{"project": "BreezehomeTidy", "cell":
-"WhiterunBreezehome"}` makes it from the collision of what stands in the cell — the game's objects and the project's —
-and writes it into the project, over the cell's navmesh or new; it builds the project first where it changed. Run it
+room whose furniture moved — or ground raised outdoors — keeps paths through the new table or into the new hill. `generateNavmesh` `{"project": "BreezehomeTidy", "cell":
+"WhiterunBreezehome"}` makes it from the collision of what stands in the cell — the game's objects and the project's,
+outdoors the ground — and writes it into the project, over the cell's navmeshes or new; outdoors it links the edges
+with the cells beside it and writes their navmeshes too. It builds the project first where it changed. Run it
 after the objects are placed, then `buildProject`. Done when the build answers `success` and you told the user:
 
 - **`triangles`**, and the **`doors`** linked: a room with no load door gets no follower in until one links it.
 - **`before`** — over the game's navmesh, how much of the old one the new covers (`oldCovered`) and how much of the new
   lies on the old (`newOnOld`): a generated navmesh also reaches narrow gaps a level designer leaves out.
 - **`objects.unreadMeshes`** — meshes it could not read: actors walk through those objects.
-
-Interior cells only: an exterior cell's navmesh is still the Creation Kit's.
 
 ## Locations, encounter zones, regions
 
@@ -169,7 +168,7 @@ answers `success` and you told the user what the answer names:
 
 - **`gameReferences`** — the game's trees, rocks and buildings the ground moved under: they float or sink now. Keep the
   edit where none stand, or move them (a reference's copy, as above).
-- **`navmesh`** — NPCs walk the cell's old navmesh until the Creation Kit regenerates it; small changes are fine.
+- **`navmesh`** — NPCs walk the cell's old navmesh: `generateNavmesh` each cell after the build (A cell's navmesh, below).
 - Distant terrain (LOD) keeps the old shape until xLODGen runs.
 
 In Blender (the next section) an exterior cell's `Ground` mesh can be sculpted instead: export_layout writes its heights,

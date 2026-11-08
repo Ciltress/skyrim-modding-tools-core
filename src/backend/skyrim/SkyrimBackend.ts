@@ -232,11 +232,11 @@ export interface EditTerrainResult {
 
 export interface GenerateNavmeshRequest {
     project: string;
-    /** The interior cell, by editor ID or FormID: the load order's, or one the project made. */
+    /** The cell, by editor ID or FormID: an interior or an exterior cell of the load order, or an interior the project made. */
     cell: string;
 }
 
-/** An interior cell's navmesh made from the collision of what stands in it (helper Navmesh.cs), written into the project. */
+/** A cell's navmesh made from the collision of what stands in it (helper Navmesh.cs), written into the project. */
 export interface GenerateNavmeshResult {
     cell: string;
     /** The navmesh written: the cell's own overridden, or a new one. */
@@ -246,16 +246,18 @@ export interface GenerateNavmeshResult {
     vertices: number;
     /** The project's files written: the navmesh's, and the map entry's (NAVI) where it is new or its doors changed. */
     files: string[];
-    /** Each load door and the triangle before it. */
-    doors: { door: string; triangle: number }[];
+    /** Each load door, the navmesh and the triangle before it. */
+    doors: { door: string; navmesh: string; triangle: number }[];
     /** The references whose meshes have collision, those without, and meshes that could not be read. */
     objects: { withCollision: number; withoutCollision: number; unreadMeshes: string[] };
     /** Pieces left out: table tops, shelves, gaps behind furniture no actor reaches. */
     left: { pieces: number; triangles: number };
     /** The navmesh it replaced: its size, and how much of each lies on the other (0–1). */
     before?: { triangles: number; areaM2: number; nowAreaM2: number; oldCovered: number; newOnOld: number };
-    /** The cell's other navmeshes, kept as they are. */
-    otherNavmeshes?: string[];
+    /** A cell of several navmeshes: each one's share of the new surface; one no new triangle lies on is kept as it was. */
+    navmeshes?: { navmesh: string; triangles: number; kept?: boolean }[];
+    /** Outdoors, the neighbouring cells' navmeshes whose links across the cell's edges were made anew. */
+    neighbours?: { navmesh: string; cell: string | null }[];
     /** The project was built first: its own references are read from the built plugin. */
     builtFirst?: boolean;
 }

@@ -1482,9 +1482,9 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
     }
 
     /**
-     * An interior cell's navmesh made anew from the collision of the meshes its references show (helper Navmesh.cs): the
-     * project built first where its files changed since, so its own references count; the meshes found as exportCell finds
-     * them, loose or in an archive.
+     * A cell's navmesh made anew from the collision of the meshes its references show, outdoors on its ground (helper
+     * Navmesh.cs): the project built first where its files changed since, so its own references count; the meshes found
+     * as exportCell finds them, loose or in an archive.
      */
     async generateNavmesh({ project, cell }: GenerateNavmeshRequest): Promise<GenerateNavmeshResult> {
         await this.engine.ensureFresh();
@@ -1505,8 +1505,7 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
             builtFirst = true;
         }
         const own = hasRecords && fs.existsSync(built) ? { projectPlugin: built } : {};
-        const scene = await this.engine.helper.call<CellSceneFile>('cellScene', { cell, ...own }, BUILD_TIMEOUT_MS);
-        const models = [...new Set(scene.references.map(r => r.model).filter((m): m is string => !!m))];
+        const { models } = await this.engine.helper.call<{ models: string[] }>('navmeshModels', { cell, ...own }, BUILD_TIMEOUT_MS);
         const sources = await this.attributor(instance).sources(models);
         const found: Record<string, { file: string } | { archive: string; under: string }> = {};
         for (const [model, source] of sources) found[model] = 'file' in source ? { file: source.file } : { archive: source.archive, under: source.under };

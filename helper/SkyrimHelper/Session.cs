@@ -60,6 +60,7 @@ public sealed partial class Session : IDisposable
         "serialize" => await Serialize(p),
         "editTerrain" => await EditTerrain(p),
         "generateNavmesh" => await GenerateNavmesh(p),
+        "navmeshModels" => NavmeshModels(p),
         "setTerrain" => await SetTerrain(p),
         "readArchive" => Archives.Read(p),
         "extractArchive" => Archives.Extract(p),

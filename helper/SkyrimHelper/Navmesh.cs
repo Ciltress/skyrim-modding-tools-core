@@ -214,11 +214,38 @@ internal static class Navmesh
 
     // ---------------------------------------------------------------- generation
 
+    /// <summary>A flat rectangle at a height, two triangles counter-clockwise seen from above: a water surface.</summary>
+    public static Geometry Plane(float minX, float minY, float maxX, float maxY, float z) =>
+        new([new Vector3(minX, minY, z), new Vector3(maxX, minY, z), new Vector3(maxX, maxY, z), new Vector3(minX, maxY, z)], [0, 1, 2, 0, 2, 3]);
+
     /// <summary>
-    /// The walkable surface of the collision as triangles, counter-clockwise seen from above as the game's are. Recast takes y
-    /// up: the game's (x, y, z) is Recast's (x, z, -y).
+    /// An exterior cell's ground as triangles: its 33 × 33 heights ([y, x], 128 units apart from the cell's south-west corner),
+    /// two triangles a square, counter-clockwise seen from above.
     /// </summary>
-    public static Geometry Generate(Geometry collision, Settings s)
+    public static Geometry Ground(float[,] heights, Noggog.P2Int grid)
+    {
+        var ground = new Geometry();
+        var (x0, y0) = (grid.X * (float)CellContents.CellSize, grid.Y * (float)CellContents.CellSize);
+        var size = heights.GetLength(0);
+        var step = CellContents.CellSize / (float)(size - 1);
+        for (var vy = 0; vy < size; vy++)
+            for (var vx = 0; vx < size; vx++) ground.Vertices.Add(new Vector3(x0 + vx * step, y0 + vy * step, heights[vy, vx]));
+        for (var vy = 0; vy + 1 < size; vy++)
+            for (var vx = 0; vx + 1 < size; vx++)
+            {
+                var (a, b, c, d) = (vy * size + vx, vy * size + vx + 1, (vy + 1) * size + vx + 1, (vy + 1) * size + vx);
+                ground.Triangles.AddRange([a, b, c, a, c, d]);
+            }
+        return ground;
+    }
+
+    /// <summary>
+    /// The walkable surface of the collision as triangles, counter-clockwise seen from above as the game's are; with `square`
+    /// (min x, min y, max x, max y), only within it, the edges along it straight — an exterior cell's, as the game cuts its
+    /// navmeshes — the collision around it read as far as an actor's reach. Recast takes y up: the game's (x, y, z) is
+    /// Recast's (x, z, -y).
+    /// </summary>
+    public static Geometry Generate(Geometry collision, Settings s, (float MinX, float MinY, float MaxX, float MaxY)? square = null)
     {
         if (collision.TriangleCount == 0) return new Geometry();
         var vertices = new float[collision.Vertices.Count * 3];
@@ -228,11 +255,28 @@ internal static class Navmesh
             (vertices[i * 3], vertices[i * 3 + 1], vertices[i * 3 + 2]) = (v.X, v.Z, -v.Y);
         }
         var input = new RcSampleInputGeomProvider(vertices, collision.Triangles.ToArray());
-        var config = new RcConfig(RcPartition.WATERSHED, s.CellSize, s.CellHeight, s.MaxSlope, s.ActorHeight, s.ActorRadius, s.MaxClimb,
-            regionMinSize: 6, regionMergeSize: 20, edgeMaxLen: 300, edgeMaxError: 2f, vertsPerPoly: 3, detailSampleDist: 0,
-            detailSampleMaxError: 1, filterLowHangingObstacles: true, filterLedgeSpans: true, filterWalkableLowHeightSpans: true,
-            walkableAreaMod: new RcAreaModification(63), buildMeshDetail: false);
-        var built = new RcBuilder().Build(input, new RcBuilderConfig(config, input.GetMeshBoundsMin(), input.GetMeshBoundsMax()), false);
+        var (low, high) = (input.GetMeshBoundsMin(), input.GetMeshBoundsMax());
+        RcBuilderConfig builder;
+        if (square is { } sq)
+        {
+            // One tile, the square: Recast reads the border around it and cuts the polygons at its edges.
+            var tile = (int)MathF.Round((sq.MaxX - sq.MinX) / s.CellSize);
+            var border = (int)MathF.Ceiling(s.ActorRadius / s.CellSize) + 3;
+            var config = new RcConfig(true, tile, tile, border, RcPartition.WATERSHED, s.CellSize, s.CellHeight, s.MaxSlope, s.ActorHeight,
+                s.ActorRadius, s.MaxClimb, 36 * s.CellSize * s.CellSize, 400 * s.CellSize * s.CellSize, 300, 2f, 3, 0, 1, true, true, true,
+                new RcAreaModification(63), false);
+            builder = new RcBuilderConfig(config, new DotRecast.Core.Numerics.RcVec3f(sq.MinX, low.Y, -sq.MaxY),
+                new DotRecast.Core.Numerics.RcVec3f(sq.MaxX, high.Y, -sq.MinY), 0, 0);
+        }
+        else
+        {
+            var config = new RcConfig(RcPartition.WATERSHED, s.CellSize, s.CellHeight, s.MaxSlope, s.ActorHeight, s.ActorRadius, s.MaxClimb,
+                regionMinSize: 6, regionMergeSize: 20, edgeMaxLen: 300, edgeMaxError: 2f, vertsPerPoly: 3, detailSampleDist: 0,
+                detailSampleMaxError: 1, filterLowHangingObstacles: true, filterLedgeSpans: true, filterWalkableLowHeightSpans: true,
+                walkableAreaMod: new RcAreaModification(63), buildMeshDetail: false);
+            builder = new RcBuilderConfig(config, low, high);
+        }
+        var built = new RcBuilder().Build(input, builder, false);
         var mesh = built.Mesh;
         var result = new Geometry();
         for (var i = 0; i < mesh.nverts; i++)
@@ -374,7 +418,8 @@ internal static class Navmesh
         return samples;
     }
 
-    private static float? HeightAt(Geometry mesh, int t, float x, float y)
+    /// <summary>The height of a triangle at x, y, or null where it does not cover them.</summary>
+    public static float? HeightAt(Geometry mesh, int t, float x, float y)
     {
         var (a, b, c) = (mesh.Vertices[mesh.Triangles[t * 3]], mesh.Vertices[mesh.Triangles[t * 3 + 1]], mesh.Vertices[mesh.Triangles[t * 3 + 2]]);
         var d = (b.Y - c.Y) * (a.X - c.X) + (c.X - b.X) * (a.Y - c.Y);

@@ -436,8 +436,8 @@ given), `raise` or `lower` by an `amount`, `smooth` — across every exterior ce
 project gets a copy of each cell with its `Landscape`: the `VertexHeightMap` (an offset and 33×33 steps of 8 units) and
 `VertexNormals` written anew in the cell's RecordData.yaml, each vertex the two cells beside an edge share given the
 same height in both. A second edit changes the copy further. A step too steep for a byte is cut (`clamped`). The answer
-names each cell, how far its ground rose and fell, whether the game has a navmesh there — NPCs walk the old one until the
-Creation Kit regenerates it — and the game's references the ground moved under by 24 units or more (`gameReferences`),
+names each cell, how far its ground rose and fell, whether the game has a navmesh there — NPCs walk the old one until
+`generateNavmesh` makes it anew — and the game's references the ground moved under by 24 units or more (`gameReferences`),
 which float or sink now. Distant terrain (LOD) shows the old ground until xLODGen runs. Since v0.2.69.
 
 ```jsonc
@@ -445,24 +445,34 @@ which float or sink now. Distant terrain (LOD) shows the old ground until xLODGe
 {"tool":"editTerrain","args":{"project":"RiverwoodPlot","at":"16384, -47600","radius":500,"action":"raise","amount":200}}
 ```
 
-### 4.5c Make an interior cell's navmesh
+### 4.5c Make a cell's navmesh
 
-`generateNavmesh` makes the navmesh of an interior cell — the triangles NPCs and followers walk on — from the collision
-of what stands in it: the load order's references with the project's built plugin over them (the project is built first
-where its files changed since). Each reference's mesh is found as exportCell finds it, loose or in an archive, and its
+`generateNavmesh` makes the navmesh of a cell — the triangles NPCs and followers walk on — from the collision of what
+stands in it: the load order's references with the project's built plugin over them (the project is built first where
+its files changed since); outdoors also the cell's ground and the eight cells around it, read as far as an actor
+reaches. Each reference's mesh is found as exportCell finds it, loose or in an archive, and its
 Havok collision on the layers actors stand on or bump into is read with NiflySharp; doors are left out. Recast (DotRecast)
-gives the walkable surface as triangles at 8 units — an actor 120 tall and 8 wide, climbing 32 — and the pieces no load
-door stands at and smaller than a sixth of the largest are left out (table tops, shelves). The project gets the navmesh
-in the cell's `NavigationMeshes` folder: over the cell's largest navmesh, its FormID kept, or new for a cell the project
-made; each load door's triangle is the one nearest it, and the grid the game looks triangles up in is written as the
-game's is. A map entry (`NavigationMeshInfoMaps/012FB4_Skyrim.esm.yaml`) is written only where the navmesh is new or its
-load doors changed: the game merges every plugin's entries. The answer gives the triangles, the doors, the references
-with and without collision, meshes that could not be read, the pieces left out, and over a game navmesh how much of the
-old one the new covers (`before`). Exterior cells are refused for now. How each part was read off the game's navmeshes:
+gives the walkable surface as triangles at 8 units — an actor 120 tall and 8 wide, climbing 32 — outdoors cut at the
+cell's edges as the game cuts its navmeshes. Water deeper than 80 units is left out and shallower flagged `Water` (the
+water planes the cells place, by their bounds, and the cell's own water level). The pieces no load door stands at, that
+meet no neighbouring cell's navmesh and are smaller than a sixth of the largest are left out (table tops, roofs). The
+surface is shared out among the cell's navmeshes by where each triangle lies, so each keeps its FormID — a cell of
+several keeps all of them, one no new triangle lies on kept as it was — and each new triangle keeps the `Preferred`
+(road) and `Water` flags of the old one under it; a room without one gets a new navmesh. The links between them, and
+outdoors the edges along the cell's sides both ways with the neighbouring cells' navmeshes (overlapping edges at heights
+within 64 units), are made anew; the neighbours' navmeshes whose links changed are written into the project too. Each
+load door's triangle is the one nearest it; the grid the game looks triangles up in is written as the game's is. The
+map entry (`NavigationMeshInfoMaps/012FB4_Skyrim.esm.yaml`) of every navmesh written is made from it as the game's are:
+the navmeshes it links to — those reached from a road triangle its preferred merges — the share of road triangles, the
+mean of its vertices, its load doors; the game merges every plugin's entries. The answer gives the triangles, the doors, the references
+with and without collision, meshes that could not be read, the pieces left out, the water, each navmesh's share
+(`navmeshes`), the neighbours relinked (`neighbours`), and over the game's navmesh how much of the old one the new covers
+(`before`). How each part was read off the game's navmeshes:
 docs/adr/0014. Since v0.2.69.
 
 ```jsonc
 {"tool":"generateNavmesh","args":{"project":"InnTidy","cell":"RiverwoodSleepingGiantInn"}}
+{"tool":"generateNavmesh","args":{"project":"RiverwoodPlot","cell":"Riverwood"}}
 ```
 
 ### 4.6 Find a mod on Nexus, check what it needs, install it

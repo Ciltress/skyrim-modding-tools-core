@@ -22,17 +22,28 @@ plugin's) and is written the same way:
 - the grid is the vertices' bounds cut into divisor × divisor cells, row by row (y, then x), each listing the triangles
   whose bounds overlap it;
 - the Navigation Info Map (`NAVI`) is merged by the game from every plugin's version: a plugin carries only its own
-  navmeshes' entries, as the Creation Club's does. The core writes an entry only where a navmesh is new or its load
-  doors changed — its point the mean of its vertices, its doors, the cell — and keeps the winning version's preferred
-  pathing beside it, as the Creation Kit's plugins do.
+  navmeshes' entries, as the Creation Club's does. An entry is computed from its navmesh: `MergedTo` and
+  `PreferredMerges` together are exactly the navmeshes it links to, `PreferredMerges` those reached from a `Preferred`
+  (road) triangle; `PreferredMergesFlag` is the share of road triangles as a float's bits (Riverwood's 58 of 392 is
+  0.148); `Point` is the mean of the vertices; `LinkedDoors` its load doors. The winning version's preferred pathing
+  is kept beside the entries, as the Creation Kit's plugins do.
 
-Recast also walks table tops and the gaps behind furniture. The pieces no edge joins are kept where a load door stands
-or where a piece is at least a sixth of the largest. On the inn and Breezehome the result covers 89–97% of the game's
-navmesh and 76–86% of it lies on the game's; the rest is mostly narrow space a level designer leaves out.
+Outdoors a cell's navmeshes end exactly at its edges, and the edges along a side link to the neighbouring cell's
+navmesh both ways — by overlap: the two sides' vertices differ. The core reads the ground of the cell and the eight
+around it and their objects, builds one Recast tile that is the cell's square (the border read as far as an actor
+reaches), and links each edge along a side to the neighbour's edge it overlaps most at a height within 64 units; the
+neighbour's edges along that side are relinked the same way, and its navmesh is written with them. A cell often has
+several navmeshes (Riverwood four): the new surface is shared out among them by where each triangle lies, so every
+one keeps its FormID and nothing that points at it breaks; one no triangle lies on is kept as it was, unlinked from
+the rest. Each new triangle keeps the road and water flags of the old one under it. Water deeper than 80 units — the
+planes the cells place, by their bounds, and the cell's water level — gets no navmesh; shallower is flagged `Water`.
 
-The navmesh replaces the cell's largest (its FormID kept, so nothing that points at it breaks); a cell without one gets
-a new one. Interior cells only, for now: an exterior cell's needs its ground and the edges it shares with its
-neighbours' navmeshes, whose links point at triangle numbers that change.
+Recast also walks table tops, roofs and the gaps behind furniture. The pieces no edge joins are kept where a load
+door stands, where they meet a neighbouring cell's navmesh, or where a piece is at least a sixth of the largest. On the
+inn and Breezehome the result covers 82–97% of the game's navmesh and 76–86% of it lies on the game's; on Riverwood 88%
+and 68%: the rest is mostly narrow space and steep ground a level designer leaves out.
+
+A room the project made gets a new navmesh.
 
 ## Consequences
 

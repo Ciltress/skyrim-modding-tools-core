@@ -638,7 +638,7 @@ export class ProjectsHandlers extends BaseHandler {
                           ': tell the user, or move them with the cell\'s references (skyrim-modding-world).'
                         : '';
                     const navmesh = result.cells.some(c => c.navmesh)
-                        ? ' NPCs walk on the cells\' navmesh, which the ground no longer fits where it moved much: the Creation Kit regenerates it.' : '';
+                        ? ` NPCs walk on the cells' navmesh, which the ground no longer fits where it moved much: generateNavmesh each of ${result.cells.map(c => c.cell).join(', ')} after the build.` : '';
                     return {
                         ...result,
                         nextStep: `The ground of ${result.cells.length} cell(s) is changed in the project: run buildProject next.${moved}${navmesh} ` +
@@ -650,7 +650,7 @@ export class ProjectsHandlers extends BaseHandler {
                 definition: {
                     name: 'generateNavmesh',
                     annotations: {
-                        title: 'Make an interior cell\'s navmesh',
+                        title: 'Make a cell\'s navmesh',
                         readOnlyHint: false,
                         // Makes the project's navmesh of the cell anew each time, from the same objects the same one.
                         destructiveHint: false,
@@ -658,17 +658,18 @@ export class ProjectsHandlers extends BaseHandler {
                         openWorldHint: false
                     },
                     description:
-                        'Make an interior cell\'s navmesh — the triangles NPCs and followers walk on — from what stands in it: the ' +
-                        'collision of its floors, walls, stairs and furniture, the project\'s own objects with the game\'s. Written into ' +
-                        'the project over the cell\'s navmesh (a new one for a cell the project made), its load doors linked; no ' +
-                        'Creation Kit needed. Run it after placing, moving or removing objects in a cell, or for a new room; the ' +
+                        'Make a cell\'s navmesh — the triangles NPCs and followers walk on — from what stands in it: the collision ' +
+                        'of its floors, walls, stairs and furniture, outdoors its ground, the project\'s own objects with the game\'s. ' +
+                        'Written into the project over the cell\'s navmeshes (FormIDs kept; a new one for a room the project made), ' +
+                        'its load doors linked, outdoors its edges linked with the cells beside it, deep water left out; no Creation ' +
+                        'Kit needed. Run it after placing, moving or removing objects, after editTerrain, or for a new room; the ' +
                         'project is built first where it changed. Answers the triangles, the doors linked and, over the game\'s ' +
-                        'navmesh, how much of the old one the new covers. Interior cells only. Then buildProject.',
+                        'navmesh, how much of the old one the new covers. Then buildProject.',
                     inputSchema: {
                         type: 'object',
                         properties: {
                             project: PROJECT,
-                            cell: { type: 'string', description: 'The interior cell by editor ID or FormID, e.g. "WhiterunBreezehome"; a cell the project made, too.' }
+                            cell: { type: 'string', description: 'The cell by editor ID or FormID — an interior like "WhiterunBreezehome", one the project made, or an exterior cell like "Riverwood".' }
                         },
                         required: ['project', 'cell']
                     }
@@ -686,12 +687,14 @@ export class ProjectsHandlers extends BaseHandler {
                     const unread = result.objects.unreadMeshes.length
                         ? ` ${result.objects.unreadMeshes.length} mesh(es) could not be read, so actors walk through them: ${result.objects.unreadMeshes.slice(0, 3).join(', ')}.`
                         : '';
-                    const others = result.otherNavmeshes?.length
-                        ? ` The cell's other navmesh(es) ${result.otherNavmeshes.join(', ')} stay as they are.` : '';
+                    const others = result.navmeshes?.length
+                        ? ` The cell has ${result.navmeshes.length} navmeshes: each got its share, FormIDs kept.` : '';
+                    const neighbours = result.neighbours?.length
+                        ? ` The edges along the cell's sides are linked with ${result.neighbours.length} navmesh(es) of the cells beside it, written into the project too.` : '';
                     return {
                         ...result,
                         nextStep: `The navmesh of ${result.cell} is written into the project, ${result.triangles} triangles: run buildProject next.` +
-                            `${over}${doors}${unread}${others} Tell the user it is generated: NPCs walking the room in game show it works.`
+                            `${over}${doors}${unread}${others}${neighbours} Tell the user it is generated: NPCs walking there in game show it works.`
                     };
                 }
             },

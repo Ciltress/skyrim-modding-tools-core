@@ -342,7 +342,7 @@ export class InMemorySkyrimBackend implements AppBackend {
         return {
             cell: request.cell, navmesh: '0539F3:Skyrim.esm', replaced: true, triangles: 342, vertices: 309,
             files: ['Cells/6/3/RiverwoodSleepingGiantInn - 0133C6_Skyrim.esm/NavigationMeshes/0539F3_Skyrim.esm.yaml'],
-            doors: [{ door: '013419:Skyrim.esm', triangle: 291 }], objects: { withCollision: 157, withoutCollision: 99, unreadMeshes: [] },
+            doors: [{ door: '013419:Skyrim.esm', navmesh: '0539F3:Skyrim.esm', triangle: 291 }], objects: { withCollision: 157, withoutCollision: 99, unreadMeshes: [] },
             left: { pieces: 10, triangles: 45 }, before: { triangles: 379, areaM2: 30, nowAreaM2: 32.2, oldCovered: 0.91, newOnOld: 0.86 }
         };
     }
