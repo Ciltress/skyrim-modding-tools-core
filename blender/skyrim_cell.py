@@ -112,6 +112,26 @@ def _ground(ground, collection):
     collection.objects.link(obj)
 
 
+def _navmeshes(navmeshes, collection):
+    """The cell's navmeshes — where NPCs walk — each a wireframe mesh drawn in front, named after its FormID."""
+    if not navmeshes:
+        return
+    green = bpy.data.materials.new("Navmesh")
+    green.diffuse_color = (0.1, 0.85, 0.25, 0.6)
+    for navmesh in navmeshes:
+        mesh = bpy.data.meshes.new("Navmesh " + navmesh["formId"])
+        # Two units above, so the ground does not hide it.
+        mesh.from_pydata([(x, y, z + 2) for x, y, z in navmesh["vertices"]], [], [tuple(t) for t in navmesh["triangles"]])
+        mesh.update()
+        mesh.materials.append(green)
+        obj = bpy.data.objects.new("Navmesh " + navmesh["formId"], mesh)
+        obj["skyrim_navmesh"] = navmesh["formId"]
+        obj.display_type = "WIRE"
+        obj.show_in_front = True
+        obj.hide_select = True
+        collection.objects.link(obj)
+
+
 def import_cell(folder, clear=True):
     """Places the cell exportCell wrote into `folder`. Answers what it placed and what it could not import."""
     if not hasattr(bpy.ops.import_scene, "pynifly"):
@@ -173,6 +193,7 @@ def import_cell(folder, clear=True):
         placed += 1
     if scene.get("ground"):
         _ground(scene["ground"], root)
+    _navmeshes(scene.get("navmeshes"), root)
     layer = _layer_collection(bpy.context.view_layer.layer_collection, meshes.name)
     if layer:
         layer.exclude = True

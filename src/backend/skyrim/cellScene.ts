@@ -39,6 +39,8 @@ export interface CellSceneFile {
     };
     references: SceneReference[];
     ground?: { origin: [number, number]; spacing: number; heights: number[][] };
+    /** The cell's navmeshes — the project's version first — that Blender shows as wireframes. */
+    navmeshes?: { formId: string; vertices: [number, number, number][]; triangles: [number, number, number][] }[];
 }
 
 /** One object of the cell as Blender's export_layout() writes it. */

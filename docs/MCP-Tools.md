@@ -422,7 +422,8 @@ Blender with the PyNifly add-on; the Blender part runs in its Scripting tab, or 
 {"tool":"buildProject","args":{"project":"BreezehomeTidy"}}
 ```
 
-An exterior cell (`Riverwood`) comes with its ground, a mesh `Ground` of its landscape's 33×33 heights. Sculpted, or its
+The cell's navmeshes — the project's version first, as `generateNavmesh` writes them — come as wireframe meshes drawn in
+front, `Navmesh <FormID>`, where NPCs walk (since v0.2.69; shown, not yet brought back). An exterior cell (`Riverwood`) comes with its ground, a mesh `Ground` of its landscape's 33×33 heights. Sculpted, or its
 vertices moved up and down, `export_layout` writes its heights into layout.json, and importCell sets the cell's ground to
 them — the edges its eight neighbours share moved with it, as editTerrain writes them, answered as `ground` (since
 v0.2.69); only the heights count, vertex by vertex, and a mesh with vertices added or removed is left out. The

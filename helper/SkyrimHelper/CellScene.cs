@@ -64,6 +64,20 @@ internal static class CellScene
             }
         }
 
+        // The cell's navmeshes, each one's first version — the project's before the load order's — for Blender to show where
+        // NPCs walk (generateNavmesh makes them).
+        var navmeshes = new JsonArray();
+        foreach (var navmesh in versions.SelectMany(v => v.Cell!.NavigationMeshes).DistinctBy(n => n.FormKey))
+        {
+            if (navmesh.Data is not { Triangles.Count: > 0 } data) continue;
+            navmeshes.Add(new JsonObject
+            {
+                ["formId"] = Session.FormKeyText(navmesh.FormKey),
+                ["vertices"] = new JsonArray(data.Vertices.Select(v => (JsonNode)new JsonArray(Math.Round(v.X, 2), Math.Round(v.Y, 2), Math.Round(v.Z, 2))).ToArray()),
+                ["triangles"] = new JsonArray(data.Triangles.Select(t => (JsonNode)new JsonArray((int)t.Vertices.X, (int)t.Vertices.Y, (int)t.Vertices.Z)).ToArray())
+            });
+        }
+
         var answer = new JsonObject
         {
             ["cell"] = new JsonObject
@@ -73,7 +87,8 @@ internal static class CellScene
                 ["name"] = winner.Name?.String,
                 ["interior"] = CellContents.GridOf(winner) is null
             },
-            ["references"] = references
+            ["references"] = references,
+            ["navmeshes"] = navmeshes
         };
         if (CellContents.GridOf(winner) is { } grid)
         {

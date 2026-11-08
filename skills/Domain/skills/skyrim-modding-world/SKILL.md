@@ -150,6 +150,8 @@ after the objects are placed, then `buildProject`. Done when the build answers `
   lies on the old (`newOnOld`): a generated navmesh also reaches narrow gaps a level designer leaves out.
 - **`objects.unreadMeshes`** — meshes it could not read: actors walk through those objects.
 
+To see it, exportCell the cell after the build: its navmeshes come into Blender as green wireframes, `Navmesh <FormID>`.
+
 ## Locations, encounter zones, regions
 
 | To give … | Record | Fields | Set on |
