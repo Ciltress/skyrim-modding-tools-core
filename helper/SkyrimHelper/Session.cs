@@ -16,7 +16,7 @@ namespace SkyrimHelper;
 /// The helper's state between calls: the load order the server handed over, the plugins opened as
 /// read-only overlays, a link cache over them, and a lazily built index of their records.
 /// </summary>
-public sealed class Session : IDisposable
+public sealed partial class Session : IDisposable
 {
     public const string Version = "0.1.0";
     private const int DefaultLimit = 25;
@@ -59,6 +59,7 @@ public sealed class Session : IDisposable
         "build" => await Build(p),
         "serialize" => await Serialize(p),
         "editTerrain" => await EditTerrain(p),
+        "generateNavmesh" => await GenerateNavmesh(p),
         "setTerrain" => await SetTerrain(p),
         "readArchive" => Archives.Read(p),
         "extractArchive" => Archives.Extract(p),
@@ -399,7 +400,12 @@ public sealed class Session : IDisposable
     {
         var temp = new SkyrimMod(asPlugin, release);
         foreach (var context in contexts) context.GetOrAddAsOverride(temp);
+        return await Render(temp, asPlugin);
+    }
 
+    /// <summary>A plugin made here, in project text, as <see cref="Render(IEnumerable{IModContext{ISkyrimMod, ISkyrimModGetter, IMajorRecord, IMajorRecordGetter}}, ModKey)"/> writes it.</summary>
+    private async Task<List<(string Path, string Text)>> Render(SkyrimMod temp, ModKey asPlugin)
+    {
         var dir = Directory.CreateTempSubdirectory("skyrimhelper-").FullName;
         try
         {

@@ -28,6 +28,9 @@
     <PackageReference Include="Noggog.CSharpExt" Version="[4.3.0]" />
     <!-- Downloaded files: .7z, .zip, .rar (MIT). -->
     <PackageReference Include="SharpCompress" Version="[0.50.4]" />
+    <!-- Navmeshes: the meshes' collision read with NiflySharp (GPL-3.0), the walkable surface made by Recast's C# port (Zlib). -->
+    <PackageReference Include="Nifly" Version="[1.1.0]" />
+    <PackageReference Include="DotRecast.Recast" Version="[2026.3.1]" />
   </ItemGroup>
 
 </Project>

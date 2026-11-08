@@ -38,3 +38,22 @@ prelude it loads are LOOT's, fetched from their repositories when a sort runs. N
 - Source: https://github.com/loot/libloot (tag 0.29.7); masterlist https://github.com/loot/skyrimse, prelude https://github.com/loot/prelude
 - Authors: Oliver Hamlet (WrinklyNinja) and LOOT's contributors
 - License: GNU General Public License v3.0 or later (libloot); the masterlist and prelude are CC0 1.0 Universal
+
+## NiflySharp
+
+`generateNavmesh` reads the collision of the game's meshes with NiflySharp, version 1.1.0, unmodified, as the NuGet
+package `Nifly` the plugin helper is built with (docs/adr/0014).
+
+- Source: https://github.com/ousnius/NiflySharp
+- Author: ousnius and NiflySharp's contributors; its block definitions are the NifTools team's nifxml
+- License: GNU General Public License v3.0
+- Its dependency Miniball (`miniball-devel0` 1.0.4, https://github.com/SearchAThing-forks/miniball): Apache License 2.0
+
+## DotRecast
+
+`generateNavmesh` makes a navmesh's walkable surface with DotRecast, the C# port of Recast, version 2026.3.1,
+unmodified, as the NuGet packages `DotRecast.Recast` and `DotRecast.Core` (docs/adr/0014).
+
+- Source: https://github.com/ikpil/DotRecast (Recast: https://github.com/recastnavigation/recastnavigation)
+- Authors: ikpil (DotRecast); Mikko Mononen and Recast's contributors
+- License: zlib License

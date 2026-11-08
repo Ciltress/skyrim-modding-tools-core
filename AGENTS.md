@@ -124,7 +124,7 @@ src/
   handlers/index.ts        createHandlers(backend, product): the one list served, documented and tested
   handlers/args.ts         shared argument checks, and request errors -> InvalidParams
   handlers/RecordsHandlers.ts       findRecords, readRecord
-  handlers/ProjectsHandlers.ts      newProject, addPatch, editRecord, editTerrain, buildProject, deployProject, pullProject
+  handlers/ProjectsHandlers.ts      newProject, addPatch, editRecord, editTerrain, generateNavmesh, buildProject, deployProject, pullProject
   handlers/NexusHandlers.ts         searchNexus, readNexusMod, downloadNexusFile
   handlers/ModsHandlers.ts          listMods, checkGameVersion, installMod, disableMod, enableMod, movePlugin, sortPlugins,
                                     setModPriority, editIni

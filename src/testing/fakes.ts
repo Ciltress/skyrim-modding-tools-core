@@ -14,7 +14,7 @@ import type {
     NexusSearchQuery, NexusSearchResult, ProjectInfo, PullResult, ExportCellRequest, ExportCellResult, ImportCellRequest, ImportCellResult, RecordQuery, RecordRequest, RecordSearchResult,
     RecordSummary, RecordVersions, ListedMod, ModList, ModListQuery, GameVersionCheck,
     CrashLogSection, CrashReport, EditIniRequest, EditIniResult, EnableModRequest, EnableModResult, ReadCrashLogRequest, GameFile,
-    ConflictReport, FindConflictsRequest, MovePluginRequest, MovePluginResult, EditTerrainRequest, EditTerrainResult, SortPluginsRequest, SortPluginsResult, SetModPriorityRequest, SetModPriorityResult,
+    ConflictReport, FindConflictsRequest, MovePluginRequest, MovePluginResult, EditTerrainRequest, EditTerrainResult, GenerateNavmeshRequest, GenerateNavmeshResult, SortPluginsRequest, SortPluginsResult, SetModPriorityRequest, SetModPriorityResult,
     PapyrusReport, PapyrusScriptEntries, ReadPapyrusLogRequest
 } from '../backend/skyrim/SkyrimBackend.js';
 import { CrashLogNotFoundError } from '../backend/skyrim/crash/crashLogFiles.js';
@@ -337,6 +337,16 @@ export class InMemorySkyrimBackend implements AppBackend {
         };
     }
 
+    /** The inn's navmesh made anew over the game's, its door linked. */
+    async generateNavmesh(request: GenerateNavmeshRequest): Promise<GenerateNavmeshResult> {
+        return {
+            cell: request.cell, navmesh: '0539F3:Skyrim.esm', replaced: true, triangles: 342, vertices: 309,
+            files: ['Cells/6/3/RiverwoodSleepingGiantInn - 0133C6_Skyrim.esm/NavigationMeshes/0539F3_Skyrim.esm.yaml'],
+            doors: [{ door: '013419:Skyrim.esm', triangle: 291 }], objects: { withCollision: 157, withoutCollision: 99, unreadMeshes: [] },
+            left: { pieces: 10, triangles: 45 }, before: { triangles: 379, areaM2: 30, nowAreaM2: 32.2, oldCovered: 0.91, newOnOld: 0.86 }
+        };
+    }
+
     /** The mod moved, where asked. */
     async setModPriority(request: SetModPriorityRequest): Promise<SetModPriorityResult> {
         return { mod: request.mod, moved: true, ...(request.after ? { winsOver: request.after } : {}), ...(request.before ? { losesTo: request.before } : {}) };
@@ -474,7 +484,7 @@ export interface FakeBackendOptions {
 
 const DOMAIN_METHODS = [
     'findRecords', 'readRecord', 'newProject', 'addPatch', 'editRecord', 'buildProject', 'deployProject', 'pullProject', 'exportCell', 'importCell',
-    'searchNexus', 'readNexusMod', 'downloadNexusFile', 'installMod', 'disableMod', 'enableMod', 'listMods', 'movePlugin', 'sortPlugins', 'editTerrain', 'setModPriority', 'checkGameVersion',
+    'searchNexus', 'readNexusMod', 'downloadNexusFile', 'installMod', 'disableMod', 'enableMod', 'listMods', 'movePlugin', 'sortPlugins', 'editTerrain', 'generateNavmesh', 'setModPriority', 'checkGameVersion',
     'readCrashLog', 'readPapyrusLog', 'findConflicts', 'editIni', 'findGameFiles'
 ] as const;
 

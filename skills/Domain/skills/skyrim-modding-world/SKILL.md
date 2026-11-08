@@ -1,6 +1,6 @@
 ---
 name: skyrim-modding-world
-description: Cells and what is placed in them in Skyrim SE - interiors like a player home and the exterior cells of a worldspace like a town's streets, the references the game places there (containers, furniture, doors, NPCs, items), a new object placed in one - a static, chair, lever, plant or light of the mod's own, a locked chest - a new interior cell with the doors to it, locations, encounter zones and regions, and a cell arranged in Blender and brought back. Use when a mod should put something into the world - a chest with items in Breezehome, a bedroll beside Riverwood's cooking pot, an NPC standing in a room - when objects of a cell are to be moved, copied or removed, or when an object a mod placed is missing in game.
+description: Cells and what is placed in them in Skyrim SE - interiors like a player home and the exterior cells of a worldspace like a town's streets, the references the game places there (containers, furniture, doors, NPCs, items), a new object placed in one - a static, chair, lever, plant or light of the mod's own, a locked chest - a new interior cell with the doors to it, an interior cell's navmesh, locations, encounter zones and regions, the ground outdoors, and a cell arranged in Blender and brought back. Use when a mod should put something into the world - a chest with items in Breezehome, a bedroll beside Riverwood's cooking pot, an NPC standing in a room - when objects of a cell are to be moved, copied or removed, or when an object a mod placed is missing in game.
 ---
 
 # Cells and placed objects
@@ -134,6 +134,22 @@ vanilla interior's (`readRecord` one: copy `Flags` with `IsInteriorCell`, its `L
 reference file for each thing in it. The player walks between two cells through a **pair of doors**: a door reference in
 each cell, each with `TeleportDestination` naming the other door and where the player stands on arrival. Each door is
 placed as any reference, its base a vanilla door (`findRecords` with `types: ["DOOR"]`).
+Then `generateNavmesh` the room (next section): without a navmesh, no follower comes in.
+
+## A navmesh for an interior cell
+
+NPCs and followers walk on the cell's **navmesh**, not on its floor: a new room without one keeps followers out, and a
+room whose furniture moved keeps paths through the new table. `generateNavmesh` `{"project": "BreezehomeTidy", "cell":
+"WhiterunBreezehome"}` makes it from the collision of what stands in the cell — the game's objects and the project's —
+and writes it into the project, over the cell's navmesh or new; it builds the project first where it changed. Run it
+after the objects are placed, then `buildProject`. Done when the build answers `success` and you told the user:
+
+- **`triangles`**, and the **`doors`** linked: a room with no load door gets no follower in until one links it.
+- **`before`** — over the game's navmesh, how much of the old one the new covers (`oldCovered`) and how much of the new
+  lies on the old (`newOnOld`): a generated navmesh also reaches narrow gaps a level designer leaves out.
+- **`objects.unreadMeshes`** — meshes it could not read: actors walk through those objects.
+
+Interior cells only: an exterior cell's navmesh is still the Creation Kit's.
 
 ## Locations, encounter zones, regions
 

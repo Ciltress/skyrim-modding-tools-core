@@ -52,6 +52,7 @@ export interface SkyrimBackend extends Backend {
     movePlugin(request: MovePluginRequest): Promise<MovePluginResult>;
     sortPlugins(request: SortPluginsRequest): Promise<SortPluginsResult>;
     editTerrain(request: EditTerrainRequest): Promise<EditTerrainResult>;
+    generateNavmesh(request: GenerateNavmeshRequest): Promise<GenerateNavmeshResult>;
 
     /** A mod moved to just before or after another in the mod order: after wins, its files are the game's. */
     setModPriority(request: SetModPriorityRequest): Promise<SetModPriorityResult>;
@@ -227,6 +228,36 @@ export interface EditTerrainResult {
     clamped: number;
     /** References the game places where the ground moved under them by 24 units or more: they float or sink now. */
     gameReferences: { reference: string; base: string; position: string; groundMoved: number }[];
+}
+
+export interface GenerateNavmeshRequest {
+    project: string;
+    /** The interior cell, by editor ID or FormID: the load order's, or one the project made. */
+    cell: string;
+}
+
+/** An interior cell's navmesh made from the collision of what stands in it (helper Navmesh.cs), written into the project. */
+export interface GenerateNavmeshResult {
+    cell: string;
+    /** The navmesh written: the cell's own overridden, or a new one. */
+    navmesh: string;
+    replaced: boolean;
+    triangles: number;
+    vertices: number;
+    /** The project's files written: the navmesh's, and the map entry's (NAVI) where it is new or its doors changed. */
+    files: string[];
+    /** Each load door and the triangle before it. */
+    doors: { door: string; triangle: number }[];
+    /** The references whose meshes have collision, those without, and meshes that could not be read. */
+    objects: { withCollision: number; withoutCollision: number; unreadMeshes: string[] };
+    /** Pieces left out: table tops, shelves, gaps behind furniture no actor reaches. */
+    left: { pieces: number; triangles: number };
+    /** The navmesh it replaced: its size, and how much of each lies on the other (0–1). */
+    before?: { triangles: number; areaM2: number; nowAreaM2: number; oldCovered: number; newOnOld: number };
+    /** The cell's other navmeshes, kept as they are. */
+    otherNavmeshes?: string[];
+    /** The project was built first: its own references are read from the built plugin. */
+    builtFirst?: boolean;
 }
 
 export interface SortPluginsRequest {

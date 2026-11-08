@@ -648,6 +648,55 @@ export class ProjectsHandlers extends BaseHandler {
             },
             {
                 definition: {
+                    name: 'generateNavmesh',
+                    annotations: {
+                        title: 'Make an interior cell\'s navmesh',
+                        readOnlyHint: false,
+                        // Makes the project's navmesh of the cell anew each time, from the same objects the same one.
+                        destructiveHint: false,
+                        idempotentHint: true,
+                        openWorldHint: false
+                    },
+                    description:
+                        'Make an interior cell\'s navmesh — the triangles NPCs and followers walk on — from what stands in it: the ' +
+                        'collision of its floors, walls, stairs and furniture, the project\'s own objects with the game\'s. Written into ' +
+                        'the project over the cell\'s navmesh (a new one for a cell the project made), its load doors linked; no ' +
+                        'Creation Kit needed. Run it after placing, moving or removing objects in a cell, or for a new room; the ' +
+                        'project is built first where it changed. Answers the triangles, the doors linked and, over the game\'s ' +
+                        'navmesh, how much of the old one the new covers. Interior cells only. Then buildProject.',
+                    inputSchema: {
+                        type: 'object',
+                        properties: {
+                            project: PROJECT,
+                            cell: { type: 'string', description: 'The interior cell by editor ID or FormID, e.g. "WhiterunBreezehome"; a cell the project made, too.' }
+                        },
+                        required: ['project', 'cell']
+                    }
+                },
+                onFailure: 'Failed to make the navmesh',
+                run: async args => {
+                    const result = await asRequestError(this.backend.generateNavmesh({ project: requireString(args, 'project'), cell: requireString(args, 'cell') }));
+                    const over = result.before
+                        ? ` It replaces the game's navmesh of ${result.before.triangles} triangles: it covers ${Math.round(result.before.oldCovered * 100)}% of the old ` +
+                          `one, and ${Math.round(result.before.newOnOld * 100)}% of it lies on the old one.`
+                        : ' The cell had no navmesh: this one is new.';
+                    const doors = result.doors.length
+                        ? ` ${result.doors.length} load door(s) linked.`
+                        : ' No load door stands in the cell: NPCs walk inside it, but none comes in until a door links it to another cell (skyrim-modding-world).';
+                    const unread = result.objects.unreadMeshes.length
+                        ? ` ${result.objects.unreadMeshes.length} mesh(es) could not be read, so actors walk through them: ${result.objects.unreadMeshes.slice(0, 3).join(', ')}.`
+                        : '';
+                    const others = result.otherNavmeshes?.length
+                        ? ` The cell's other navmesh(es) ${result.otherNavmeshes.join(', ')} stay as they are.` : '';
+                    return {
+                        ...result,
+                        nextStep: `The navmesh of ${result.cell} is written into the project, ${result.triangles} triangles: run buildProject next.` +
+                            `${over}${doors}${unread}${others} Tell the user it is generated: NPCs walking the room in game show it works.`
+                    };
+                }
+            },
+            {
+                definition: {
                     name: 'buildProject',
                     annotations: {
                         title: 'Build project',

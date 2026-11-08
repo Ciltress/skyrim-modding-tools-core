@@ -143,7 +143,7 @@ arguments, see [`Tool-Reference.md`](./Tool-Reference.md), which is generated fr
 | --- | --- | --- |
 | `core` | 19 | look up, patch, edit, build, deploy; move or delete a record file; list the mods, check them against the game, install, disable or enable one; read a crash log or the Papyrus log; find mod conflicts — small local models |
 | `readonly` | 12 | looking records and mods up, on Nexus Mods too, and reading crash logs, the Papyrus log and conflicts only; the write tools are absent, not discouraged |
-| `all` | 31 | the default; right for clients that fetch tool schemas on demand. 30 without a Nexus API key, which `downloadNexusFile` needs; the only one with `exportCell` and `importCell`, a cell in Blender and back, `editTerrain`, the ground outdoors, and `movePlugin`, `sortPlugins` and `setModPriority`, the load order and the mod order changed |
+| `all` | 32 | the default; right for clients that fetch tool schemas on demand. 31 without a Nexus API key, which `downloadNexusFile` needs; the only one with `exportCell` and `importCell`, a cell in Blender and back, `editTerrain`, the ground outdoors, `generateNavmesh`, a cell's navmesh, and `movePlugin`, `sortPlugins` and `setModPriority`, the load order and the mod order changed |
 
 Counts include `healthcheck`, which every profile lists. `profiles.test.ts` holds them to `PROFILES`.
 
@@ -443,6 +443,26 @@ which float or sink now. Distant terrain (LOD) shows the old ground until xLODGe
 ```jsonc
 {"tool":"editTerrain","args":{"project":"RiverwoodPlot","at":"17400, -47600","radius":400,"action":"flatten"}}
 {"tool":"editTerrain","args":{"project":"RiverwoodPlot","at":"16384, -47600","radius":500,"action":"raise","amount":200}}
+```
+
+### 4.5c Make an interior cell's navmesh
+
+`generateNavmesh` makes the navmesh of an interior cell — the triangles NPCs and followers walk on — from the collision
+of what stands in it: the load order's references with the project's built plugin over them (the project is built first
+where its files changed since). Each reference's mesh is found as exportCell finds it, loose or in an archive, and its
+Havok collision on the layers actors stand on or bump into is read with NiflySharp; doors are left out. Recast (DotRecast)
+gives the walkable surface as triangles at 8 units — an actor 120 tall and 8 wide, climbing 32 — and the pieces no load
+door stands at and smaller than a sixth of the largest are left out (table tops, shelves). The project gets the navmesh
+in the cell's `NavigationMeshes` folder: over the cell's largest navmesh, its FormID kept, or new for a cell the project
+made; each load door's triangle is the one nearest it, and the grid the game looks triangles up in is written as the
+game's is. A map entry (`NavigationMeshInfoMaps/012FB4_Skyrim.esm.yaml`) is written only where the navmesh is new or its
+load doors changed: the game merges every plugin's entries. The answer gives the triangles, the doors, the references
+with and without collision, meshes that could not be read, the pieces left out, and over a game navmesh how much of the
+old one the new covers (`before`). Exterior cells are refused for now. How each part was read off the game's navmeshes:
+docs/adr/0014. Since v0.2.69.
+
+```jsonc
+{"tool":"generateNavmesh","args":{"project":"InnTidy","cell":"RiverwoodSleepingGiantInn"}}
 ```
 
 ### 4.6 Find a mod on Nexus, check what it needs, install it

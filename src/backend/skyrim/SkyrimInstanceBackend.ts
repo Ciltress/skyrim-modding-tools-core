@@ -47,7 +47,7 @@ import type {
     AddPatchRequest, AddPatchResult, BuildResult, DeleteRecordRequest, DeleteRecordResult, DeployResult, DisableModRequest, DisableModResult,
     EditIniRequest, EditIniResult, EditRecordRequest, GameFile, EditRecordResult, EditInputRequest, EditInputResult, EnableModRequest, EnableModResult, InstallModQuestions, InstallModRequest, ReadCrashLogRequest, ReadPapyrusLogRequest, PapyrusScriptEntries,
     ConflictReport, FindConflictsRequest, MergedChanges, RecordConflict, MovePluginRequest, MovePluginResult, SetModPriorityRequest,
-    SetModPriorityResult, SortPluginsRequest, SortPluginsResult, EditTerrainRequest, EditTerrainResult,
+    SetModPriorityResult, SortPluginsRequest, SortPluginsResult, EditTerrainRequest, EditTerrainResult, GenerateNavmeshRequest, GenerateNavmeshResult,
     InstallModResult, GameVersionCheck, ModList, ModListQuery, MoveRecordRequest, MoveRecordResult,
     NewProjectRequest, NexusAccount, NexusDownload, NexusMod, NexusSearchQuery, NexusSearchResult, ProjectFile, ProjectInfo,
     PullResult, ExportCellRequest, ExportCellResult, ImportCellRequest, ImportCellResult, RecordQuery, RecordRequest, RecordSearchResult, RecordVersion, RecordVersions, SkyrimBackend
@@ -1479,6 +1479,40 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
             ...(request.height !== undefined ? { height: request.height } : {}),
             ...(request.amount !== undefined ? { amount: request.amount } : {})
         }, BUILD_TIMEOUT_MS);
+    }
+
+    /**
+     * An interior cell's navmesh made anew from the collision of the meshes its references show (helper Navmesh.cs): the
+     * project built first where its files changed since, so its own references count; the meshes found as exportCell finds
+     * them, loose or in an archive.
+     */
+    async generateNavmesh({ project, cell }: GenerateNavmeshRequest): Promise<GenerateNavmeshResult> {
+        await this.engine.ensureFresh();
+        const instance = this.engine.modManager.readInstance();
+        const paths = projectPaths(this.engine.projectsDir, project);
+        const { plugin } = readProjectHeader(paths);
+        const built = path.join(paths.build, plugin);
+        let builtFirst = false;
+        // A project with no records yet has nothing of its own in the cell: the load order's alone.
+        const hasRecords = recordFiles(paths.plugin).length > 0;
+        if (hasRecords && (!fs.existsSync(built) || newestSourceTime(paths) > fs.statSync(built).mtimeMs)) {
+            try {
+                await this.buildProject(project);
+            } catch (error) {
+                throw new ProjectError(`'${project}' does not build yet, and generateNavmesh reads the cell from its build — ` +
+                    `${error instanceof Error ? error.message : String(error)} Fix that, then generateNavmesh again.`);
+            }
+            builtFirst = true;
+        }
+        const own = hasRecords && fs.existsSync(built) ? { projectPlugin: built } : {};
+        const scene = await this.engine.helper.call<CellSceneFile>('cellScene', { cell, ...own }, BUILD_TIMEOUT_MS);
+        const models = [...new Set(scene.references.map(r => r.model).filter((m): m is string => !!m))];
+        const sources = await this.attributor(instance).sources(models);
+        const found: Record<string, { file: string } | { archive: string; under: string }> = {};
+        for (const [model, source] of sources) found[model] = 'file' in source ? { file: source.file } : { archive: source.archive, under: source.under };
+        const result = await this.engine.helper.call<GenerateNavmeshResult>('generateNavmesh',
+            { plugin, projectPluginDir: paths.plugin, ...own, cell, models: found }, BUILD_TIMEOUT_MS * 4);
+        return builtFirst ? { ...result, builtFirst } : result;
     }
 
     async setModPriority(request: SetModPriorityRequest): Promise<SetModPriorityResult> {

@@ -144,6 +144,10 @@ The crash rules `readCrashLog` applies are Phostwood's [Skyrim Crash Log Analyze
 `sortPlugins` sorts with [LOOT](https://loot.github.io/)'s own library, [libloot](https://github.com/loot/libloot)
 (GPL-3.0-or-later), and LOOT's masterlist: thanks to WrinklyNinja and LOOT's contributors and masterlist maintainers.
 
+`generateNavmesh` reads the meshes' collision with ousnius' [NiflySharp](https://github.com/ousnius/NiflySharp) (GPL-3.0) and
+makes the walkable surface with [Recast](https://github.com/recastnavigation/recastnavigation) through ikpil's
+[DotRecast](https://github.com/ikpil/DotRecast) (zlib): thanks to them and to the NifTools team.
+
 What `readPapyrusLog` makes of the Papyrus log's messages follows Arthmoor's
 [Interpreting Papyrus Log Errors](https://www.afkmods.com/index.php?/topic/4129-skyrim-interpreting-papyrus-log-errors/),
 DavidJCobb's [Papyrus logging](https://ck.uesp.net/wiki/User:DavidJCobb/Papyrus_logging) on the Creation Kit wiki, and the
