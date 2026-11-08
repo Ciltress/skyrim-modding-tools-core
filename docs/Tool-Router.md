@@ -89,6 +89,7 @@ Workflows and the error model: [`MCP-Tools.md`](./MCP-Tools.md). The vocabulary:
 | Let one plugin's version of a record win, only when the user says so | `movePlugin` with `after` the plugin it is to win over (or `before` the one that is to win) |
 | Flatten, raise, lower or smooth the ground outdoors — a plot for a house, a hill | `editTerrain` with `at`, `radius` and the `action`, then `buildProject`; it names the game's objects the ground moved under |
 | A navmesh for a cell — a new room, a house whose furniture moved, ground changed outdoors, followers that cannot follow | `generateNavmesh` with the cell, then `buildProject` |
+| A new land of the mod's own, apart from Skyrim — a valley, an island, a realm — flat or from a heightmap | `newWorldspace`, then `buildProject`; `coc <editorId>Start` in game; a load door pair to get in |
 | Sort the whole load order with LOOT, and hear what LOOT says of the setup | `sortPlugins` — a preview of LOOT's moves, its messages, dirty plugins, missing files and incompatible pairs; `apply: true` writes LOOT's order, only when the user says so |
 | Let one mod's files win, only when the user says so | `setModPriority` with `after` the mod it is to win over — loose files only; archives follow the load order |
 

@@ -707,6 +707,72 @@ export class ProjectsHandlers extends BaseHandler {
             },
             {
                 definition: {
+                    name: 'newWorldspace',
+                    annotations: {
+                        title: 'Make a new worldspace',
+                        readOnlyHint: false,
+                        destructiveHint: false,
+                        // A second call with the same editor ID is refused: the worldspace is made once.
+                        idempotentHint: false,
+                        openWorldHint: false
+                    },
+                    description:
+                        'Make a new worldspace — an outdoor land of the mod\'s own, apart from Skyrim, like Skuldafn or the Soul ' +
+                        'Cairn: cells × cells exterior cells around grid 0, 0, each 4096 units (about 58 m) wide, with their ground ' +
+                        'flat at `height` or shaped by a heightmap image (PNG or RAW, brighter higher, its top north) between `lowest` ' +
+                        'and `highest`, under the game\'s sky and weather (`climate`), with water at `water` or none. Cell 0, 0 is ' +
+                        'named <editorId>Start and holds a COC marker, so `coc <editorId>Start` in the console goes there and a ' +
+                        'door can lead there. Creates the project when it does not exist. Then buildProject; the ground can be ' +
+                        'shaped further with editTerrain or in Blender (exportCell), objects placed in its cells as anywhere, and ' +
+                        'generateNavmesh makes each cell\'s navmesh.',
+                    inputSchema: {
+                        type: 'object',
+                        properties: {
+                            project: PROJECT,
+                            editorId: { type: 'string', description: 'The worldspace\'s editor ID, like "MyValleyWorld": letters and digits.' },
+                            name: { type: 'string', description: 'Its in-game name, like "Hidden Valley". Defaults to the editor ID.' },
+                            cells: { type: 'number', description: 'Its width in cells, 1 to 32: cells × cells of them. Defaults to 4 (about 230 m across).' },
+                            height: { type: 'number', description: 'The ground\'s height everywhere, in game units, when no heightmap is given. Defaults to 0.' },
+                            heightmap: { type: 'string', description: 'The full path of a heightmap image to shape the ground with: a PNG (grey or colour, 8 or 16 bits) or a square RAW of 16-bit heights.' },
+                            lowest: { type: 'number', description: 'The height of the heightmap\'s darkest pixels, in game units. Defaults to 0.' },
+                            highest: { type: 'number', description: 'The height of its brightest pixels. Defaults to 4096 (about 58 m above the lowest).' },
+                            water: { type: 'number', description: 'The water\'s height, in game units: the ground below it is under water. Leave it out for none.' },
+                            climate: { type: 'string', description: 'The sky and weather, a climate\'s editor ID. Defaults to SkyrimClimate, the weather of Skyrim\'s own land.' }
+                        },
+                        required: ['project', 'editorId']
+                    }
+                },
+                onFailure: 'Failed to make the worldspace',
+                run: async args => {
+                    const project = requireString(args, 'project');
+                    const made = await asRequestError(this.backend.newWorldspace({
+                        project,
+                        editorId: requireString(args, 'editorId'),
+                        name: optionalString(args, 'name'),
+                        cells: optionalNumber(args, 'cells'),
+                        height: optionalNumber(args, 'height'),
+                        heightmap: optionalString(args, 'heightmap'),
+                        lowest: optionalNumber(args, 'lowest'),
+                        highest: optionalNumber(args, 'highest'),
+                        water: optionalNumber(args, 'water'),
+                        climate: optionalString(args, 'climate')
+                    }));
+                    const steep = made.ground.clamped
+                        ? ` ${made.ground.clamped} step(s) of the ground were steeper than the game's landscape holds and were cut: give the heightmap a smaller range (lowest to highest) for smooth slopes.`
+                        : '';
+                    return {
+                        ...made,
+                        nextStep: `${made.editorId} is written into the project: ${made.cells} cells from ${made.grid.from} to ${made.grid.to}, ` +
+                            `the ground from ${Math.round(made.ground.lowest)} to ${Math.round(made.ground.highest)}.${steep} Build next: buildProject ` +
+                            `{"project": ${JSON.stringify(project)}}. In game, \`coc ${made.start.cell}\` goes there. To let players in, place a load ` +
+                            `door pair — one where they come from, its twin in ${made.start.cell}, each teleporting to the other (skyrim-modding-world). ` +
+                            `Once objects stand in a cell, generateNavmesh {"project": ${JSON.stringify(project)}, "cell": "<the cell>"} makes where NPCs walk. ` +
+                            'Distant land shows only once LOD is made for it (xLODGen); until then the land ends at the loaded cells.'
+                    };
+                }
+            },
+            {
+                definition: {
                     name: 'buildProject',
                     annotations: {
                         title: 'Build project',

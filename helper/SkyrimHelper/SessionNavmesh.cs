@@ -130,7 +130,7 @@ public sealed partial class Session
         var sides = new List<(int Line, List<NavmeshPart> Theirs)>();
         if (square is { } sqr && scene.Grid is { } at0 && scene.Worldspace is { } world0)
         {
-            var worlds = Contexts(world0).Where(c => c.Record is IWorldspaceGetter).ToList();
+            var worlds = WorldsOf(world0);
             foreach (var (dx, dy, line) in new[] { (-1, 0, 0), (1, 0, 1), (0, -1, 2), (0, 1, 3) })
                 if (CellContents.CellAt(worlds, new P2Int(at0.X + dx, at0.Y + dy)) is { } other)
                     sides.Add((line, CellVersions(other.FormKey, project).SelectMany(v => v.NavigationMeshes).Select(n => n.FormKey).Distinct()
@@ -253,7 +253,7 @@ public sealed partial class Session
         {
             NavigationMesh navmesh;
             if (Cache.ResolveAllContexts(part.Key, typeof(INavigationMeshGetter)).FirstOrDefault() is { } context) navmesh = (NavigationMesh)context.GetOrAddAsOverride(temp);
-            else navmesh = NewNavmesh(temp, part.Key, scene);
+            else navmesh = NewNavmesh(temp, part.Key, scene, part.Cell);
             Fill(navmesh.Data ??= new NavigationMeshData(), part);
         }
         var winner = Cache.ResolveAllContexts(NavigationInfoMap, typeof(INavigationMeshInfoMapGetter)).First();
@@ -469,8 +469,19 @@ public sealed partial class Session
     private FormKey? OuterCellOf(INavigationMeshGetter navmesh)
     {
         if (navmesh.Data?.Parent is not WorldspaceNavmeshParent world) return null;
-        var worlds = Contexts(world.Parent.FormKey).Where(c => c.Record is IWorldspaceGetter).ToList();
-        return CellContents.CellAt(worlds, new P2Int(world.Coordinates.X, world.Coordinates.Y))?.FormKey;
+        return CellContents.CellAt(WorldsOf(world.Parent.FormKey), new P2Int(world.Coordinates.X, world.Coordinates.Y))?.FormKey;
+    }
+
+    /// <summary>The project's built plugin the navmesh being made reads (SceneForNavmesh sets it): its own worldspaces count.</summary>
+    private ISkyrimModGetter? navmeshProject;
+
+    /// <summary>A worldspace's versions, the project's first: a worldspace of its own (newWorldspace) has no other.</summary>
+    private List<IWorldspaceGetter> WorldsOf(FormKey world)
+    {
+        var worlds = new List<IWorldspaceGetter>();
+        if (navmeshProject?.Worldspaces.FirstOrDefault(w => w.FormKey == world) is { } own) worlds.Add(own);
+        worlds.AddRange(Contexts(world).Select(c => c.Record).OfType<IWorldspaceGetter>());
+        return worlds;
     }
 
     private static Navmesh.Geometry GeometryOf(INavigationMeshGetter navmesh) =>
@@ -496,6 +507,7 @@ public sealed partial class Session
     /// <summary>The cell and what its navmesh is made from: its references and doors, outdoors the ground and the neighbours' too.</summary>
     private NavmeshScene SceneForNavmesh(string asked, ISkyrimModGetter? project)
     {
+        navmeshProject = project;
         var ownCells = project?.EnumerateMajorRecords<ICellGetter>().ToList() ?? [];
         var own = ownCells.FirstOrDefault(c => string.Equals(c.EditorID, asked, StringComparison.OrdinalIgnoreCase)
             || string.Equals(FormKeyText(c.FormKey), asked, StringComparison.OrdinalIgnoreCase));
@@ -525,11 +537,11 @@ public sealed partial class Session
             foreach (var context in Contexts(cellKey))
                 for (var parent = context.Parent; parent is not null && worldKey is null; parent = parent.Parent)
                     if (parent.Record is IWorldspaceGetter w) worldKey = w.FormKey;
-            if (worldKey is not { } wk) throw new HelperException("notFound", $"{cellName} is in no worldspace of the load order.");
-            var worlds = Contexts(wk).Where(c => c.Record is IWorldspaceGetter).ToList();
-            var tops = new List<IWorldspaceGetter>();
-            if (project?.Worldspaces.FirstOrDefault(w => w.FormKey == wk) is { } ownWorld) tops.Add(ownWorld);
-            tops.AddRange(worlds.Select(c => c.Record).OfType<IWorldspaceGetter>());
+            // A cell of a worldspace the project made (newWorldspace) is in the project alone.
+            worldKey ??= project is null ? null : CellContents.WorldOf(project, cellKey)?.FormKey;
+            if (worldKey is not { } wk) throw new HelperException("notFound", $"{cellName} is in no worldspace of the load order or the project.");
+            var tops = WorldsOf(wk);
+            var worlds = tops;
             for (var dx = -1; dx <= 1; dx++)
                 for (var dy = -1; dy <= 1; dy++)
                 {
@@ -636,16 +648,53 @@ public sealed partial class Session
     }
 
     /// <summary>A navmesh of the cell's own where it has none: under a copy of the cell, outdoors in its worldspace's blocks.</summary>
-    private NavigationMesh NewNavmesh(SkyrimMod temp, FormKey key, NavmeshScene scene)
+    /// <summary>
+    /// A navmesh the load order has no version of, in a shell of its cell in the temporary plugin: a new one of the cell being
+    /// made, or — in a worldspace of the project's own (newWorldspace) — a neighbouring cell's the project made before, in
+    /// `inCell`. Each cell's shell is made once; a second navmesh of it joins the first.
+    /// </summary>
+    private NavigationMesh NewNavmesh(SkyrimMod temp, FormKey key, NavmeshScene scene, FormKey? inCell = null)
     {
         var navmesh = new NavigationMesh(key, release);
-        if (scene.Grid is { } grid && scene.Worldspace is { } world)
+        var cellKey = inCell ?? scene.CellKey;
+        var source = cellKey == scene.CellKey ? scene.Cell : CellVersions(cellKey, scene.Project).FirstOrDefault() ?? scene.Cell;
+        if (scene.Worldspace is { } world && CellContents.GridOf(source) is { } grid)
         {
-            var cell = (Cell)Contexts(scene.CellKey).First(c => c.Record is ICellGetter).GetOrAddAsOverride(temp);
-            cell.Temporary.Clear();
-            cell.Persistent.Clear();
-            cell.NavigationMeshes.Clear();
-            cell.Landscape = null;
+            Cell? cell = null;
+            var fresh = false;
+            if (Contexts(cellKey).FirstOrDefault(c => c.Record is ICellGetter) is { } context)
+            {
+                fresh = !temp.EnumerateMajorRecords<ICellGetter>().Any(c => c.FormKey == cellKey);
+                cell = (Cell)context.GetOrAddAsOverride(temp);
+            }
+            else
+            {
+                // A cell of the project's own worldspace: it and its worldspace copied in, without the other cells.
+                var own = scene.Project?.Worldspaces.FirstOrDefault(w => w.FormKey == world)
+                    ?? throw new HelperException("notFound", $"{scene.CellName} is in no worldspace of the load order or the project.");
+                var copy = temp.Worldspaces.FirstOrDefault(w => w.FormKey == world);
+                if (copy is null)
+                {
+                    copy = own.DeepCopy();
+                    copy.SubCells.Clear();
+                    copy.TopCell = null;
+                    temp.Worldspaces.Add(copy);
+                }
+                var sub = SubBlockOf(copy, grid.X, grid.Y);
+                cell = sub.Items.FirstOrDefault(c => c.FormKey == cellKey);
+                if (cell is null)
+                {
+                    sub.Items.Add(cell = source.DeepCopy());
+                    fresh = true;
+                }
+            }
+            if (fresh)
+            {
+                cell.Temporary.Clear();
+                cell.Persistent.Clear();
+                cell.NavigationMeshes.Clear();
+                cell.Landscape = null;
+            }
             // Mutagen holds an exterior navmesh's grid as the game stores it, y before x (Riverwood's 4, -12 reads "-12, 4").
             navmesh.Data = new NavigationMeshData { Parent = new WorldspaceNavmeshParent { Parent = new FormLink<IWorldspaceGetter>(world), Coordinates = new P2Int16((short)grid.Y, (short)grid.X) } };
             cell.NavigationMeshes.Add(navmesh);
@@ -798,7 +847,8 @@ public sealed partial class Session
     /// <summary>The FormID after the highest the project's files use, as the build numbers new records (000800 on).</summary>
     private static uint NextFormId(string projectDir, ModKey plugin)
     {
-        var own = new Regex($@"^FormKey:[ \t]*([0-9A-Fa-f]{{6}}):{Regex.Escape(plugin.FileName)}[ \t]*(?:#.*)?$", RegexOptions.IgnoreCase | RegexOptions.Multiline);
+        // Indented too: a cell's landscape, a worldspace's top cell and its references sit inside another record's file.
+        var own = new Regex($@"^[ \t]*FormKey:[ \t]*([0-9A-Fa-f]{{6}}):{Regex.Escape(plugin.FileName)}[ \t]*(?:#.*)?\r?$", RegexOptions.IgnoreCase | RegexOptions.Multiline);
         var highest = 0x7FFu;
         if (Directory.Exists(projectDir))
             foreach (var file in Directory.EnumerateFiles(projectDir, "*.yaml", SearchOption.AllDirectories))

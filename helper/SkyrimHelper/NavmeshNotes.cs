@@ -57,8 +57,10 @@ internal static class NavmeshNotes
                 + (references.Count > 3 ? $" and {references.Count - 3} more" : "");
             if (mine && !hasNavmesh)
             {
-                yield return $"{cellName}: a room of the mod's own with no navmesh — followers do not come in, and NPCs placed there stand where " +
-                    $"they are. One call makes it from what stands there: {call}; then build again.";
+                yield return (CellContents.GridOf(cell) is null
+                        ? $"{cellName}: a room of the mod's own with no navmesh — followers do not come in, and NPCs placed there stand where they are."
+                        : $"{cellName}: an outdoor cell of the mod's own with no navmesh — NPCs and followers there stand where they are, and none walks in from the cells beside it.") +
+                    $" One call makes it from what stands there: {call}; then build again.";
                 continue;
             }
             var what = new List<string>();

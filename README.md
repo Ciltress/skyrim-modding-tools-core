@@ -38,7 +38,9 @@ This is the engine of the Skyrim Modding Tools. Use it from your own code, or ta
   world, indoors and out — a chest in Breezehome, a bedroll by Riverwood's cooking pot.
 - 🧊 **Cells in Blender.** Export a cell — its objects, with the meshes and textures they show — and arrange it in
   Blender with the PyNifly add-on, by hand or through Blender's MCP server; what was moved, copied or deleted comes back
-  as the mod's own references.
+  as the mod's own references, the ground sculpted and the navmesh edited too.
+- 🗺️ **Land and navmesh, no Creation Kit.** Shape the ground outdoors, make a new worldspace — flat or from a
+  heightmap — and give any cell its navmesh in one call, made from the collision of what stands there.
 - 🩹 **Patch without touching.** Copy another mod's record into your patch and change it there; the original mod
   stays as it is.
 - 📦 **Install mods.** Search Nexus Mods, read a mod's page and what it requires, download, install with its FOMOD

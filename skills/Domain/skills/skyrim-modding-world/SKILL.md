@@ -156,6 +156,20 @@ To change it by hand — a path nobody should take, a ledge they should — edit
 delete or add faces), run the exportScript, and importCell makes it the cell's navmesh, linked to its doors and
 neighbours; then buildProject. Never write a navmesh file by hand: its links and grid are computed.
 
+## A new worldspace
+
+A land of the mod's own, apart from Skyrim's, is one call: `newWorldspace` `{"project": "HiddenValley", "editorId":
+"HiddenValleyWorld", "name": "Hidden Valley", "cells": 8}` — flat at `height`, or shaped by a `heightmap` image (PNG or
+RAW, brighter higher, top north) between `lowest` and `highest`, with `water` at a height or none. Never write a
+worldspace, its cells or their landscape by hand: the heights and normals are computed. Then buildProject.
+
+- In game, `coc <editorId>Start` goes to its centre.
+- To let players in, a load door pair (A new interior cell and the door to it, above): one door where they come from,
+  its twin in `<editorId>Start` near the COC marker, each one's `TeleportDestination` the other.
+- Its cells take objects, `editTerrain` and Blender like the game's; `generateNavmesh` each cell once things stand in it
+  (by `<editorId>Start` or a cell's FormID).
+- Far land shows only after LOD is generated (xLODGen); the map stays empty.
+
 ## Locations, encounter zones, regions
 
 | To give … | Record | Fields | Set on |

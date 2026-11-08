@@ -25,6 +25,7 @@ import {
     saveBlendCode, sceneFolderName, texturesOf,
     triple, type CellSceneFile, type LayoutFile
 } from './cellScene.js';
+import { HeightmapError, readHeightmap, worldHeights } from './heightmap.js';
 import { CrashLogNotFoundError, chooseCrashLog } from './crash/crashLogFiles.js';
 import { buildCrashReport, crashLogSection, type CrashLogSection, type CrashReport } from './crash/crashReport.js';
 import { CRASH_RULES } from './crash/rules/index.js';
@@ -47,7 +48,7 @@ import type {
     AddPatchRequest, AddPatchResult, BuildResult, DeleteRecordRequest, DeleteRecordResult, DeployResult, DisableModRequest, DisableModResult,
     EditIniRequest, EditIniResult, EditRecordRequest, GameFile, EditRecordResult, EditInputRequest, EditInputResult, EnableModRequest, EnableModResult, InstallModQuestions, InstallModRequest, ReadCrashLogRequest, ReadPapyrusLogRequest, PapyrusScriptEntries,
     ConflictReport, FindConflictsRequest, MergedChanges, RecordConflict, MovePluginRequest, MovePluginResult, SetModPriorityRequest,
-    SetModPriorityResult, SortPluginsRequest, SortPluginsResult, EditTerrainRequest, EditTerrainResult, GenerateNavmeshRequest, GenerateNavmeshResult,
+    SetModPriorityResult, SortPluginsRequest, SortPluginsResult, EditTerrainRequest, EditTerrainResult, GenerateNavmeshRequest, GenerateNavmeshResult, NewWorldspaceRequest, NewWorldspaceResult,
     InstallModResult, GameVersionCheck, ModList, ModListQuery, MoveRecordRequest, MoveRecordResult,
     NewProjectRequest, NexusAccount, NexusDownload, NexusMod, NexusSearchQuery, NexusSearchResult, ProjectFile, ProjectInfo,
     PullResult, ExportCellRequest, ExportCellResult, ImportCellRequest, ImportCellResult, RecordQuery, RecordRequest, RecordSearchResult, RecordVersion, RecordVersions, SkyrimBackend
@@ -1493,6 +1494,37 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
             ...(request.height !== undefined ? { height: request.height } : {}),
             ...(request.amount !== undefined ? { amount: request.amount } : {})
         }, BUILD_TIMEOUT_MS);
+    }
+
+    /**
+     * A worldspace of the project's own (helper SessionWorldspace.cs), its ground flat or from a heightmap read here
+     * (heightmap.ts): the project created when it does not exist.
+     */
+    async newWorldspace(request: NewWorldspaceRequest): Promise<NewWorldspaceResult> {
+        await this.engine.ensureFresh();
+        const paths = projectPaths(this.engine.projectsDir, request.project);
+        if (!projectExists(paths)) await this.newProject({ project: request.project });
+        const { plugin } = readProjectHeader(paths);
+        const cells = request.cells ?? 4;
+        let heights: number[][] | undefined;
+        if (request.heightmap) {
+            const [lowest, highest] = [request.lowest ?? 0, request.highest ?? 4096];
+            if (!(highest > lowest)) throw new ProjectError(`highest (${highest}) must lie above lowest (${lowest}).`);
+            try {
+                heights = worldHeights(readHeightmap(request.heightmap), cells * 32 + 1, lowest, highest);
+            } catch (error) {
+                if (error instanceof HeightmapError) throw new ProjectError(error.message);
+                throw error;
+            }
+        }
+        const result = await this.engine.helper.call<Omit<NewWorldspaceResult, 'project'>>('newWorldspace', {
+            plugin, projectPluginDir: paths.plugin, editorId: request.editorId, cells,
+            ...(request.name ? { name: request.name } : {}),
+            ...(heights ? { heights } : { height: request.height ?? 0 }),
+            ...(request.water !== undefined ? { water: request.water } : {}),
+            ...(request.climate ? { climate: request.climate } : {})
+        }, BUILD_TIMEOUT_MS);
+        return { project: request.project, ...result };
     }
 
     /**

@@ -62,6 +62,7 @@ public sealed partial class Session : IDisposable
         "generateNavmesh" => await GenerateNavmesh(p),
         "navmeshModels" => NavmeshModels(p),
         "setTerrain" => await SetTerrain(p),
+        "newWorldspace" => await NewWorldspace(p),
         "readArchive" => Archives.Read(p),
         "extractArchive" => Archives.Extract(p),
         "pluginHeaders" => PluginHeaders(p),
@@ -685,10 +686,16 @@ public sealed partial class Session : IDisposable
     /// <summary>A cell as exportCell lays it out in Blender (CellScene): its references, the project's built plugin over the load order's.</summary>
     private JsonNode CellSceneOf(JsonObject p)
     {
-        var formKey = Resolve(Required(p, "cell"));
+        var asked = Required(p, "cell").Trim();
         var built = p["projectPlugin"]?.GetValue<string>();
         using var project = built is not null && File.Exists(built) ? SkyrimMod.Create(release).FromPath(built).Construct() : null;
-        return CellScene.Of(Contexts(formKey), key => Contexts(key).FirstOrDefault()?.Record, Index, project, Contexts);
+        // A cell the project made — in a worldspace of its own, or a new room — by its editor ID or FormID, before the load order's.
+        var own = project?.EnumerateMajorRecords<ICellGetter>().FirstOrDefault(c => string.Equals(c.EditorID, asked, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(FormKeyText(c.FormKey), asked, StringComparison.OrdinalIgnoreCase));
+        var formKey = own?.FormKey ?? Resolve(asked);
+        var projectRecords = project?.EnumerateMajorRecords().GroupBy(r => r.FormKey).ToDictionary(g => g.Key, g => g.First()) ?? [];
+        return CellScene.Of(Contexts(formKey), key => projectRecords.TryGetValue(key, out var mine) ? mine : Contexts(key).FirstOrDefault()?.Record,
+            Index, project, Contexts, own);
     }
 
     private static string? ProjectFileFor(string projectDir, FormKey formKey)

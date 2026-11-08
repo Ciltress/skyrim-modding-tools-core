@@ -143,7 +143,7 @@ arguments, see [`Tool-Reference.md`](./Tool-Reference.md), which is generated fr
 | --- | --- | --- |
 | `core` | 19 | look up, patch, edit, build, deploy; move or delete a record file; list the mods, check them against the game, install, disable or enable one; read a crash log or the Papyrus log; find mod conflicts — small local models |
 | `readonly` | 12 | looking records and mods up, on Nexus Mods too, and reading crash logs, the Papyrus log and conflicts only; the write tools are absent, not discouraged |
-| `all` | 32 | the default; right for clients that fetch tool schemas on demand. 31 without a Nexus API key, which `downloadNexusFile` needs; the only one with `exportCell` and `importCell`, a cell in Blender and back, `editTerrain`, the ground outdoors, `generateNavmesh`, a cell's navmesh, and `movePlugin`, `sortPlugins` and `setModPriority`, the load order and the mod order changed |
+| `all` | 33 | the default; right for clients that fetch tool schemas on demand. 32 without a Nexus API key, which `downloadNexusFile` needs; the only one with `exportCell` and `importCell`, a cell in Blender and back, `editTerrain`, the ground outdoors, `generateNavmesh`, a cell's navmesh, `newWorldspace`, a land of the mod's own, and `movePlugin`, `sortPlugins` and `setModPriority`, the load order and the mod order changed |
 
 Counts include `healthcheck`, which every profile lists. `profiles.test.ts` holds them to `PROFILES`.
 
@@ -488,6 +488,38 @@ added, the ground changed, or a room of the mod's own with no navmesh. A navmesh
 ```jsonc
 {"tool":"generateNavmesh","args":{"project":"InnTidy","cell":"RiverwoodSleepingGiantInn"}}
 {"tool":"generateNavmesh","args":{"project":"RiverwoodPlot","cell":"Riverwood"}}
+```
+
+### 4.5d Make a new worldspace
+
+`newWorldspace` makes an outdoor land of the mod's own, apart from Skyrim's (since v0.2.70). It writes `cells` × `cells`
+exterior cells around grid 0, 0, each 4096 units wide, into the project as records it builds:
+- **The worldspace:** modelled on the game's small worldspaces (Skuldafn): `SmallWorld`, `CannotFastTravel`, the
+  climate `SkyrimClimate` unless another is named, `DefaultWater`.
+- **The ground:** flat at `height`, or a heightmap stretched over the whole world between `lowest` and `highest`
+  (default 0 and 4096). The heightmap is a PNG (grey or colour, 8 or 16 bits, not interlaced) or a square RAW of 16-bit
+  little-endian heights; brighter is higher, and the image's top is north. Each cell gets its landscape's heights and
+  normals, with the edges two cells share the same in both. A step steeper than a landscape holds (127 × 8 units between
+  vertices 128 apart) is cut, counted as `ground.clamped`.
+- **Water:** at `water`, or none: the default water then lies below the lowest ground.
+- **The start:** cell 0, 0 is named `<editorId>Start` and holds a COC marker at its centre, on the ground, so
+  `coc <editorId>Start` goes there and a load door can lead there.
+
+The worldspace's cells work with the other tools like the game's:
+- objects placed in them;
+- `editTerrain` and Blender (`exportCell`/`importCell`) on their ground;
+- `generateNavmesh` on each, by the start cell's editor ID or a cell's FormID, linked to the navmeshes of the cells
+  beside it.
+
+Its distant land needs LOD (xLODGen): until then the land ends at the loaded cells. Its map stays empty. Tested
+2026-11-08 on a 2 × 2 world from a 16-bit PNG: the ground read back where the image put it, the build was clean,
+and two cells' navmeshes linked across their edge.
+
+```jsonc
+{"tool":"newWorldspace","args":{"project":"HiddenValley","editorId":"HiddenValleyWorld","name":"Hidden Valley","cells":8,
+  "heightmap":"C:\\Maps\\valley.png","lowest":-512,"highest":6000,"water":0}}
+// → worldspace, cells 64, grid -4, -4 to 3, 3, start HiddenValleyWorldStart, ground lowest/highest/clamped
+{"tool":"buildProject","args":{"project":"HiddenValley"}}   // then in game: coc HiddenValleyWorldStart
 ```
 
 ### 4.6 Find a mod on Nexus, check what it needs, install it

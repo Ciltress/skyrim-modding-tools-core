@@ -14,7 +14,7 @@ import type {
     NexusSearchQuery, NexusSearchResult, ProjectInfo, PullResult, ExportCellRequest, ExportCellResult, ImportCellRequest, ImportCellResult, RecordQuery, RecordRequest, RecordSearchResult,
     RecordSummary, RecordVersions, ListedMod, ModList, ModListQuery, GameVersionCheck,
     CrashLogSection, CrashReport, EditIniRequest, EditIniResult, EnableModRequest, EnableModResult, ReadCrashLogRequest, GameFile,
-    ConflictReport, FindConflictsRequest, MovePluginRequest, MovePluginResult, EditTerrainRequest, EditTerrainResult, GenerateNavmeshRequest, GenerateNavmeshResult, SortPluginsRequest, SortPluginsResult, SetModPriorityRequest, SetModPriorityResult,
+    ConflictReport, FindConflictsRequest, MovePluginRequest, MovePluginResult, EditTerrainRequest, EditTerrainResult, GenerateNavmeshRequest, GenerateNavmeshResult, NewWorldspaceRequest, NewWorldspaceResult, SortPluginsRequest, SortPluginsResult, SetModPriorityRequest, SetModPriorityResult,
     PapyrusReport, PapyrusScriptEntries, ReadPapyrusLogRequest
 } from '../backend/skyrim/SkyrimBackend.js';
 import { CrashLogNotFoundError } from '../backend/skyrim/crash/crashLogFiles.js';
@@ -338,6 +338,17 @@ export class InMemorySkyrimBackend implements AppBackend {
     }
 
     /** The inn's navmesh made anew over the game's, its door linked. */
+    async newWorldspace(request: NewWorldspaceRequest): Promise<NewWorldspaceResult> {
+        const cells = request.cells ?? 4;
+        return {
+            project: request.project, worldspace: '000800:Sample.esp', editorId: request.editorId, cells: cells * cells,
+            grid: { from: `${-Math.floor(cells / 2)}, ${-Math.floor(cells / 2)}`, to: `${cells - Math.floor(cells / 2) - 1}, ${cells - Math.floor(cells / 2) - 1}` },
+            start: { cell: `${request.editorId}Start`, formId: '000803:Sample.esp', marker: '000805:Sample.esp' },
+            ground: { lowest: request.height ?? 0, highest: request.height ?? 0, clamped: 0 }, water: request.water ?? null,
+            climate: request.climate ?? 'SkyrimClimate', files: cells * cells + 2
+        };
+    }
+
     async generateNavmesh(request: GenerateNavmeshRequest): Promise<GenerateNavmeshResult> {
         return {
             cell: request.cell, navmesh: '0539F3:Skyrim.esm', replaced: true, triangles: 342, vertices: 309,
@@ -484,7 +495,7 @@ export interface FakeBackendOptions {
 
 const DOMAIN_METHODS = [
     'findRecords', 'readRecord', 'newProject', 'addPatch', 'editRecord', 'buildProject', 'deployProject', 'pullProject', 'exportCell', 'importCell',
-    'searchNexus', 'readNexusMod', 'downloadNexusFile', 'installMod', 'disableMod', 'enableMod', 'listMods', 'movePlugin', 'sortPlugins', 'editTerrain', 'generateNavmesh', 'setModPriority', 'checkGameVersion',
+    'searchNexus', 'readNexusMod', 'downloadNexusFile', 'installMod', 'disableMod', 'enableMod', 'listMods', 'movePlugin', 'sortPlugins', 'editTerrain', 'generateNavmesh', 'newWorldspace', 'setModPriority', 'checkGameVersion',
     'readCrashLog', 'readPapyrusLog', 'findConflicts', 'editIni', 'findGameFiles'
 ] as const;
 

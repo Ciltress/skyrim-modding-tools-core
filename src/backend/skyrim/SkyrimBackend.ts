@@ -53,6 +53,7 @@ export interface SkyrimBackend extends Backend {
     sortPlugins(request: SortPluginsRequest): Promise<SortPluginsResult>;
     editTerrain(request: EditTerrainRequest): Promise<EditTerrainResult>;
     generateNavmesh(request: GenerateNavmeshRequest): Promise<GenerateNavmeshResult>;
+    newWorldspace(request: NewWorldspaceRequest): Promise<NewWorldspaceResult>;
 
     /** A mod moved to just before or after another in the mod order: after wins, its files are the game's. */
     setModPriority(request: SetModPriorityRequest): Promise<SetModPriorityResult>;
@@ -277,6 +278,45 @@ export interface GenerateNavmeshResult {
     neighbours?: { navmesh: string; cell: string | null }[];
     /** The project was built first: its own references are read from the built plugin. */
     builtFirst?: boolean;
+}
+
+export interface NewWorldspaceRequest {
+    project: string;
+    /** The worldspace's editor ID; its start cell is named after it, `<editorId>Start`. */
+    editorId: string;
+    /** Its in-game name. Defaults to the editor ID. */
+    name?: string;
+    /** Its width in cells, each 4096 units: cells × cells around grid 0, 0. Defaults to 4. */
+    cells?: number;
+    /** The ground's height everywhere, when no heightmap is given. Defaults to 0. */
+    height?: number;
+    /** A heightmap's full path: a PNG or a RAW file, brighter higher, its top north, stretched over the whole worldspace. */
+    heightmap?: string;
+    /** The heights the heightmap's darkest and brightest pixels stand for. Default 0 and 4096. */
+    lowest?: number;
+    highest?: number;
+    /** The water's height; none without it. */
+    water?: number;
+    /** The sky and weather, a climate's editor ID. Defaults to SkyrimClimate. */
+    climate?: string;
+}
+
+/** A worldspace of the project's own, its cells and ground written into the project (helper SessionWorldspace.cs). */
+export interface NewWorldspaceResult {
+    project: string;
+    worldspace: string;
+    editorId: string;
+    cells: number;
+    grid: { from: string; to: string };
+    /** Cell 0, 0, named for `coc`, and the COC marker on its ground where coc and a door arrive. */
+    start: { cell: string; formId: string; marker: string };
+    /** The ground's heights, and how many steps were too steep for the game's landscape and were cut. */
+    ground: { lowest: number; highest: number; clamped: number };
+    water: number | null;
+    climate: string;
+    /** How many project files were written, and the worldspace's own. */
+    files: number;
+    worldspaceFile?: string | null;
 }
 
 export interface SortPluginsRequest {

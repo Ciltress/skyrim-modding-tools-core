@@ -394,16 +394,23 @@ internal static class CellContents
     }
 
     /// <summary>The cell of a worldspace at a grid, from the worldspace's versions, winning first.</summary>
-    internal static ICellGetter? CellAt(IEnumerable<IModContext<ISkyrimMod, ISkyrimModGetter, IMajorRecord, IMajorRecordGetter>> worldspaces, P2Int grid)
+    internal static ICellGetter? CellAt(IEnumerable<IModContext<ISkyrimMod, ISkyrimModGetter, IMajorRecord, IMajorRecordGetter>> worldspaces, P2Int grid) =>
+        CellAt(worldspaces.Select(c => c.Record).OfType<IWorldspaceGetter>(), grid);
+
+    /// <summary>The cell at a grid in the first of these versions of a worldspace that has one there.</summary>
+    internal static ICellGetter? CellAt(IEnumerable<IWorldspaceGetter> worldspaces, P2Int grid)
     {
-        foreach (var context in worldspaces)
-            if (context.Record is IWorldspaceGetter world)
-                foreach (var block in world.SubCells)
-                    foreach (var subBlock in block.Items)
-                        foreach (var cell in subBlock.Items)
-                            if (cell.Grid?.Point is { } point && point.Equals(grid)) return cell;
+        foreach (var world in worldspaces)
+            foreach (var block in world.SubCells)
+                foreach (var subBlock in block.Items)
+                    foreach (var cell in subBlock.Items)
+                        if (cell.Grid?.Point is { } point && point.Equals(grid)) return cell;
         return null;
     }
+
+    /// <summary>The worldspace of a plugin's that holds a cell: the project's own (newWorldspace), or its copy of the game's.</summary>
+    internal static IWorldspaceGetter? WorldOf(ISkyrimModGetter mod, FormKey cell) =>
+        mod.Worldspaces.FirstOrDefault(w => w.SubCells.SelectMany(b => b.Items).SelectMany(s => s.Items).Any(c => c.FormKey == cell));
 
     /// <summary>
     /// The folder Spriggit writes an exterior cell's copy in, beside a file of the same worldspace: the worldspace's folder, its

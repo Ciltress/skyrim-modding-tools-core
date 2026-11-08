@@ -19,10 +19,16 @@ internal static class CellScene
 {
     public static JsonObject Of(IReadOnlyList<IModContext<ISkyrimMod, ISkyrimModGetter, IMajorRecord, IMajorRecordGetter>> contexts,
         Func<FormKey, IMajorRecordGetter?> winning, RecordIndex index, ISkyrimModGetter? project,
-        Func<FormKey, List<IModContext<ISkyrimMod, ISkyrimModGetter, IMajorRecord, IMajorRecordGetter>>>? allContexts = null)
+        Func<FormKey, List<IModContext<ISkyrimMod, ISkyrimModGetter, IMajorRecord, IMajorRecordGetter>>>? allContexts = null, ICellGetter? ownCell = null)
     {
-        if (contexts.Count == 0 || contexts[0].Record is not ICellGetter winner)
+        // A cell of the load order, or one the project made (`ownCell`), as in a worldspace of its own (newWorldspace).
+        var winner = contexts.Count > 0 && contexts[0].Record is ICellGetter first ? first : ownCell;
+        if (winner is null)
             throw new HelperException("badRequest", "exportCell takes a cell: an interior's editor ID like WhiterunBreezehome, or an exterior cell's like Riverwood.");
+        IWorldspaceGetter? worldOf = null;
+        for (var parent = contexts.Count > 0 ? contexts[0].Parent : null; parent is not null && worldOf is null; parent = parent.Parent)
+            worldOf = parent.Record as IWorldspaceGetter;
+        worldOf ??= project is null ? null : CellContents.WorldOf(project, winner.FormKey);
 
         // Each plugin's version of the cell holds the references that plugin places; the project's built plugin loads last.
         var versions = contexts.Select(c => (Cell: c.Record as ICellGetter, Own: false)).Where(v => v.Cell is not null).ToList();
@@ -43,10 +49,7 @@ internal static class CellScene
         // first — as readRecord lists them (CellContents): Alvor's forge and grindstone in Riverwood are such.
         if (CellContents.GridOf(winner) is { } square && allContexts is not null)
         {
-            FormKey? worldKey = null;
-            for (var parent = contexts[0].Parent; parent is not null; parent = parent.Parent)
-                if (parent.Record is IWorldspaceGetter w) { worldKey = w.FormKey; break; }
-            if (worldKey is { } wk)
+            if (worldOf?.FormKey is { } wk)
             {
                 var tops = new List<(IWorldspaceGetter World, bool Own)>();
                 if (project?.Worldspaces.FirstOrDefault(w => w.FormKey == wk) is { } ownWorld) tops.Add((ownWorld, true));
@@ -94,12 +97,8 @@ internal static class CellScene
         {
             var cellNode = answer["cell"]!.AsObject();
             cellNode["grid"] = new JsonArray(grid.X, grid.Y);
-            for (var parent = contexts[0].Parent; parent is not null; parent = parent.Parent)
-                if (parent.Record is IWorldspaceGetter world)
-                {
-                    cellNode["worldspace"] = new JsonObject { ["formId"] = Session.FormKeyText(world.FormKey), ["editorId"] = world.EditorID };
-                    break;
-                }
+            if (worldOf is not null)
+                cellNode["worldspace"] = new JsonObject { ["formId"] = Session.FormKeyText(worldOf.FormKey), ["editorId"] = worldOf.EditorID };
             // The ground, from the version of the cell whose landscape wins.
             var land = versions.Select(v => v.Cell!.Landscape).FirstOrDefault(l => l?.VertexHeightMap is not null);
             if (land?.VertexHeightMap is { } heights) answer["ground"] = Ground(heights, grid);
