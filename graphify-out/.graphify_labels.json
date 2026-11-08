@@ -1,18 +1,13 @@
 {
   "0": "Helper Files and Imports (2) (0)",
-  "2": "Projects: Build, Deploy, Pull (3) (2)",
-  "4": "args.ts",
   "11": "RecordFiles.Check",
-  "13": "Session.FormKeyText",
   "27": "skills.ts",
   "29": "Crash Rule Tests",
   "33": "ci.yml",
   "47": "sksePlugins.ts",
   "55": "Crash Rules: Memory and Files",
-  "57": "NPCs Skill",
   "69": "skyrim-modding-items-and-crafting SKILL.md",
   "78": "Items and crafting reference",
-  "79": "Perks — reference",
   "80": "crashLog.ts",
   "98": "Helper Project Dependencies"
 }
