@@ -93,7 +93,7 @@ export const MESSAGE_KINDS: readonly MessageKind[] = [
         fix: 'Restore the missing dependency scripts; look for a mod that overrides the game\'s or a DLC\'s scripts with other versions.'
     },
     {
-        id: 'native-missing', class: 'bug', match: /^Native (?:static )?function (\S+)(?: in empty state)? could find no matching (?:static )?function on linked type (\S+)/,
+        id: 'native-missing', class: 'bug', match: /^Native (?:static )?function (\S+)(?: in empty state)? could find no matching (?:static )?function on linked type (\w+)/,
         script: m => m[2],
         title: 'A native function no SKSE plugin provides',
         explain: 'A script declares a native function that no loaded engine extension has: SKSE, or the SKSE plugin of that script type, is ' +
@@ -151,6 +151,30 @@ export const MESSAGE_KINDS: readonly MessageKind[] = [
     { id: 'file-not-loaded', class: 'noise', match: /^File "([^"]+)" does not exist or is not currently loaded/, script: innermost, title: 'A check for a plugin not installed', explain: 'A mod looking for an optional plugin (Game.GetFormFromFile). Not an error.', fix: 'Nothing to do.' },
     { id: 'misc-noise', class: 'noise', match: /^Script profiling is disabled|Failed to send event|attempting to start event scoped quest outside of story manager|cannot start scene because its parent quest was not running|did not have a valid Animation Graph Manager/, script: innermost, title: 'Known harmless messages', explain: 'Sometimes false alarms.', fix: 'Nothing to do unless it repeats every few seconds.' }
 ];
+
+/**
+ * The scripts whose errors the game writes with no mod installed: a log of the test instance — the game 1.7.104 with all its
+ * Anniversary Edition content, SKSE and no mod with scripts — named these on every start (2026-11-08). The DLC's test scripts
+ * and Creation Club quests' fragments that ship without their .pex, aliases and properties bound to the wrong type in the
+ * game's own plugins. Their lines are counted with the noise: nothing in the user's setup can fix them, and ranked as
+ * problems they put the game's own first in a log whose real problem was a mod's (the second log of that day).
+ */
+const GAME_OWN_SCRIPTS = new Set([
+    'DLC1TestPhilAtronach', 'DLC1testPhilVortexSCRIPT', 'dlc1testPhilVortexTrigSCRIPT', 'DLC2BenthicLurkerFXSCRIPT', 'DLC2WaterScript',
+    'DLCDwarvenPuzzleWinterFreezing', 'dlcdwarvenpuzzlecoolantreleaselever', 'DefaultDebugMagicEffect', 'defaultIgnoreFriendlyHits',
+    'defaultcounter', 'ccBGSSSE038_AssassinEnableScript', 'ccBGSSSE067_ScourgeDremoraScript', 'ccKRTSSE001_zQuestScen_05000F40',
+    'KRT_PF_ccKRTSSE001_WhiterunTe_0500081C', 'SSE_QF_ccBGSSSE051_MiscQuestA_0500083F', 'SSE_SF_ccFFBSSE001_QuestScene_02000932',
+    'SSE_SF_ccFFBSSE001_QuestScene_02005EB3'
+].map(script => script.toLowerCase()));
+
+/**
+ * Whether an entry of a kind, blaming a script, is one the game writes with no mod: a script of GAME_OWN_SCRIPTS, or a native
+ * function of Game's for the consoles' Amiibo and NFC, which the PC's game never binds — six such lines in every log.
+ */
+export function gameOwn(kind: string, script: string | undefined, message: string): boolean {
+    if (kind === 'native-missing') return script === 'Game' && /function \w*(?:Amiibo|NFC)\w* /.test(message);
+    return !!script && GAME_OWN_SCRIPTS.has(script.toLowerCase());
+}
 
 /** An entry's kind, its message taken off a form named before it; undefined for a trace or a message no kind has. */
 export function kindOf(entry: PapyrusEntry): { kind: MessageKind; match: RegExpExecArray; form?: { name?: string; formId: string } } | undefined {

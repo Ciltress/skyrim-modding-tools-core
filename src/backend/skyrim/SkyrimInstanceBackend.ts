@@ -1266,11 +1266,18 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
         const turnOn = `editIni {"set": [${['bEnableLogging', 'bEnableTrace', 'bLoadDebugInformation']
             .map(key => `{"section": "Papyrus", "key": "${key}", "value": "1"}`).join(', ')}]}`;
         if (!fs.existsSync(file)) {
+            // Under Mod Organizer with the profile's own INIs, the test instance's game wrote no log with the three lines in the
+            // profile's Skyrim.ini, and wrote one once My Games' Skyrim.ini had them too (2026-11-08).
+            const myGamesIni = myGames && logging && path.resolve(path.dirname(logging.file)) !== path.resolve(myGames)
+                ? path.join(myGames, 'Skyrim.ini') : undefined;
+            const elsewhere = myGamesIni ? ` Where the game still writes none, it reads its Papyrus settings from ${myGamesIni}: ` +
+                'the same three lines go into its [Papyrus] section, by hand and on the user\'s word.' : '';
             throw new PapyrusLogNotFoundError(`There is no ${path.basename(file)} in ${folder}` +
                 (logging && !logging.enabled ? `: the game writes none, Papyrus logging is off in ${logging.file}. ` : '. ') +
-                `Turning it on is a change to the user's setup — on their word: ${turnOn}. Then the game writes one each time it ` +
-                'starts; play until the problem shows, quit the game, and read it again. Logging costs some script time: turn it off ' +
-                'after, with value "0".');
+                (logging?.enabled ? `Papyrus logging is on in ${logging.file}.${elsewhere} ` : '') +
+                (logging?.enabled ? '' : `Turning it on is a change to the user's setup — on their word: ${turnOn}. `) +
+                'Then the game writes one each time it starts; play until the problem shows, quit the game, and read it again. ' +
+                'Logging costs some script time: turn it off after, with value "0".' + (logging?.enabled ? '' : elsewhere));
         }
         const log = parsePapyrusLog(fs.readFileSync(file, 'utf8'));
         if (log.platform && log.platform !== 'PC') {

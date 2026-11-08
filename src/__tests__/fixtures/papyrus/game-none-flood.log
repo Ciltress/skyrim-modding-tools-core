@@ -1,0 +1,499 @@
+[11/08/2026 - 08:36:12AM] Papyrus log opened (PC)
+[11/08/2026 - 08:36:12AM] Update budget: 1.200000ms (Extra tasklet budget: 1.200000ms, Load screen budget: 500.000000ms)
+[11/08/2026 - 08:36:13AM] Memory page: 128 (min) 512 (max) 153600 (max total)
+[11/08/2026 - 08:36:13AM] warning: Failed to load script order file - initial load time may be slow
+[11/08/2026 - 08:36:14AM] Cannot open store for class "DLC1testPhilVortexSCRIPT", missing file?
+[11/08/2026 - 08:36:14AM] Cannot open store for class "dlc1testPhilVortexTrigSCRIPT", missing file?
+[11/08/2026 - 08:36:14AM] Cannot open store for class "DLC1TestPhilAtronach", missing file?
+[11/08/2026 - 08:36:15AM] Cannot open store for class "DLC2BenthicLurkerFXSCRIPT", missing file?
+[11/08/2026 - 08:36:15AM] Cannot open store for class "DLCDwarvenPuzzleWinterFreezing", missing file?
+[11/08/2026 - 08:36:15AM] Cannot open store for class "dlcdwarvenpuzzlecoolantreleaselever", missing file?
+[11/08/2026 - 08:36:15AM] Cannot open store for class "SSE_SF_ccFFBSSE001_QuestScene_02005EB3", missing file?
+[11/08/2026 - 08:36:15AM] error: Unable to bind script SSE_SF_ccFFBSSE001_QuestScene_02005EB3 to  (FE01B934) because their base types do not match
+[11/08/2026 - 08:36:15AM] Cannot open store for class "SSE_SF_ccFFBSSE001_QuestScene_02000932", missing file?
+[11/08/2026 - 08:36:15AM] error: Unable to bind script SSE_SF_ccFFBSSE001_QuestScene_02000932 to  (FE01B932) because their base types do not match
+[11/08/2026 - 08:36:15AM] Cannot open store for class "ccBGSSSE038_AssassinEnableScript", missing file?
+[11/08/2026 - 08:36:15AM] Cannot open store for class "SSE_QF_ccBGSSSE051_MiscQuestA_0500083F", missing file?
+[11/08/2026 - 08:36:15AM] error: Unable to bind script SSE_QF_ccBGSSSE051_MiscQuestA_0500083F to ccBGSSSE051_MiscQuestAliasFillers (FE03283F) because their base types do not match
+[11/08/2026 - 08:36:15AM] Cannot open store for class "DefaultDebugMagicEffect", missing file?
+[11/08/2026 - 08:36:15AM] Cannot open store for class "ccBGSSSE067_ScourgeDremoraScript", missing file?
+[11/08/2026 - 08:36:15AM] Cannot open store for class "KRT_PF_ccKRTSSE001_WhiterunTe_0500081C", missing file?
+[11/08/2026 - 08:36:15AM] error: Unable to bind script KRT_PF_ccKRTSSE001_WhiterunTe_0500081C to  (FE03E81C) because their base types do not match
+[11/08/2026 - 08:36:15AM] Cannot open store for class "ccKRTSSE001_zQuestScen_05000F40", missing file?
+[11/08/2026 - 08:36:15AM] error: Unable to bind script ccKRTSSE001_zQuestScen_05000F40 to  (FE03EF40) because their base types do not match
+[11/08/2026 - 08:36:15AM] Cannot open store for class "PGS_GoneScript", missing file?
+[11/08/2026 - 08:36:15AM] error: Unable to bind script PGS_GoneScript to PGS_Quest (FE042800) because their base types do not match
+[11/08/2026 - 08:36:32AM] error: Unable to bind script DLC2WaterScript to alias Water on quest DLC2TTF2 (0401AAC8) because their base types do not match
+[11/08/2026 - 08:36:32AM] warning: Property AshSpawnAttachChancePercent on script DLC2AshSpawnAttackChanceScript attached to alias Player on quest DLC2Init (04016E02) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] error: Unable to bind script defaultIgnoreFriendlyHits to alias HostlerRef on quest ccBGSSSE034_WildHorsesQuest (FE017D65) because their base types do not match
+[11/08/2026 - 08:36:32AM] warning: Property wraithguard on script ccBGSSE008_WraithguardScript attached to alias ccBGSSSE008_Player on quest ccBGSSSE008_PlayerTrackingQuest (FE019B60) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property FollowerDismissMessageCompanions on script DLC2HirelingQuestScript attached to DLC2HirelingQuest (04038566) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property FollowerDismissMessageWait on script DLC2HirelingQuestScript attached to DLC2HirelingQuest (04038566) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property DismissedFollower on script DLC2HirelingQuestScript attached to DLC2HirelingQuest (04038566) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property DLC2RRTeldrynSero on script DLC2HirelingQuestScript attached to DLC2HirelingQuest (04038566) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property FollowerDismissMessage on script DLC2HirelingQuestScript attached to DLC2HirelingQuest (04038566) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property FollowerDismissMessageCompanionsMale on script DLC2HirelingQuestScript attached to DLC2HirelingQuest (04038566) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property FollowerDismissMessageCompanionsFemale on script DLC2HirelingQuestScript attached to DLC2HirelingQuest (04038566) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property FollowerDismissMessageWedding on script DLC2HirelingQuestScript attached to DLC2HirelingQuest (04038566) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property TargetValue on script ccMTYSSE001_ShrineCounter attached to  (FE00D86E) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property ccMTYSSE001_CrusaderGlobalShrines on script ccMTYSSE001_ShrineCounter attached to  (FE00D86E) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property ccBGSSSE019_SheogorathNote01 on script QF_ccBGSSSE019_StaffOfSheogo_03000822 attached to ccBGSSSE019_StaffOfSheogorathQuest (FE00A822) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property Alias_Champion04 on script SSE_QF_ccFFBSSE001_CorpseChec_0200086B attached to ccFFBSSE001_CorpseCheck (FE01B86B) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property Alias_Champion05 on script SSE_QF_ccFFBSSE001_CorpseChec_0200086B attached to ccFFBSSE001_CorpseCheck (FE01B86B) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property MyCell on script ccASVSSE001_DoorUnlockScript attached to  (05000F2B) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property PlatePosition on script dlc2toldarstombpuzzleplatescript attached to  (04027115) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property Alias_Jarl on script SSE_QF_ccBGSSSE064_MiscQuest_0200081A attached to ccBGSSSE064_MiscQuest (FE02B81A) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property Alias_Steward on script SSE_QF_ccBGSSSE064_MiscQuest_0200081A attached to ccBGSSSE064_MiscQuest (FE02B81A) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property PlatePosition on script dlc2toldarstombpuzzleplatescript attached to  (04027114) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property myLocationDiscovered on script ccBGSSSE031_FastTravelFlagScript attached to  (0A03E3EE) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property myQuest on script ccBGSSSE031_FastTravelFlagScript attached to  (0A03E3EE) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property noCheckNeeded on script ccBGSSSE031_FastTravelFlagScript attached to  (0A03E3EE) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property myLocationDiscovered on script ccBGSSSE031_FastTravelFlagScript attached to  (0A03E3ED) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property myQuest on script ccBGSSSE031_FastTravelFlagScript attached to  (0A03E3ED) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property noCheckNeeded on script ccBGSSSE031_FastTravelFlagScript attached to  (0A03E3ED) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property TG05KarliahInvisibilitySpell on script tg06questscript attached to TG06 (00021552) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property PlatePosition on script dlc2toldarstombpuzzleplatescript attached to  (04027116) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property PlatePosition on script dlc2toldarstombpuzzleplatescript attached to  (04027113) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property myLocationDiscovered on script ccBGSSSE031_FastTravelFlagScript attached to  (0A0341D7) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property myQuest on script ccBGSSSE031_FastTravelFlagScript attached to  (0A0341D7) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property noCheckNeeded on script ccBGSSSE031_FastTravelFlagScript attached to  (0A0341D7) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property GameHour on script ccKRTSSE001_FerryScript attached to ccKRTSSE001_FerrySystem (FE03EA7B) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property TimeToPass on script ccKRTSSE001_FerryScript attached to ccKRTSSE001_FerrySystem (FE03EA7B) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property PlatePosition on script dlc2toldarstombpuzzleplatescript attached to  (04027110) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property Alias_LevitationTarget on script DLC2_QF_DLC2DialogueTelMithry_02017E85 attached to DLC2DialogueTelMithryn (04017E85) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property Alias_Merchant_Chest_Madesi on script QF_ccEDHSSE001_UtilityQuest_03000830 attached to ccEDHSSE001_UtilityQuest (FE014830) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property Alias_Ring_Madesi on script QF_ccEDHSSE001_UtilityQuest_03000830 attached to ccEDHSSE001_UtilityQuest (FE014830) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property Alias_Circlet_Madesi on script QF_ccEDHSSE001_UtilityQuest_03000830 attached to ccEDHSSE001_UtilityQuest (FE014830) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property Alias_Amulet_Madesi on script QF_ccEDHSSE001_UtilityQuest_03000830 attached to ccEDHSSE001_UtilityQuest (FE014830) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] error: Property myQuest on script defaultcounter attached to  (0E000835) cannot be bound because <nullptr form> (0E001185) is not the right type
+[11/08/2026 - 08:36:32AM] warning: Property myLocationDiscovered on script ccBGSSSE031_FastTravelFlagScript attached to  (0A0392E2) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property myQuest on script ccBGSSSE031_FastTravelFlagScript attached to  (0A0392E2) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property noCheckNeeded on script ccBGSSSE031_FastTravelFlagScript attached to  (0A0392E2) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property boss3 on script ccBGSSE008_MessengerScript attached to  (FE01983C) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property boss2 on script ccBGSSE008_MessengerScript attached to  (FE01983C) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property Boss1 on script ccBGSSE008_MessengerScript attached to  (FE01983C) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property TargetValue on script ccMTYSSE001_ShrineCounter attached to  (FE00D856) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property ccMTYSSE001_CrusaderGlobalShrines on script ccMTYSSE001_ShrineCounter attached to  (FE00D856) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property PlatePosition on script dlc2toldarstombpuzzleplatescript attached to  (04027111) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property PlatePosition on script dlc2toldarstombpuzzleplatescript attached to  (0402710F) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property PlatePosition on script dlc2toldarstombpuzzleplatescript attached to  (04027117) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property TargetValue on script ccMTYSSE001_ShrineCounter attached to  (FE00D855) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property ccMTYSSE001_CrusaderGlobalShrines on script ccMTYSSE001_ShrineCounter attached to  (FE00D855) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property MageArmor50 on script DLC1SeranaLevelingScript attached to  (02003BA8) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property WindWalker on script DLC1SeranaLevelingScript attached to  (02003BA8) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property AugmentedFrost on script DLC1SeranaLevelingScript attached to  (02003BA8) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property MagicResistance30 on script DLC1SeranaLevelingScript attached to  (02003BA8) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property SavageStrike on script DLC1SeranaLevelingScript attached to  (02003BA8) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property DarkSouls on script DLC1SeranaLevelingScript attached to  (02003BA8) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property MagicResistance50 on script DLC1SeranaLevelingScript attached to  (02003BA8) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property Bladesman60 on script DLC1SeranaLevelingScript attached to  (02003BA8) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property Necromancy on script DLC1SeranaLevelingScript attached to  (02003BA8) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property HackAndSlash60 on script DLC1SeranaLevelingScript attached to  (02003BA8) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property Bladesman90 on script DLC1SeranaLevelingScript attached to  (02003BA8) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property MageArmor30 on script DLC1SeranaLevelingScript attached to  (02003BA8) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property HackAndSlash90 on script DLC1SeranaLevelingScript attached to  (02003BA8) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property ccMTYSSE002_VE_Message06 on script SSE_PF_ccMTYSSE002_Dawnstarto_050009A5 attached to  (FE01C9A5) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property ccMTYSSE002_VE_Message03 on script SSE_PF_ccMTYSSE002_Dawnstarto_050009A5 attached to  (FE01C9A5) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property Alias_BountyHunterNote on script SSE_QF_ccBGSSSE050_Quest_02000822 attached to ccBGSSSE050_Quest (FE022822) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property TargetValue on script ccMTYSSE001_ShrineCounter attached to  (FE00D857) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property ccMTYSSE001_CrusaderGlobalShrines on script ccMTYSSE001_ShrineCounter attached to  (FE00D857) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property DLC1VampireChangeEffect on script dlc1playervampirechangescript attached to DLC1PlayerVampireQuest (020071D0) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property SummonFX on script QF_ccBGSSSE016_UmbraMainQues_020021B6 attached to ccBGSSSE016_UmbraMainQuest (090021B6) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property foxQuest on script ccVSVSSE002_MainQuestScript attached to ccVSVSSE002_MainQuest (FE0158C8) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property skeeverQuest on script ccVSVSSE002_MainQuestScript attached to ccVSVSSE002_MainQuest (FE0158C8) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property spiderQuest on script ccVSVSSE002_MainQuestScript attached to ccVSVSSE002_MainQuest (FE0158C8) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property rabbitQuest on script ccVSVSSE002_MainQuestScript attached to ccVSVSSE002_MainQuest (FE0158C8) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property ccMTYSSE002_VE_Message04 on script SSE_PF_ccMTYSSE002_WindpeakIn_050009A0 attached to  (FE01C9A0) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property ccMTYSSE002_VE_Message01 on script SSE_PF_ccMTYSSE002_WindpeakIn_050009A0 attached to  (FE01C9A0) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property TargetValue on script ccMTYSSE001_ShrineCounter attached to  (FE00D85C) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property ccMTYSSE001_CrusaderGlobalShrines on script ccMTYSSE001_ShrineCounter attached to  (FE00D85C) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property TargetValue on script ccMTYSSE001_ShrineCounter attached to  (FE00D858) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property ccMTYSSE001_CrusaderGlobalShrines on script ccMTYSSE001_ShrineCounter attached to  (FE00D858) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property stageToCheck on script ccKRTSSE001_CourierEquipScript attached to  (FE03EFFC) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property myQuest on script ccKRTSSE001_CourierEquipScript attached to  (FE03EFFC) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property crystalEnableRef on script ccBGSSSE008_VaultOpenScript attached to  (FE019A68) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property TargetValue on script ccMTYSSE001_ShrineCounter attached to  (FE00D859) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property ccMTYSSE001_CrusaderGlobalShrines on script ccMTYSSE001_ShrineCounter attached to  (FE00D859) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property Axe on script DLC2DBAncientDragonbornSCRIPT attached to  (0401DC33) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property DLCDwarvenpuzzleDungeonHorseMessage on script dlcdwarvenpuzzle_rebuildhorsescript attached to  (070038D4) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property DLCDwarvenpuzzleDungeonHorseCompleteMessage on script dlcdwarvenpuzzle_rebuildhorsescript attached to  (070038D4) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property TargetValue on script ccMTYSSE001_ShrineCounter attached to  (FE00D85A) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property ccMTYSSE001_CrusaderGlobalShrines on script ccMTYSSE001_ShrineCounter attached to  (FE00D85A) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property TargetValue on script ccMTYSSE001_ShrineCounter attached to  (FE00D85B) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property ccMTYSSE001_CrusaderGlobalShrines on script ccMTYSSE001_ShrineCounter attached to  (FE00D85B) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] warning: Property PlatePosition on script dlc2toldarstombpuzzleplatescript attached to  (04027112) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:32AM] VM is freezing...
+[11/08/2026 - 08:36:32AM] VM is frozen
+[11/08/2026 - 08:36:32AM] Reverting game...
+[11/08/2026 - 08:36:32AM] error: Unable to bind script SSE_QF_ccBGSSSE051_MiscQuestA_0500083F to ccBGSSSE051_MiscQuestAliasFillers (FE03283F) because their base types do not match
+[11/08/2026 - 08:36:32AM] error: Unable to bind script ccKRTSSE001_zQuestScen_05000F40 to  (FE03EF40) because their base types do not match
+[11/08/2026 - 08:36:32AM] error: Unable to bind script SSE_SF_ccFFBSSE001_QuestScene_02000932 to  (FE01B932) because their base types do not match
+[11/08/2026 - 08:36:32AM] error: Unable to bind script SSE_SF_ccFFBSSE001_QuestScene_02005EB3 to  (FE01B934) because their base types do not match
+[11/08/2026 - 08:36:33AM] error: Unable to bind script KRT_PF_ccKRTSSE001_WhiterunTe_0500081C to  (FE03E81C) because their base types do not match
+[11/08/2026 - 08:36:33AM] error: Unable to bind script PGS_GoneScript to PGS_Quest (FE042800) because their base types do not match
+[11/08/2026 - 08:36:34AM] Loading game...
+[11/08/2026 - 08:36:34AM] error: Unable to bind script DLC2WaterScript to alias Water on quest DLC2TTF2 (0401AAC8) because their base types do not match
+[11/08/2026 - 08:36:34AM] error: Unable to bind script defaultIgnoreFriendlyHits to alias HostlerRef on quest ccBGSSSE034_WildHorsesQuest (FE017D65) because their base types do not match
+[11/08/2026 - 08:36:34AM] warning: Property AshSpawnAttachChancePercent on script DLC2AshSpawnAttackChanceScript attached to alias Player on quest DLC2Init (04016E02) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property myLocationDiscovered on script ccBGSSSE031_FastTravelFlagScript attached to  (0A0392E2) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property myQuest on script ccBGSSSE031_FastTravelFlagScript attached to  (0A0392E2) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property noCheckNeeded on script ccBGSSSE031_FastTravelFlagScript attached to  (0A0392E2) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] error: Property myQuest on script defaultcounter attached to  (0E000835) cannot be bound because <nullptr form> (0E001185) is not the right type
+[11/08/2026 - 08:36:34AM] warning: Property TargetValue on script ccMTYSSE001_ShrineCounter attached to  (FE00D86E) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property ccMTYSSE001_CrusaderGlobalShrines on script ccMTYSSE001_ShrineCounter attached to  (FE00D86E) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property ccBGSSSE019_SheogorathNote01 on script QF_ccBGSSSE019_StaffOfSheogo_03000822 attached to ccBGSSSE019_StaffOfSheogorathQuest (FE00A822) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property MyCell on script ccASVSSE001_DoorUnlockScript attached to  (05000F2B) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property DLC1VampireChangeEffect on script dlc1playervampirechangescript attached to DLC1PlayerVampireQuest (020071D0) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property PlatePosition on script dlc2toldarstombpuzzleplatescript attached to  (04027115) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property Alias_Jarl on script SSE_QF_ccBGSSSE064_MiscQuest_0200081A attached to ccBGSSSE064_MiscQuest (FE02B81A) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property Alias_Steward on script SSE_QF_ccBGSSSE064_MiscQuest_0200081A attached to ccBGSSSE064_MiscQuest (FE02B81A) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property PlatePosition on script dlc2toldarstombpuzzleplatescript attached to  (04027114) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property myLocationDiscovered on script ccBGSSSE031_FastTravelFlagScript attached to  (0A03E3EE) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property myQuest on script ccBGSSSE031_FastTravelFlagScript attached to  (0A03E3EE) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property noCheckNeeded on script ccBGSSSE031_FastTravelFlagScript attached to  (0A03E3EE) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property myLocationDiscovered on script ccBGSSSE031_FastTravelFlagScript attached to  (0A03E3ED) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property myQuest on script ccBGSSSE031_FastTravelFlagScript attached to  (0A03E3ED) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property noCheckNeeded on script ccBGSSSE031_FastTravelFlagScript attached to  (0A03E3ED) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property TG05KarliahInvisibilitySpell on script tg06questscript attached to TG06 (00021552) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property PlatePosition on script dlc2toldarstombpuzzleplatescript attached to  (04027117) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property PlatePosition on script dlc2toldarstombpuzzleplatescript attached to  (04027116) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property PlatePosition on script dlc2toldarstombpuzzleplatescript attached to  (04027113) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property myLocationDiscovered on script ccBGSSSE031_FastTravelFlagScript attached to  (0A0341D7) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property myQuest on script ccBGSSSE031_FastTravelFlagScript attached to  (0A0341D7) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property noCheckNeeded on script ccBGSSSE031_FastTravelFlagScript attached to  (0A0341D7) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property GameHour on script ccKRTSSE001_FerryScript attached to ccKRTSSE001_FerrySystem (FE03EA7B) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property TimeToPass on script ccKRTSSE001_FerryScript attached to ccKRTSSE001_FerrySystem (FE03EA7B) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property TargetValue on script ccMTYSSE001_ShrineCounter attached to  (FE00D85B) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property ccMTYSSE001_CrusaderGlobalShrines on script ccMTYSSE001_ShrineCounter attached to  (FE00D85B) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property PlatePosition on script dlc2toldarstombpuzzleplatescript attached to  (04027110) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property PlatePosition on script dlc2toldarstombpuzzleplatescript attached to  (0402710F) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property PlatePosition on script dlc2toldarstombpuzzleplatescript attached to  (04027112) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property Alias_LevitationTarget on script DLC2_QF_DLC2DialogueTelMithry_02017E85 attached to DLC2DialogueTelMithryn (04017E85) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property Alias_Merchant_Chest_Madesi on script QF_ccEDHSSE001_UtilityQuest_03000830 attached to ccEDHSSE001_UtilityQuest (FE014830) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property Alias_Ring_Madesi on script QF_ccEDHSSE001_UtilityQuest_03000830 attached to ccEDHSSE001_UtilityQuest (FE014830) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property Alias_Circlet_Madesi on script QF_ccEDHSSE001_UtilityQuest_03000830 attached to ccEDHSSE001_UtilityQuest (FE014830) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property Alias_Amulet_Madesi on script QF_ccEDHSSE001_UtilityQuest_03000830 attached to ccEDHSSE001_UtilityQuest (FE014830) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property Alias_Champion04 on script SSE_QF_ccFFBSSE001_CorpseChec_0200086B attached to ccFFBSSE001_CorpseCheck (FE01B86B) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property Alias_Champion05 on script SSE_QF_ccFFBSSE001_CorpseChec_0200086B attached to ccFFBSSE001_CorpseCheck (FE01B86B) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property ccMTYSSE002_VE_Message06 on script SSE_PF_ccMTYSSE002_Dawnstarto_050009A5 attached to  (FE01C9A5) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property ccMTYSSE002_VE_Message03 on script SSE_PF_ccMTYSSE002_Dawnstarto_050009A5 attached to  (FE01C9A5) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property TargetValue on script ccMTYSSE001_ShrineCounter attached to  (FE00D856) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property ccMTYSSE001_CrusaderGlobalShrines on script ccMTYSSE001_ShrineCounter attached to  (FE00D856) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property SummonFX on script QF_ccBGSSSE016_UmbraMainQues_020021B6 attached to ccBGSSSE016_UmbraMainQuest (090021B6) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property TargetValue on script ccMTYSSE001_ShrineCounter attached to  (FE00D857) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property ccMTYSSE001_CrusaderGlobalShrines on script ccMTYSSE001_ShrineCounter attached to  (FE00D857) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property boss3 on script ccBGSSE008_MessengerScript attached to  (FE01983C) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property boss2 on script ccBGSSE008_MessengerScript attached to  (FE01983C) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property Boss1 on script ccBGSSE008_MessengerScript attached to  (FE01983C) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property MageArmor50 on script DLC1SeranaLevelingScript attached to  (02003BA8) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property WindWalker on script DLC1SeranaLevelingScript attached to  (02003BA8) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property AugmentedFrost on script DLC1SeranaLevelingScript attached to  (02003BA8) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property MagicResistance30 on script DLC1SeranaLevelingScript attached to  (02003BA8) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property SavageStrike on script DLC1SeranaLevelingScript attached to  (02003BA8) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property DarkSouls on script DLC1SeranaLevelingScript attached to  (02003BA8) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property MagicResistance50 on script DLC1SeranaLevelingScript attached to  (02003BA8) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property Bladesman60 on script DLC1SeranaLevelingScript attached to  (02003BA8) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property Necromancy on script DLC1SeranaLevelingScript attached to  (02003BA8) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property HackAndSlash60 on script DLC1SeranaLevelingScript attached to  (02003BA8) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property Bladesman90 on script DLC1SeranaLevelingScript attached to  (02003BA8) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property MageArmor30 on script DLC1SeranaLevelingScript attached to  (02003BA8) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property HackAndSlash90 on script DLC1SeranaLevelingScript attached to  (02003BA8) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property TargetValue on script ccMTYSSE001_ShrineCounter attached to  (FE00D855) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property ccMTYSSE001_CrusaderGlobalShrines on script ccMTYSSE001_ShrineCounter attached to  (FE00D855) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property Alias_BountyHunterNote on script SSE_QF_ccBGSSSE050_Quest_02000822 attached to ccBGSSSE050_Quest (FE022822) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property wraithguard on script ccBGSSE008_WraithguardScript attached to alias ccBGSSSE008_Player on quest ccBGSSSE008_PlayerTrackingQuest (FE019B60) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property foxQuest on script ccVSVSSE002_MainQuestScript attached to ccVSVSSE002_MainQuest (FE0158C8) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property skeeverQuest on script ccVSVSSE002_MainQuestScript attached to ccVSVSSE002_MainQuest (FE0158C8) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property spiderQuest on script ccVSVSSE002_MainQuestScript attached to ccVSVSSE002_MainQuest (FE0158C8) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property rabbitQuest on script ccVSVSSE002_MainQuestScript attached to ccVSVSSE002_MainQuest (FE0158C8) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property FollowerDismissMessageCompanions on script DLC2HirelingQuestScript attached to DLC2HirelingQuest (04038566) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property FollowerDismissMessageWait on script DLC2HirelingQuestScript attached to DLC2HirelingQuest (04038566) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property DismissedFollower on script DLC2HirelingQuestScript attached to DLC2HirelingQuest (04038566) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property DLC2RRTeldrynSero on script DLC2HirelingQuestScript attached to DLC2HirelingQuest (04038566) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property FollowerDismissMessage on script DLC2HirelingQuestScript attached to DLC2HirelingQuest (04038566) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property FollowerDismissMessageCompanionsMale on script DLC2HirelingQuestScript attached to DLC2HirelingQuest (04038566) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property FollowerDismissMessageCompanionsFemale on script DLC2HirelingQuestScript attached to DLC2HirelingQuest (04038566) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property FollowerDismissMessageWedding on script DLC2HirelingQuestScript attached to DLC2HirelingQuest (04038566) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property TargetValue on script ccMTYSSE001_ShrineCounter attached to  (FE00D85C) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property ccMTYSSE001_CrusaderGlobalShrines on script ccMTYSSE001_ShrineCounter attached to  (FE00D85C) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property ccMTYSSE002_VE_Message04 on script SSE_PF_ccMTYSSE002_WindpeakIn_050009A0 attached to  (FE01C9A0) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property ccMTYSSE002_VE_Message01 on script SSE_PF_ccMTYSSE002_WindpeakIn_050009A0 attached to  (FE01C9A0) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property crystalEnableRef on script ccBGSSSE008_VaultOpenScript attached to  (FE019A68) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property TargetValue on script ccMTYSSE001_ShrineCounter attached to  (FE00D858) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property ccMTYSSE001_CrusaderGlobalShrines on script ccMTYSSE001_ShrineCounter attached to  (FE00D858) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property stageToCheck on script ccKRTSSE001_CourierEquipScript attached to  (FE03EFFC) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property myQuest on script ccKRTSSE001_CourierEquipScript attached to  (FE03EFFC) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property TargetValue on script ccMTYSSE001_ShrineCounter attached to  (FE00D859) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property ccMTYSSE001_CrusaderGlobalShrines on script ccMTYSSE001_ShrineCounter attached to  (FE00D859) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property Axe on script DLC2DBAncientDragonbornSCRIPT attached to  (0401DC33) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property PlatePosition on script dlc2toldarstombpuzzleplatescript attached to  (04027111) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property DLCDwarvenpuzzleDungeonHorseMessage on script dlcdwarvenpuzzle_rebuildhorsescript attached to  (070038D4) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property DLCDwarvenpuzzleDungeonHorseCompleteMessage on script dlcdwarvenpuzzle_rebuildhorsescript attached to  (070038D4) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property TargetValue on script ccMTYSSE001_ShrineCounter attached to  (FE00D85A) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:34AM] warning: Property ccMTYSSE001_CrusaderGlobalShrines on script ccMTYSSE001_ShrineCounter attached to  (FE00D85A) cannot be initialized because the script no longer contains that property
+[11/08/2026 - 08:36:35AM] VM is thawing...
+[11/08/2026 - 08:36:35AM] error: Native static function StopNFCDetection could find no matching static function on linked type Game. Function will not be bound.
+[11/08/2026 - 08:36:35AM] error: Native static function StartNFCDetection could find no matching static function on linked type Game. Function will not be bound.
+[11/08/2026 - 08:36:35AM] error: Native static function SaveSuccessfulAmiiboUsage could find no matching static function on linked type Game. Function will not be bound.
+[11/08/2026 - 08:36:35AM] error: Native static function GetSecondsSinceLastAmiiboUsage could find no matching static function on linked type Game. Function will not be bound.
+[11/08/2026 - 08:36:35AM] error: Native static function GetLocalizedNameForAmiibo could find no matching static function on linked type Game. Function will not be bound.
+[11/08/2026 - 08:36:35AM] error: Native static function IsAmiiboSupported could find no matching static function on linked type Game. Function will not be bound.
+[11/08/2026 - 08:36:35AM] FISHING: Checking for updates.
+[11/08/2026 - 08:36:35AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:36:36AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:36:37AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:36:38AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:36:39AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:36:40AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:36:41AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:36:42AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:36:43AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:36:44AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:36:45AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:36:46AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:36:47AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:36:48AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:36:49AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:36:51AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:36:52AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:36:53AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:36:54AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:36:55AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:36:56AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:36:57AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:36:58AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:36:59AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:00AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:01AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:02AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:03AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:04AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:05AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:06AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:07AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:08AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:09AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:10AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:11AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:12AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:13AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:15AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:16AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:17AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:18AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:19AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:20AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:21AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:22AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:23AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:24AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:25AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:26AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:27AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:28AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:29AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:30AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:31AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:32AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:33AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:34AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:35AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:36AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:37AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:39AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:40AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:41AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:42AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:43AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:44AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:45AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:46AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:47AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:48AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:49AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:50AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:51AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:52AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:53AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:54AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:55AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:56AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:57AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:58AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:37:59AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:38:00AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:38:01AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:38:03AM] error: Cannot call AddItem() on a None object, aborting function call
+stack:
+	[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12
+[11/08/2026 - 08:38:06AM] VM is freezing...
+[11/08/2026 - 08:38:06AM] VM is frozen
+[11/08/2026 - 08:38:06AM] Log closed

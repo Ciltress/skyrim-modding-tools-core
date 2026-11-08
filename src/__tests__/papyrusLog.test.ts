@@ -92,6 +92,27 @@ describe('buildPapyrusReport', () => {
         expect(report.nextStep).toContain('The Papyrus log is a script log, not a crash log: never put a crash on it');
     });
 
+    it('reads the game\'s own logs of two provoked mods: the flood first, the save\'s history alone, the game\'s own lines as noise', async () => {
+        // The test instance on 2026-11-08: PapyrusNoneFlood's quest calls AddItem on a property nothing fills, each second;
+        // PapyrusGoneScript's names a script no file has. The second log loads the save with PapyrusNoneFlood removed.
+        const read = (name: string) => parsePapyrusLog(fs.readFileSync(path.join(__dirname, 'fixtures', 'papyrus', name), 'utf8'));
+        const none = async () => new Map();
+        const flood = await buildPapyrusReport('Papyrus.1.log', read('game-none-flood.log'), none, () => undefined);
+        expect(flood.problems.map(problem => [problem.kind, problem.class, problem.count, problem.scripts.map(script => script.script)])).toEqual([
+            ['none-call', 'bug', 85, ['PNF_QuestScript']], ['missing-script', 'history', 1, ['PGS_GoneScript']]
+        ]);
+        expect(flood.problems[0]).toMatchObject({ flood: true, first: { stack: ['[PNF_Quest (FE041800)].PNF_QuestScript.OnUpdate() - "PNF_QuestScript.psc" Line 12'] } });
+        // The DLC's and Creation Club's scripts the game ships without, the consoles' Amiibo natives: the game's own, every start.
+        expect(flood.noise.kinds).toMatchObject({ 'game-own': 36, 'property-gone': 192 });
+        expect(flood.nextStep).toMatch(/Tell the user the first problem, "A call on nothing \(None\)" \(85×, a flood\), of the script PNF_QuestScript/);
+
+        const history = await buildPapyrusReport('Papyrus.0.log', read('game-save-history.log'), none, () => undefined);
+        expect(history.problems.map(problem => [problem.kind, problem.class, problem.scripts.map(script => script.script)])).toEqual([
+            ['missing-script', 'history', ['PGS_GoneScript', 'PNF_QuestScript']], ['save-type-missing', 'history', ['PNF_QuestScript']]
+        ]);
+        expect(history.nextStep).toMatch(/No script bug: what the log shows is the save's history/);
+    });
+
     it('calls fifty of one problem a flood', async () => {
         const lines = ['[09/03/2022 - 10:20:49AM] Papyrus log opened (PC)'];
         for (let i = 0; i < 50; i++) lines.push('[09/03/2022 - 10:21:10AM] Error: Cannot call Start() on a None object, aborting function call', 'stack:', '\t[Q (0A000813)].QScript.OnUpdate() - "QScript.psc" Line 5');
@@ -185,5 +206,14 @@ describe('readPapyrusLog', () => {
         const fixture = instance('[General]\r\nsLanguage=ENGLISH\r\n');
         await expect(fixture.backend.readPapyrusLog({})).rejects.toThrow(
             /^There is no Papyrus\.0\.log in .*: the game writes none, Papyrus logging is off in .*skyrim\.ini\. Turning it on is a change to the user's setup — on their word: editIni \{"set": \[\{"section": "Papyrus", "key": "bEnableLogging", "value": "1"\}/);
+    });
+
+    it('with no log and logging on in the profile, gives no call that turns it on again', async () => {
+        // The test instance's game wrote none with the lines in the profile's Skyrim.ini alone (2026-11-08): where My Games is
+        // found, the answer names its Skyrim.ini.
+        const fixture = instance('[Papyrus]\r\nbEnableLogging=1\r\nbEnableTrace=1\r\nbLoadDebugInformation=1\r\n');
+        const error = await fixture.backend.readPapyrusLog({}).catch((thrown: Error) => thrown);
+        expect((error as Error).message).toMatch(/^There is no Papyrus\.0\.log in .*\. Papyrus logging is on in .*skyrim\.ini\./);
+        expect((error as Error).message).not.toContain('editIni');
     });
 });

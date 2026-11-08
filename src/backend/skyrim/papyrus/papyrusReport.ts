@@ -1,5 +1,5 @@
 import type { PapyrusEntry, PapyrusFrame, PapyrusLog } from './papyrusLog.js';
-import { kindOf, MESSAGE_KINDS, type MessageClass } from './papyrusMessages.js';
+import { gameOwn, kindOf, MESSAGE_KINDS, type MessageClass } from './papyrusMessages.js';
 
 /**
  * What a Papyrus log says about the setup's scripts, grouped, counted and ranked rather than listed line by line — most of a
@@ -91,6 +91,12 @@ export async function buildPapyrusReport(
         }
         const script = kind.script?.(match, entry);
         if (kind.id === 'missing-script' || kind.id === 'bind-missing') { if (script) missing.add(script.toLowerCase()); }
+        // What the game writes with no mod is no problem of the setup's: counted with the noise.
+        if (gameOwn(kind.id, script, entry.message)) {
+            noise['game-own'] = (noise['game-own'] ?? 0) + 1;
+            noiseCount++;
+            continue;
+        }
         const key = kind.id;
         let group = groups.get(key);
         if (!group) {

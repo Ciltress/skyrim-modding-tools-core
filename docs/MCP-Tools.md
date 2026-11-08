@@ -491,12 +491,16 @@ with the mod tools, on the user's word: `disableMod` and `enableMod`, `installMo
 The game writes a Papyrus log, `My Games\<game>\Logs\Script\Papyrus.0.log` (the newest; 1 to 3 the sessions before), only
 with `bEnableLogging=1` in `[Papyrus]` of the INIs it reads — the profile's under Mod Organizer's profile INIs. Without a
 log, or with logging off, `readPapyrusLog` says so and gives the `editIni` call that turns it on, made only on the user's
-word. Most of a log is harmless (docs/research/papyrus-log-format.md): the answer groups and counts rather than lists.
+word. The test instance's game, under Mod Organizer with profile INIs, wrote no log with the lines in the profile's
+`Skyrim.ini` alone, and wrote one once My Games' `Skyrim.ini` had them too (2026-11-08): with logging on and no log, the
+answer names that file (since v0.2.68). Most of a log is harmless (docs/research/papyrus-log-format.md): the answer groups and counts rather than lists.
 `problems`, script and install problems first — a call on None, a script or framework missing, a script on the wrong kind
 of record, a native function no SKSE plugin has — then what the save holds of mods removed mid-playthrough, each with its
 count (`flood` from 50), fix, scripts by the mod whose `.pex` the game loads (loose or in an archive, or `not in the setup`),
 records by the plugin of their FormID's index in the load order now, and its first entry with its stack; `load`, the
-stack dumps and the events most of their stacks run, script lag; `noise`, the harmless messages counted by kind; `other`,
+stack dumps and the events most of their stacks run, script lag; `noise`, the harmless messages counted by kind —
+with `game-own` since v0.2.68, the lines a game with no mod writes on every start (the DLC's and Creation Club's scripts it
+ships without, the consoles' Amiibo natives), which ranked first put the game's own before a mod's problem; `other`,
 the errors of no known kind; `settings`, the header's `[Papyrus]` values that differ from the game's. Papyrus Tweaks NG's
 rewordings are read too. `script` answers one script's entries with their stacks. The log is no crash log, and the
 `nextStep` says so: a crash is readCrashLog's. Since v0.2.66.
