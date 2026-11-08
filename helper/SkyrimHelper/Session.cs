@@ -902,6 +902,7 @@ public sealed partial class Session : IDisposable
             .Concat(MadeNotes.NpcItems(mod, lookup, dir)).Concat(MadeNotes.ListEntries(mod, lookup, dir)).Concat(MadeNotes.KeywordsReplaced(mod, lookup, dir)).Concat(MadeNotes.Words(mod, dir))
             .Concat(MadeNotes.Unplayable(mod, dir))
             .Concat(CellContents.PlacedNotes(mod, Contexts, Index, dir)).Concat(DialogContents.Notes(mod, lookup, Index, dir)).Concat(GameSettings.Notes(mod, Index, dir))
+            .Concat(NavmeshNotes.Stale(mod, lookup, dir))
             .Select(n => (JsonNode)n).ToArray();
         // The sequence file the plugin's start-game-enabled quests need for their dialogue, beside it in the build.
         var seq = DialogContents.WriteSeq(written, lookup, output);

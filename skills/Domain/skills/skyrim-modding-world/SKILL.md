@@ -143,7 +143,8 @@ room whose furniture moved — or ground raised outdoors — keeps paths through
 "WhiterunBreezehome"}` makes it from the collision of what stands in the cell — the game's objects and the project's,
 outdoors the ground — and writes it into the project, over the cell's navmeshes or new; outdoors it links the edges
 with the cells beside it and writes their navmeshes too. It builds the project first where it changed. Run it
-after the objects are placed, then `buildProject`. Done when the build answers `success` and you told the user:
+after the objects are placed, then `buildProject` — the build warns, with this call, where a big object, a load door,
+changed ground or a new room needs it; a chest or a chair does not. Done when the build answers `success` and you told the user:
 
 - **`triangles`**, and the **`doors`** linked: a room with no load door gets no follower in until one links it.
 - **`before`** — over the game's navmesh, how much of the old one the new covers (`oldCovered`) and how much of the new

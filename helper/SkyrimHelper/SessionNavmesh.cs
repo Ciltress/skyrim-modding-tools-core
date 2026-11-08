@@ -698,7 +698,7 @@ public sealed partial class Session
     private static string ArchiveKey(string path) => path.Replace('/', '\\').TrimStart('\\').ToLowerInvariant();
 
     /// <summary>The folder of a cell in a project, relative and with forward slashes: Spriggit names it "{EditorID} - {FormID}_{plugin}".</summary>
-    private static string? CellFolderIn(string projectDir, FormKey cell)
+    internal static string? CellFolderIn(string projectDir, FormKey cell)
     {
         var suffix = $"{cell.ID:X6}_{cell.ModKey.FileName}";
         foreach (var top in new[] { "Cells", "Worldspaces" })

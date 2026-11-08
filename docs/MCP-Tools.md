@@ -471,6 +471,10 @@ with and without collision, meshes that could not be read, the pieces left out, 
 (`before`). How each part was read off the game's navmeshes:
 docs/adr/0014. Since v0.2.69.
 
+The build warns of a cell whose navmesh no longer fits what the project made of it, with the call that makes it anew:
+an object of 192 units or more across placed or moved there (a wagon, a wall — not a chest or a chair), a load door
+added, the ground changed, or a room of the mod's own with no navmesh. A navmesh file newer than those changes fits them.
+
 ```jsonc
 {"tool":"generateNavmesh","args":{"project":"InnTidy","cell":"RiverwoodSleepingGiantInn"}}
 {"tool":"generateNavmesh","args":{"project":"RiverwoodPlot","cell":"Riverwood"}}
