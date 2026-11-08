@@ -559,7 +559,8 @@ export interface DeleteRecordResult {
 export interface AddPatchResult {
     project: ProjectInfo;
     added: { formId: string; editorId: string | null; type: string; from: string; files: ProjectFile[]; merged?: MergedChanges }[];
-    alreadyInProject: { formId: string; files: ProjectFile[] }[];
+    /** Records the project holds already, not copied again; with `merge`, the other plugins' lost changes written into the copy. */
+    alreadyInProject: { formId: string; files: ProjectFile[]; merged?: MergedChanges; from?: string; editorId?: string | null }[];
     /** Set when some files come without their text. */
     textLeftOut?: string;
 }

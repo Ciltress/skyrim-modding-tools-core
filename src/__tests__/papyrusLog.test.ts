@@ -216,4 +216,12 @@ describe('readPapyrusLog', () => {
         expect((error as Error).message).toMatch(/^There is no Papyrus\.0\.log in .*\. Papyrus logging is on in .*skyrim\.ini\./);
         expect((error as Error).message).not.toContain('editIni');
     });
+
+    it('with another session\'s log asked for and the newest there, names the logs there and the call that reads the newest', async () => {
+        const fixture = instance('[General]\r\nsLanguage=ENGLISH\r\n');
+        fs.writeFileSync(path.join(fixture.logs, 'Papyrus.0.log'), text());
+        const error = await fixture.backend.readPapyrusLog({ log: '1' }).catch((thrown: Error) => thrown);
+        expect((error as Error).message).toMatch(/^There is no Papyrus\.1\.log in .*: the game keeps Papyrus\.0\.log there, Papyrus\.0\.log the newest\. readPapyrusLog \{\} reads the newest/);
+        expect((error as Error).message).not.toMatch(/writes none|editIni/);
+    });
 });

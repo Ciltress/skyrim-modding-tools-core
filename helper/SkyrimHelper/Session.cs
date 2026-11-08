@@ -585,7 +585,19 @@ public sealed partial class Session : IDisposable
         {
             if (ProjectFileFor(projectDir, formKey) is { } existing)
             {
-                already.Add(new JsonObject { ["formId"] = FormKeyText(formKey), ["file"] = existing });
+                var kept = new JsonObject { ["formId"] = FormKeyText(formKey), ["file"] = existing };
+                // A merge asked for a record copied before: the other plugins' lost changes written into that copy, its own changes
+                // kept. Sent after a plain addPatch, the merge was answered "not copied again" and nothing was merged (mini-round
+                // of 2026-11-08, conflict+detailed #2).
+                var winner = Contexts(formKey).FirstOrDefault(c => c.ModKey != pluginName);
+                if (merge && winner is not null && (from is null || winner.ModKey.FileName.String.Equals(from, StringComparison.OrdinalIgnoreCase))
+                    && await MergeLost(formKey, winner.ModKey, pluginName, projectDir, [existing]) is { } mergedIn)
+                {
+                    kept["merged"] = mergedIn;
+                    kept["from"] = winner.ModKey.FileName.String;
+                    kept["editorId"] = winner.Record.EditorID;
+                }
+                already.Add(kept);
                 continue;
             }
 

@@ -286,6 +286,17 @@ describe('argument mapping', () => {
     });
 });
 
+describe('findRecords says what it did not use', () => {
+    it('names readRecord with `in`, and that `text` beside `records` was not searched', async () => {
+        const handler = handlersFrom(recordingBackend()).find(h => h.getTools().some(t => t.name === 'findRecords'))!;
+        const result = await handler.handle('findRecords', { records: ['Riverwood'], text: 'grindstone', in: 'Riverwood', near: 'well' });
+        const answer = JSON.parse(result.content[0].text);
+        expect(answer.nextStep).toContain('findRecords has no `in`: where a record stands in a place, readRecord lists it — {"record": "<its editor ID>", "in": "Riverwood"}.');
+        expect(answer.nextStep).toContain('`near` is no argument of findRecords\': not used.');
+        expect(answer.nextStep).toContain('`text` was not searched: `records` looks up exact FormIDs and editor IDs alone — send {"text": "grindstone"} without `records` to search.');
+    });
+});
+
 /**
  * Small models — and some clients — send an argument in the wrong JSON type: a list as the text of a
  * list, a number in quotes. Refusing costs a turn the model may not recover from, and the intent is

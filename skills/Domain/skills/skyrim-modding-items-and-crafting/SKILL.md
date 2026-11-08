@@ -23,6 +23,9 @@ The loop in `skyrim-modding-basics` — look up, get the text, edit, build, depl
   one build gives both their FormIDs and writes the link. New meshes and textures go into `assets/`.
 - **Done** when the item is built with every keyword its kind needs (REFERENCE, *Keywords carry the
   gameplay*) and a route brings it to the player (REFERENCE, *How an item reaches the player*).
+- **A keyword the game checks** — a weapon that counts as silver, an item a merchant buys — is one line in its
+  `Keywords:` list, by editor ID: `- WeapMaterialSilver`, never a FormID from memory. Which keyword does what:
+  `skyrim-modding-settings`.
 - **Diagnosing**: `readRecord` with `allVersions: true` on the item and on its recipes, then match the
   symptom in REFERENCE, *Typical bugs*.
 

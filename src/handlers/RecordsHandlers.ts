@@ -63,13 +63,34 @@ export class RecordsHandlers extends BaseHandler {
                     narrowingHint: 'Add `types` or `plugin`, make `text` more specific, or lower `limit`.'
                 },
                 onFailure: 'Failed to search the load order',
-                run: args => asRequestError(this.backend.findRecords({
-                    text: optionalString(args, 'text'),
-                    records: optionalStringList(args, 'records', '["012EB7:Skyrim.esm", "IronSword"]')?.map(recordRef),
-                    types: optionalStringList(args, 'types', '["WEAP"]'),
-                    plugin: optionalString(args, 'plugin'),
-                    limit: limitArg(args, DEFAULT_LIMIT, MAX_LIMIT)
-                }))
+                run: async args => {
+                    const text = optionalString(args, 'text');
+                    const records = optionalStringList(args, 'records', '["012EB7:Skyrim.esm", "IronSword"]')?.map(recordRef);
+                    const result = await asRequestError(this.backend.findRecords({
+                        text, records,
+                        types: optionalStringList(args, 'types', '["WEAP"]'),
+                        plugin: optionalString(args, 'plugin'),
+                        limit: limitArg(args, DEFAULT_LIMIT, MAX_LIMIT)
+                    }));
+                    // What was sent and not used, said: `in` dropped and `text` set aside for `records`, both without a word, a model
+                    // searched the whole game for Riverwood's grindstone and guessed where it stands (mini-round of 2026-11-08,
+                    // outdoor #2 and #5).
+                    const notes: string[] = [];
+                    const place = args?.in;
+                    if (typeof place === 'string' && place.trim()) {
+                        notes.push(`findRecords has no \`in\`: where a record stands in a place, readRecord lists it — {"record": "<its editor ID>", "in": ${JSON.stringify(place.trim())}}.`);
+                    }
+                    const others = Object.keys(args ?? {}).filter(key => !['text', 'records', 'types', 'plugin', 'limit', 'in'].includes(key));
+                    if (others.length > 0) {
+                        notes.push(`${others.map(key => `\`${key}\``).join(', ')} ${others.length === 1 ? 'is no argument' : 'are no arguments'} of findRecords': not used.`);
+                    }
+                    if (text && records?.length) {
+                        notes.push(`\`text\` was not searched: \`records\` looks up exact FormIDs and editor IDs alone — send {"text": ${JSON.stringify(text)}} without \`records\` to search.`);
+                    }
+                    if (notes.length === 0) return result;
+                    const before = (result as { nextStep?: string }).nextStep;
+                    return { ...result, nextStep: [notes.join(' '), before].filter(Boolean).join(' ') };
+                }
             },
             {
                 definition: {

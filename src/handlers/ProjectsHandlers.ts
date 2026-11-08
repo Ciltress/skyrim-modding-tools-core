@@ -212,7 +212,9 @@ export class ProjectsHandlers extends BaseHandler {
                             const remade = text !== undefined && !new RegExp(`^FormKey:[ \\t]*${record.formId.replace(/[.]/g, '\\.')}`, 'im').test(text);
                             return { formId: record.formId, named, editorId, relative, remade, type: relative?.split('/')[0].replace(/s$/, '') };
                         });
-                        const overrides = kept.filter(k => !k.remade);
+                        // A copy the merge was written into is said in the merge's note, not as one left as it was.
+                        const mergedInto = new Set(result.alreadyInProject.filter(record => record.merged).map(record => record.formId));
+                        const overrides = kept.filter(k => !k.remade && !mergedInto.has(k.formId));
                         const copies = result.added.map((record, i) => `${record.editorId ?? record.formId} (${record.editorId ? `${record.formId}, ` : ''}` +
                             `${article(record.type)} ${record.type}${enchanted[i] ? ` enchanted with ${enchanted[i]!.named}` : ''})`);
                         const carried = enchanted.find(e => e !== null);
@@ -279,11 +281,16 @@ export class ProjectsHandlers extends BaseHandler {
                         }).join(' ');
                         // A merge said first, by plugin: eval round 135's conflict #2 and #5 answered with the patch built and named
                         // neither plugin the user asked to be told of — the answer's only word on the merge was `merged` beside the note.
-                        const mergedNote = result.added.filter(record => record.merged).map(record => {
+                        const mergedNote = [...result.added, ...result.alreadyInProject.filter(record => record.merged)
+                            .map(record => ({ ...record, from: record.from ?? 'the winning plugin', editorId: record.editorId ?? null }))].filter(record => record.merged).map(record => {
                             const merged = record.merged!;
                             const name = record.editorId ?? record.formId;
-                            return `${name} is copied from ${record.from}, the version that wins, with what it lost of ` +
-                                `${merged.plugins.join(' and ')}'s changes put back: ${merged.changes.join('; ')}` +
+                            const plugins = merged.plugins.join(' and ');
+                            return (mergedInto.has(record.formId)
+                                ? `${name} was in the project already: what ${record.from}, the version that wins, lost of ${plugins}'s changes is ` +
+                                  `put back into its copy, beside the changes made to it: ${merged.changes.join('; ')}`
+                                : `${name} is copied from ${record.from}, the version that wins, with what it lost of ${plugins}'s changes put back: ` +
+                                  merged.changes.join('; ')) +
                                 (merged.clashes?.length ? `; changed by two plugins each its own way: ${merged.clashes.join('; ')}` : '') +
                                 (merged.notWritten ? ` — but ${merged.notWritten}; write them with editRecord` : '') +
                                 `. Tell the user whose changes ${record.from} wins over — ${merged.plugins.join(', ')} — and that the patch keeps them.`;
@@ -354,7 +361,7 @@ export class ProjectsHandlers extends BaseHandler {
                                 : cells.length === result.added.length && cells.length > 0
                                 ? 'Write what is placed in the cell as a file of its own in its Temporary folder, at the full path the note names, ' +
                                   'then run buildProject.'
-                                : result.added.length > 0 && result.added.every(record => record.merged && !record.merged.notWritten)
+                                : [...result.added, ...result.alreadyInProject].length > 0 && [...result.added, ...result.alreadyInProject].every(record => record.merged && !record.merged.notWritten)
                                 ? 'The patch holds what each plugin changed: run buildProject next, then tell the user whose changes it keeps, as the note says.'
                                 : `Change a copy's fields with editRecord, which needs no old text to match — {"record": ` +
                                   `"${example}", "set": [${field}]} — then run buildProject.`,

@@ -287,6 +287,18 @@ public static class RecordFiles
         if (placed && !File.Exists(Path.Combine(pluginDir, cellFolder, "RecordData.yaml")))
         {
             var cell = CellFolder.Match(parts[depth - 1]);
+            // The project's copy of that cell under another folder name: the folder named, not addPatch again — a chest moved into a
+            // folder named NewRiverwood01 was answered "addPatch", and three builds went round (mini-round of 2026-11-08, outdoor #4).
+            var suffix = cell.Success ? $"{cell.Groups["id"].Value}_{cell.Groups["plugin"].Value}" : null;
+            var copied = suffix is null || !Directory.Exists(Path.Combine(pluginDir, parts[0])) ? null
+                : Directory.EnumerateDirectories(Path.Combine(pluginDir, parts[0]), "*", SearchOption.AllDirectories)
+                    .FirstOrDefault(d => Path.GetFileName(d).EndsWith(suffix, StringComparison.OrdinalIgnoreCase) && File.Exists(Path.Combine(d, "RecordData.yaml")));
+            if (copied is not null)
+            {
+                var copyFolder = Path.GetRelativePath(pluginDir, copied).Replace('\\', '/');
+                return $"{relative}: {cellFolder}/ holds no RecordData.yaml — the project's copy of that cell is {copyFolder}/, and the build reads a " +
+                    $"reference only beside it: one call moves this file there, {ToolCalls.Move(pluginDir, relative, $"{copyFolder}/Temporary/{parts[^1]}")}; then build again";
+            }
             var copy = cell.Success
                 ? $"one call copies it in, and this file stays where it is: addPatch {{\"project\": {ToolCalls.Quoted(ToolCalls.ProjectOf(pluginDir))}, " +
                   $"\"records\": [\"{cell.Groups["id"].Value.ToUpperInvariant()}:{cell.Groups["plugin"].Value}\"]}} — where its answer names " +
@@ -394,6 +406,10 @@ public static class RecordFiles
         // has, and eval round 129's armor+detailed #4 wrote its helmet's mesh there; #3 and #4 ended unbuilt.
         (["Armor"], ["Model", "Models", "Mesh", "Meshes", "GroundModel", "WornModel", "ModelFile", "Nif"], null, ArmorModels),
         (["Armor"], ["ArmorValue", "Defense", "Rating"], "ArmorRating", "it is ArmorRating"),
+        // Told "delete it" for a chest's `Inventory:`, a model deleted it and answered its chest filled, the chest built empty
+        // (mini-round of 2026-11-08, outdoor+detailed #1). The build sets each item in place below Items.
+        (["Container"], ["Inventory", "Inventories", "Contents", "Content", "ContainerItems", "ContainerItem", "Loot"], "Items",
+            "a container's contents are Items: write that line as `Items:` in its place, its items below it as they are"),
         // Its cell found by editRecord, a model would set `Placed[0]` on it (eval round 128's world+detailed #4).
         (["Cell"], ["Placed", "References", "Refs", "Objects", "Items", "Containers", "Contents", "Chest", "Chests", "PlacedObjects"], null,
             "what is placed in a cell is no field of its file: each reference is a file of its own in the cell's Temporary/ folder, beside " +

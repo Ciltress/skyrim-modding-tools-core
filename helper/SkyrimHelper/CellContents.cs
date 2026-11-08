@@ -136,6 +136,9 @@ internal static class CellContents
     /// <summary>The length of an exterior cell's side, in game units.</summary>
     internal const int CellSize = 4096;
 
+    /// <summary>How far outside its cell a reference's position is a guess, not a step over the edge: an eighth of a cell.</summary>
+    private const float FarOutside = 512;
+
     /// <summary>An exterior cell's grid — the cell x, y of its worldspace — or null for an interior cell.</summary>
     internal static P2Int? GridOf(ICellGetter cell) =>
         cell.Flags.HasFlag(Cell.Flag.IsInteriorCell) || cell.Grid is not { } grid ? null : grid.Point;
@@ -260,9 +263,12 @@ internal static class CellContents
             var there = other is null
                 ? $"cell {lies.X}, {lies.Y}, which no plugin of the load order has"
                 : $"{other.EditorID ?? Session.FormKeyText(other.FormKey)}, cell {lies.X}, {lies.Y}";
+            // The move whole, to the folder addPatch writes that cell's copy in: told "into that cell's Temporary/ folder", a model
+            // moved its chest into a folder it named itself, NewRiverwood01, and the builds after refused it (mini-round of
+            // 2026-11-08, outdoor #4).
             var move = other is null || file is null ? "" :
                 $"the calls are addPatch {{\"project\": {ToolCalls.Quoted(project)}, \"records\": [\"{Session.FormKeyText(other.FormKey)}\"]}}, " +
-                $"then moveRecord of {file} into that cell's Temporary/ folder, which addPatch's answer names, and a build";
+                $"then {ToolCalls.Move(pluginDir, file, $"{FolderOf(file, other, lies)}/Temporary/{Path.GetFileName(file)}")}, and a build";
             // What the game places beside it there: placed a step from Riverwood's grindstone, which stands in Riverwood04, and
             // filed under Riverwood, eval round 135's outdoor+detailed #2 made the call that set the chest at Riverwood's edge,
             // away from the grindstone, and its check found it in the wrong cell.
@@ -272,6 +278,8 @@ internal static class CellContents
                     .Where(r => r.Base is { } entry && entry.EditorId?.Contains("Marker", StringComparison.OrdinalIgnoreCase) != true && r.Placement is not null)
                     .Select(r => (Row: r, Distance: Math.Sqrt(Math.Pow(r.Placement!.Position.X - at2.X, 2) + Math.Pow(r.Placement.Position.Y - at2.Y, 2))))
                     .Where(r => r.Distance <= FloorReach).OrderBy(r => r.Distance).Select(r => NameOf(r.Row.Base!)).FirstOrDefault();
+            var outside = (float)Math.Sqrt(Math.Pow(Math.Max(0, Math.Max(grid.X * CellSize - placement.Position.X, placement.Position.X - (grid.X + 1) * CellSize)), 2)
+                + Math.Pow(Math.Max(0, Math.Max(grid.Y * CellSize - placement.Position.Y, placement.Position.Y - (grid.Y + 1) * CellSize)), 2));
             var edge = file is not null
                 ? $"one call places it in {cellName}, at its edge nearest to where it is, and builds again: " +
                   ToolCalls.Edit(project, file, $"{{\"path\": \"Placement.Position\", \"value\": \"{inside}\"}}", build: true)
@@ -282,6 +290,12 @@ internal static class CellContents
                 (beside is not null
                     ? $"It stands beside {beside}, which the game places in {other!.EditorID ?? Session.FormKeyText(other.FormKey)}: where it is meant " +
                       $"to stand there, {move}; only where it was meant in {cellName}, {edge}."
+                    // Far from the cell, its position is a guess: the edge offered for one 3,900 units away set a chest there, nowhere near
+                    // the grindstone it was asked beside (mini-round of 2026-11-08, outdoor #5).
+                    : outside > FarOutside
+                    ? $"It lies {Whole(outside)} units outside {cellName}: where it is meant beside something the game places, readRecord gives where " +
+                      $"that stands — {{\"record\": \"<its editor ID>\", \"in\": {ToolCalls.Quoted(cellName)}}}, its placedIn — and its Position goes beside it." +
+                      (move.Length > 0 ? $" Where it is meant in {there}, {move}." : "")
                     : $"{char.ToUpperInvariant(edge[0])}{edge[1..]}." + (move.Length > 0 ? $" Where it is meant to stand there, {move}." : ""));
         }
     }
@@ -389,6 +403,19 @@ internal static class CellContents
                         foreach (var cell in subBlock.Items)
                             if (cell.Grid?.Point is { } point && point.Equals(grid)) return cell;
         return null;
+    }
+
+    /// <summary>
+    /// The folder Spriggit writes an exterior cell's copy in, beside a file of the same worldspace: the worldspace's folder, its
+    /// block (the grid over 32) and sub-block (over 8), then "{EditorID} - {FormID}_{plugin}" — Riverwood01, at 4, -11, is
+    /// `Worldspaces/Tamriel - 00003C_Skyrim.esm/0, -1/0, -2/Riverwood01 - 009713_Skyrim.esm`.
+    /// </summary>
+    internal static string FolderOf(string fileInWorld, ICellGetter cell, P2Int grid)
+    {
+        var world = string.Join('/', fileInWorld.Replace('\\', '/').Split('/').Take(2));
+        int Floor(int value, int by) => (int)Math.Floor(value / (double)by);
+        var name = $"{cell.FormKey.ID:X6}_{cell.FormKey.ModKey.FileName}";
+        return $"{world}/{Floor(grid.X, 32)}, {Floor(grid.Y, 32)}/{Floor(grid.X, 8)}, {Floor(grid.Y, 8)}/{(cell.EditorID is { } id ? $"{id} - {name}" : name)}";
     }
 
     /// <summary>A coordinate rounded to a whole unit, for a note.</summary>

@@ -71,7 +71,7 @@ interface UnknownModel {
 /** What the helper's addOverrides answers: files relative to the project's plugin folder. */
 interface CopiedRecords {
     added: { formId: string; editorId: string | null; type: string; from: string; files: string[]; merged?: MergedChanges }[];
-    alreadyInProject: { formId: string; file: string }[];
+    alreadyInProject: { formId: string; file: string; merged?: MergedChanges; from?: string; editorId?: string | null }[];
 }
 
 /**
@@ -429,7 +429,10 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
         const result: AddPatchResult = {
             project: projectInfo(request.project, paths, created),
             added: copied.added.map(record => ({ ...record, files: record.files.map(projectFile) })),
-            alreadyInProject: copied.alreadyInProject.map(record => ({ formId: record.formId, files: [projectFile(record.file)] }))
+            alreadyInProject: copied.alreadyInProject.map(record => ({
+                formId: record.formId, files: [projectFile(record.file)],
+                ...(record.merged ? { merged: record.merged, from: record.from, editorId: record.editorId ?? null } : {})
+            }))
         };
         if (leftOut > 0) {
             result.textLeftOut = `The text of ${leftOut} file${leftOut === 1 ? '' : 's'} is left out to keep this answer ` +
@@ -1276,6 +1279,13 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
         const turnOn = `editIni {"set": [${['bEnableLogging', 'bEnableTrace', 'bLoadDebugInformation']
             .map(key => `{"section": "Papyrus", "key": "${key}", "value": "1"}`).join(', ')}]}`;
         if (!fs.existsSync(file)) {
+            // Another session's log asked for, and the folder holds others: "the game writes none, logging is off" sent a model to
+            // turn logging on while Papyrus.0.log lay there (mini-round of 2026-11-08, papyrus-history #3 and #4).
+            const held = fs.existsSync(folder) ? fs.readdirSync(folder).filter(name => /^Papyrus\.\d+\.log$/i.test(name)).sort() : [];
+            if (request.log !== undefined && held.length > 0) {
+                throw new PapyrusLogNotFoundError(`There is no ${path.basename(file)} in ${folder}: the game keeps ${held.join(', ')} there, ` +
+                    `${held[0]} the newest. readPapyrusLog {} reads the newest; {"log": "1"} the session before it, where there is one.`);
+            }
             // Under Mod Organizer with the profile's own INIs, the test instance's game wrote no log with the three lines in the
             // profile's Skyrim.ini, and wrote one once My Games' Skyrim.ini had them too (2026-11-08).
             const myGamesIni = myGames && logging && path.resolve(path.dirname(logging.file)) !== path.resolve(myGames)

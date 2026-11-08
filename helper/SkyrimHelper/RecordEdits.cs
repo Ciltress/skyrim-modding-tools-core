@@ -599,13 +599,17 @@ public static class RecordEdits
         // WeapMaterialSteel's, written from memory beside the name meant — refused with the call that sends the records the
         // comments name: asked for an Iron Sword that counts as silver, eval round 135's keyword #3 set its Keywords so, the
         // comments left out as the next lines do, and built a steel sword its answer called silver.
-        if (context.Index is { } index && RecordLinks.LinkTarget(Items(types[^1]) ?? types[^1]) is { } takes
-            && Renamed(value, takes, index) is { } renamed)
-            throw new HelperException("badRequest", $"{label}: {string.Join("; ", renamed.Said)} — a FormID written from memory names " +
-                $"another record than the one meant. One call sends {(renamed.Said.Count == 1 ? "the record the comment names" : "the records the comments name")}, " +
-                "by editor ID, and builds: " +
-                ToolCalls.Edit(ToolCalls.ProjectOf(context.PluginDir), context.Relative, $"{{\"path\": \"{path}\", \"value\": {renamed.Value.ToJsonString()}}}", build: true) +
-                " — with the call's other changes beside it. Nothing was written.");
+        void RefuseRenamed(JsonNode? sent)
+        {
+            if (context.Index is { } index && RecordLinks.LinkTarget(Items(types[^1]) ?? types[^1]) is { } takes
+                && Renamed(sent, takes, index) is { } renamed)
+                throw new HelperException("badRequest", $"{label}: {string.Join("; ", renamed.Said)} — a FormID written from memory names " +
+                    $"another record than the one meant. One call sends {(renamed.Said.Count == 1 ? "the record the comment names" : "the records the comments name")}, " +
+                    "by editor ID, and builds: " +
+                    ToolCalls.Edit(ToolCalls.ProjectOf(context.PluginDir), context.Relative, $"{{\"path\": \"{path}\", \"value\": {renamed.Value.ToJsonString()}}}", build: true) +
+                    " — with the call's other changes beside it. Nothing was written.");
+        }
+        RefuseRenamed(value);
         // A link sent with the comment a file writes after it — `013F42:Skyrim.esm # RightHand` — is the link alone: written in
         // quotes, comment and all, it was no FormID, and the build refused EquipmentType and three keywords so (eval round 92's
         // sword #2).
@@ -622,6 +626,9 @@ public static class RecordEdits
         {
             value = Listed(text, steps, label, said);
             label += " (a list, sent as a text)";
+            // The list's items, each with its comment still: sent as one text, the steel keyword named silver in its comment went
+            // past the check above (mini-round of 2026-11-08, keyword+detailed #4).
+            RefuseRenamed(value);
         }
         // A list of parts sent as a text — a leveled list's Entries as a JSON list in a text, then as the lines a file writes —
         // was written as that text, in quotes, then as a block of text: the build after each refused the file, the same text
