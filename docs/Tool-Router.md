@@ -47,6 +47,9 @@ Workflows and the error model: [`MCP-Tools.md`](./MCP-Tools.md). The vocabulary:
 | Place something outdoors — a bedroll by Riverwood's cooking pot | The same as in a room: `readRecord` of the exterior cell (`Riverwood`) gives its folder in the worldspace and its square of x and y; `addPatch` the cell, then the reference in its `Temporary` folder — skill `skyrim-modding-world` |
 | Where does the game place it — the grindstone at a smithy, a shrine | `readRecord` of the record (findRecords its name) with `in`, the place's name: `placedIn` lists each cell it stands in and its position |
 | Move, turn, copy or remove what stands in a cell, by eye — or sculpt its ground, or edit its navmesh | `exportCell` → run its `importScript` in Blender (PyNifly add-on; the Scripting tab, or Blender's MCP server) → arrange, sculpt `Ground`, edit `Navmesh <FormID>` in Edit Mode → run its `exportScript` → `importCell` → `buildProject` |
+| Flatten, raise, lower or smooth the ground outdoors — a plot for a house, a hill | `editTerrain` with `at`, `radius` and the `action`, then `buildProject`; it names the game's objects the ground moved under |
+| A navmesh for a cell — a new room, a house whose furniture moved, ground changed outdoors, followers that cannot follow | `generateNavmesh` with the cell, then `buildProject` |
+| A new land of the mod's own, apart from Skyrim — a valley, an island, a realm — flat or from a heightmap | `newWorldspace`, then `buildProject`; `coc <editorId>Start` in game; a load door pair to get in |
 | Put a record file where the build reads it, or drop one | `moveRecord`, `deleteRecord` — a build's answer names each misplaced or left-over file with its call |
 | Put the mod into the game | `deployProject` — enables it in the mod manager; with Amethyst, also deploys or says to |
 | Bring back what you did in the Creation Kit or xEdit | `pullProject` — commit first, review with `git diff` after |
@@ -87,9 +90,6 @@ Workflows and the error model: [`MCP-Tools.md`](./MCP-Tools.md). The vocabulary:
 | Find which mods conflict, and what each loses | `findConflicts` — the records whose winning version lost another plugin's changes, change by change, and the files two mods both give the game; of one `plugin`, `mod` or `record`, or the whole setup. Skill: `skyrim-modding-conflicts` |
 | Keep both plugins' changes to a record | `addPatch` with `merge: true` and the records findConflicts named, then `buildProject` — a patch that loads last |
 | Let one plugin's version of a record win, only when the user says so | `movePlugin` with `after` the plugin it is to win over (or `before` the one that is to win) |
-| Flatten, raise, lower or smooth the ground outdoors — a plot for a house, a hill | `editTerrain` with `at`, `radius` and the `action`, then `buildProject`; it names the game's objects the ground moved under |
-| A navmesh for a cell — a new room, a house whose furniture moved, ground changed outdoors, followers that cannot follow | `generateNavmesh` with the cell, then `buildProject` |
-| A new land of the mod's own, apart from Skyrim — a valley, an island, a realm — flat or from a heightmap | `newWorldspace`, then `buildProject`; `coc <editorId>Start` in game; a load door pair to get in |
 | Sort the whole load order with LOOT, and hear what LOOT says of the setup | `sortPlugins` — a preview of LOOT's moves, its messages, dirty plugins, missing files and incompatible pairs; `apply: true` writes LOOT's order, only when the user says so |
 | Let one mod's files win, only when the user says so | `setModPriority` with `after` the mod it is to win over — loose files only; archives follow the load order |
 
