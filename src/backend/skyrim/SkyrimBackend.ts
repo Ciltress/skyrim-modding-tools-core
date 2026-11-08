@@ -633,6 +633,8 @@ export interface ImportCellResult {
     added: string[];
     removed: string[];
     unchanged: number;
+    /** The ground sculpted in Blender, written into the cell's copy and its neighbours' edges (as editTerrain answers it). */
+    ground?: Omit<EditTerrainResult, 'action' | 'height'>;
 }
 
 export interface RecordQuery {

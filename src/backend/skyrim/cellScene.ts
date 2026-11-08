@@ -58,6 +58,14 @@ export interface LayoutReference {
 export interface LayoutFile {
     cell: string;
     references: LayoutReference[];
+    /** An exterior cell's ground as it stands in Blender: 33 rows of 33 heights, south to north, west to east. */
+    ground?: { heights: number[][] };
+}
+
+/** Whether Blender's ground differs from the exported one by more than half a unit anywhere: it was sculpted. */
+export function groundChanged(was: number[][] | undefined, now: number[][] | undefined): boolean {
+    if (!was || !now || now.length !== 33) return false;
+    return now.some((row, y) => row.some((h, x) => Math.abs(h - (was[y]?.[x] ?? h)) > 0.5));
 }
 
 export interface LayoutChanges {

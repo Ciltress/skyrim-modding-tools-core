@@ -422,7 +422,10 @@ Blender with the PyNifly add-on; the Blender part runs in its Scripting tab, or 
 {"tool":"buildProject","args":{"project":"BreezehomeTidy"}}
 ```
 
-An exterior cell (`Riverwood`) comes with its ground, a mesh of its landscape's heights that is not exported back. The
+An exterior cell (`Riverwood`) comes with its ground, a mesh `Ground` of its landscape's 33×33 heights. Sculpted, or its
+vertices moved up and down, `export_layout` writes its heights into layout.json, and importCell sets the cell's ground to
+them — the edges its eight neighbours share moved with it, as editTerrain writes them, answered as `ground` (since
+v0.2.69); only the heights count, vertex by vertex, and a mesh with vertices added or removed is left out. The
 game turns a reference by z, then y, then x, each angle clockwise: the script places it with Blender's Euler order ZYX,
 the angles negated, and turns Blender's rotation back the same way (CommonLibSSE's `NiMatrix3::SetEulerAnglesXYZ`).
 

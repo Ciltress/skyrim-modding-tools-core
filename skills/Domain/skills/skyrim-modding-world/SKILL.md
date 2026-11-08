@@ -156,6 +156,9 @@ answers `success` and you told the user what the answer names:
 - **`navmesh`** — NPCs walk the cell's old navmesh until the Creation Kit regenerates it; small changes are fine.
 - Distant terrain (LOD) keeps the old shape until xLODGen runs.
 
+In Blender (the next section) an exterior cell's `Ground` mesh can be sculpted instead: export_layout writes its heights,
+and importCell sets the cell's ground to them, its neighbours' edges moved with it.
+
 ## Arrange a cell in Blender
 
 To move, turn, copy or remove what stands in a cell by eye, the cell goes to Blender and back — Blender with the

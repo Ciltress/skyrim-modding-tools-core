@@ -59,6 +59,7 @@ public sealed class Session : IDisposable
         "build" => await Build(p),
         "serialize" => await Serialize(p),
         "editTerrain" => await EditTerrain(p),
+        "setTerrain" => await SetTerrain(p),
         "readArchive" => Archives.Read(p),
         "extractArchive" => Archives.Extract(p),
         "pluginHeaders" => PluginHeaders(p),
@@ -1091,28 +1092,11 @@ public sealed class Session : IDisposable
         var reach = radius + falloff + Terrain.Spacing;
         int Lo(float v) => (int)Math.Floor((v - reach) / CellContents.CellSize);
         int Hi(float v) => (int)Math.Floor((v + reach) / CellContents.CellSize);
-        var cells = new Dictionary<Noggog.P2Int, (ICellGetter Cell, ILandscapeGetter Land, string? File, string? Text, float[,] Was, float[,] Now)>();
-        for (var gx = Lo(x); gx <= Hi(x); gx++)
-            for (var gy = Lo(y); gy <= Hi(y); gy++)
-            {
-                var grid = new Noggog.P2Int(gx, gy);
-                if (CellContents.CellAt(worlds, grid) is not { } cell) continue;
-                var land = Contexts(cell.FormKey).Select(c => (c.Record as ICellGetter)?.Landscape).FirstOrDefault(l => l?.VertexHeightMap is not null);
-                if (land is null) continue;
-                var file = CellFileFor(projectDir, cell.FormKey);
-                var text = file is null ? null : File.ReadAllText(Path.Combine(projectDir, file));
-                var was = text is not null && Terrain.HeightsIn(text) is { } own ? own : CellScene.Heights(land.VertexHeightMap!);
-                cells[grid] = (cell, land, file, text, was, (float[,])was.Clone());
-            }
+        var grids = new List<Noggog.P2Int>();
+        for (var gx = Lo(x); gx <= Hi(x); gx++) for (var gy = Lo(y); gy <= Hi(y); gy++) grids.Add(new Noggog.P2Int(gx, gy));
+        var cells = LoadGround(worlds, projectDir, grids);
         if (cells.Count == 0) throw new HelperException("notFound", $"No cell of {FormKeyText(worldspace)} with ground lies at {x}, {y}.");
 
-        float? HeightOf(Dictionary<Noggog.P2Int, float[,]> of, Noggog.P2Int grid, int vx, int vy)
-        {
-            // A vertex beyond the cell's edge is its neighbour's: the neighbour's own index there.
-            var g = new Noggog.P2Int(grid.X + (int)Math.Floor(vx / 32.0), grid.Y + (int)Math.Floor(vy / 32.0));
-            var (ix, iy) = (vx - (g.X - grid.X) * 32, vy - (g.Y - grid.Y) * 32);
-            return of.TryGetValue(g, out var h) && ix is >= 0 and < Terrain.Size && iy is >= 0 and < Terrain.Size ? h[iy, ix] : null;
-        }
         var before = cells.ToDictionary(c => c.Key, c => c.Value.Was);
         var centreGrid = new Noggog.P2Int((int)Math.Floor(x / CellContents.CellSize), (int)Math.Floor(y / CellContents.CellSize));
         var target = p["height"] is JsonValue h0 ? h0.GetValue<float>()
@@ -1138,6 +1122,53 @@ public sealed class Session : IDisposable
                     };
                 }
 
+        var (changed, moved, clamped) = await WriteGround(projectDir, pluginName, cells, minChange: 4);
+        return new JsonObject
+        {
+            ["worldspace"] = FormKeyText(worldspace), ["action"] = action, ["height"] = action == "flatten" ? JsonValue.Create(Math.Round(target)) : null,
+            ["cells"] = changed, ["clamped"] = clamped, ["gameReferences"] = moved
+        };
+    }
+
+    /// <summary>
+    /// The cells of a worldspace at these grids that have ground, each with its file in the project where it has one and its
+    /// heights as they are now: the copy's where the project has it, else the load order's winning cell's.
+    /// </summary>
+    private Dictionary<Noggog.P2Int, GroundCell> LoadGround(
+        List<IModContext<ISkyrimMod, ISkyrimModGetter, IMajorRecord, IMajorRecordGetter>> worlds, string projectDir, IEnumerable<Noggog.P2Int> grids)
+    {
+        var cells = new Dictionary<Noggog.P2Int, GroundCell>();
+        foreach (var grid in grids)
+        {
+            if (CellContents.CellAt(worlds, grid) is not { } cell) continue;
+            var land = Contexts(cell.FormKey).Select(c => (c.Record as ICellGetter)?.Landscape).FirstOrDefault(l => l?.VertexHeightMap is not null);
+            if (land is null) continue;
+            var file = CellFileFor(projectDir, cell.FormKey);
+            var text = file is null ? null : File.ReadAllText(Path.Combine(projectDir, file));
+            var was = text is not null && Terrain.HeightsIn(text) is { } own ? own : CellScene.Heights(land.VertexHeightMap!);
+            cells[grid] = new GroundCell(cell, land, file, text, was, (float[,])was.Clone());
+        }
+        return cells;
+    }
+
+    /// <summary>A cell's ground, before and after: Now is changed in place.</summary>
+    private sealed record GroundCell(ICellGetter Cell, ILandscapeGetter Land, string? File, string? Text, float[,] Was, float[,] Now);
+
+    /// <summary>A vertex's height, one beyond the cell's edge its neighbour's, by the neighbour's own index there; null where none is read.</summary>
+    private static float? HeightOf(Dictionary<Noggog.P2Int, float[,]> of, Noggog.P2Int grid, int vx, int vy)
+    {
+        var g = new Noggog.P2Int(grid.X + (int)Math.Floor(vx / 32.0), grid.Y + (int)Math.Floor(vy / 32.0));
+        var (ix, iy) = (vx - (g.X - grid.X) * 32, vy - (g.Y - grid.Y) * 32);
+        return of.TryGetValue(g, out var h) && ix is >= 0 and < Terrain.Size && iy is >= 0 and < Terrain.Size ? h[iy, ix] : null;
+    }
+
+    /// <summary>
+    /// Each cell's changed ground written into the project — its copy, with its Landscape, made where the project has none —
+    /// a cell moved less than `minChange` left out unless the project has it; with what it changed and what stood on it.
+    /// </summary>
+    private async Task<(JsonArray Changed, JsonArray Moved, int Clamped)> WriteGround(string projectDir, ModKey pluginName,
+        Dictionary<Noggog.P2Int, GroundCell> cells, float minChange)
+    {
         var after = cells.ToDictionary(c => c.Key, c => c.Value.Now);
         var changed = new JsonArray();
         var moved = new JsonArray();
@@ -1150,7 +1181,7 @@ public sealed class Session : IDisposable
             var most = 0f;
             for (var vy = 0; vy < Terrain.Size; vy++) for (var vx = 0; vx < Terrain.Size; vx++) most = Math.Max(most, Math.Abs(cell.Now[vy, vx] - cell.Was[vy, vx]));
             // A cell only within a vertex of the edit keeps its ground; it is written only where it is the project's already.
-            if (most < 4 && cell.File is null) continue;
+            if (most < minChange && cell.File is null) continue;
             var (file, text) = (cell.File, cell.Text);
             var versions = Contexts(cell.Cell.FormKey).Select(c => c.Record).OfType<ICellGetter>().ToList();
             if (text is null || !Terrain.HasLandscape(text))
@@ -1204,11 +1235,43 @@ public sealed class Session : IDisposable
                 moved.Add(new JsonObject { ["reference"] = FormKeyText(placed.FormKey), ["base"] = name, ["position"] = $"{Math.Round(at.Position.X)}, {Math.Round(at.Position.Y)}, {Math.Round(at.Position.Z)}", ["groundMoved"] = Math.Round(shift) });
             }
         }
-        return new JsonObject
+        return (changed, moved, clamped);
+    }
+
+    /// <summary>
+    /// One exterior cell's ground set to heights given whole — the ground sculpted in Blender, as importCell reads it back —
+    /// and the vertices its eight neighbours share with it moved with them, so no crack opens at its edges.
+    /// </summary>
+    private async Task<JsonNode> SetTerrain(JsonObject p)
+    {
+        var pluginName = ModKey.FromFileName(Required(p, "plugin"));
+        var projectDir = Required(p, "projectPluginDir");
+        var worldspace = Resolve(p["worldspace"]?.GetValue<string>() ?? "Tamriel");
+        var worlds = Contexts(worldspace).Where(c => c.Record is IWorldspaceGetter).ToList();
+        if (worlds.Count == 0) throw new HelperException("notFound", $"{FormKeyText(worldspace)} is no worldspace.");
+        var cellGrid = Regex.Match(Required(p, "grid"), @"^\s*(-?\d+)\s*,\s*(-?\d+)\s*$");
+        if (!cellGrid.Success) throw new HelperException("badRequest", "'grid' is the cell's x, y, e.g. \"4, -12\".");
+        var grid = new Noggog.P2Int(int.Parse(cellGrid.Groups[1].Value), int.Parse(cellGrid.Groups[2].Value));
+        var rows = (p["heights"] as JsonArray)?.Select(r => (r as JsonArray)?.Select(v => v!.GetValue<float>()).ToArray()).ToList();
+        if (rows is not { Count: Terrain.Size } || rows.Any(r => r is not { Length: Terrain.Size }))
+            throw new HelperException("badRequest", "'heights' is the cell's 33 rows of 33 heights, south to north, west to east.");
+        var around = Enumerable.Range(-1, 3).SelectMany(dy => Enumerable.Range(-1, 3).Select(dx => new Noggog.P2Int(grid.X + dx, grid.Y + dy)));
+        var cells = LoadGround(worlds, projectDir, around);
+        if (!cells.TryGetValue(grid, out var centre)) throw new HelperException("notFound", $"No cell of {FormKeyText(worldspace)} with ground is at {grid.X}, {grid.Y}.");
+        for (var y = 0; y < Terrain.Size; y++) for (var x = 0; x < Terrain.Size; x++) centre.Now[y, x] = rows[y]![x];
+        foreach (var (g, cell) in cells)
         {
-            ["worldspace"] = FormKeyText(worldspace), ["action"] = action, ["height"] = action == "flatten" ? JsonValue.Create(Math.Round(target)) : null,
-            ["cells"] = changed, ["clamped"] = clamped, ["gameReferences"] = moved
-        };
+            if (g.Equals(grid)) continue;
+            var (dx, dy) = (g.X - grid.X, g.Y - grid.Y);
+            for (var vy = 0; vy < Terrain.Size; vy++)
+                for (var vx = 0; vx < Terrain.Size; vx++)
+                {
+                    var (cx, cy) = (vx + dx * 32, vy + dy * 32);
+                    if (cx is >= 0 and < Terrain.Size && cy is >= 0 and < Terrain.Size) cell.Now[vy, vx] = centre.Now[cy, cx];
+                }
+        }
+        var (changed, moved, clamped) = await WriteGround(projectDir, pluginName, cells, minChange: 0.5f);
+        return new JsonObject { ["worldspace"] = FormKeyText(worldspace), ["cells"] = changed, ["clamped"] = clamped, ["gameReferences"] = moved };
     }
 
     /// <summary>A cell's own file in the project: the RecordData.yaml of the folder named for its FormKey.</summary>

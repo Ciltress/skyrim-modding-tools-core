@@ -105,9 +105,10 @@ def _ground(ground, collection):
     earth = bpy.data.materials.new("Ground")
     earth.diffuse_color = (0.22, 0.2, 0.14, 1)
     mesh.materials.append(earth)
-    obj = bpy.data.objects.new("Ground (not exported)", mesh)
+    # Sculpted or with its vertices moved up and down, export_layout writes its heights back: importCell sets the cell's
+    # ground to them, the edges its neighbours share with it moved too. Only the heights count, vertex by vertex.
+    obj = bpy.data.objects.new("Ground", mesh)
     obj["skyrim_ground"] = True
-    obj.hide_select = True
     collection.objects.link(obj)
 
 
@@ -229,9 +230,15 @@ def export_layout(folder=None):
                 "scale": round((size.x + size.y + size.z) / 3, 4),
             })
             copies += obj is not original
+    layout = {"cell": root["skyrim_cell"], "references": rows}
+    ground = next((o for o in root.all_objects if o.get("skyrim_ground") and o.type == "MESH"), None)
+    if ground is not None and len(ground.data.vertices) == 33 * 33:
+        # In the order _ground made them: row by row, south to north, west to east.
+        world = ground.matrix_world
+        layout["ground"] = {"heights": [[round((world @ ground.data.vertices[y * 33 + x].co).z, 2) for x in range(33)] for y in range(33)]}
     path = os.path.join(folder, "layout.json")
     with open(path, "w", encoding="utf-8") as f:
-        json.dump({"cell": root["skyrim_cell"], "references": rows}, f, indent=1)
-    answer = {"layout": path, "references": len(rows), "copies": copies}
+        json.dump(layout, f, indent=1)
+    answer = {"layout": path, "references": len(rows), "copies": copies, "ground": "ground" in layout}
     print("export_layout:", json.dumps(answer))
     return answer

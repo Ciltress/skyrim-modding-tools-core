@@ -21,7 +21,7 @@ import { primaryPlugins } from './mo2.js';
 import { checkGameVersion, myGamesDir } from './gameVersion.js';
 import { Attributor, dataPath } from './crash/attribution.js';
 import {
-    BLENDER_SCRIPT, cellFolderOf, copyEditorId, findBlender, initiallyDisabled, layoutChanges, launcher, newReferenceText, normalRotation, recordFileOf,
+    BLENDER_SCRIPT, cellFolderOf, copyEditorId, findBlender, groundChanged, initiallyDisabled, layoutChanges, launcher, newReferenceText, normalRotation, recordFileOf,
     saveBlendCode, sceneFolderName, texturesOf,
     triple, type CellSceneFile, type LayoutFile
 } from './cellScene.js';
@@ -886,6 +886,14 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
             fs.mkdirSync(path.dirname(file), { recursive: true });
             fs.writeFileSync(file, newReferenceText({ kind: copy.kind, editorId, base: copy.base, position: copy.position, rotation: copy.rotation, scale: copy.scale }));
             result.added.push(file);
+        }
+        // The ground, sculpted: the cell's heights set, its neighbours' edges moved with it (helper SetTerrain).
+        const layout = JSON.parse(fs.readFileSync(layoutFile, 'utf8')) as LayoutFile;
+        if (scene.ground && scene.cell.grid && groundChanged(scene.ground.heights, layout.ground?.heights)) {
+            result.ground = await this.engine.helper.call<NonNullable<ImportCellResult['ground']>>('setTerrain', {
+                plugin, projectPluginDir: paths.plugin, grid: `${scene.cell.grid[0]}, ${scene.cell.grid[1]}`, heights: layout.ground!.heights,
+                ...(scene.cell.worldspace ? { worldspace: scene.cell.worldspace.formId } : {})
+            }, BUILD_TIMEOUT_MS);
         }
         return result;
     }
