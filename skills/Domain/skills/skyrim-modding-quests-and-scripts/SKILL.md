@@ -1,6 +1,6 @@
 ---
 name: skyrim-modding-quests-and-scripts
-description: Quests, Papyrus scripts and dialogue in Skyrim SE - a quest that starts with the game, scripts on quests, items, magic effects and NPCs, their properties and the events the game sends them, and dialogue - a topic the player can ask an NPC and what the NPC answers. Use when a mod should do something rather than only add a record - give the player items, spells or perks when a game starts, react to an item being equipped or an actor dying, give an NPC a new line - or when a script compiles or a line builds but does nothing in game.
+description: Quests, Papyrus scripts and dialogue in Skyrim SE - a quest that starts with the game, scripts on quests, items, magic effects and NPCs, their properties and the events the game sends them, and dialogue - a topic the player can ask an NPC and what the NPC answers - message boxes, scenes of NPCs talking, and quests the story manager starts. Use when a mod should do something rather than only add a record - give the player items, spells or perks when a game starts, react to an item being equipped or an actor dying, give an NPC a new line - or when a script compiles or a line builds but does nothing in game.
 ---
 
 # Quests, scripts and dialogue
@@ -154,6 +154,24 @@ Conditions:
 - The response's text is shown as a subtitle. It has no voice: the game shows a line without a voice file only for a
   moment, so players of unvoiced dialogue install *Fuz Ro D-oh* (SKSE), which holds each line as long as it takes to
   read — tell the user.
+
+## Messages, scenes and the story manager
+
+- **A message box or a notification** is a `Message` in `Messages/`: its text is `Description`'s `Value`; `Flags` with
+  `MessageBox` makes it a box the player closes, without it a notification in the corner; `MenuButtons`, each with its
+  `Text`, are a box's buttons ("OK"). A script shows it: a `Message Property WelcomeMessage Auto`, filled with the
+  record in the script's `VirtualMachineAdapter`, and `WelcomeMessage.Show()` — in a quest's `OnInit` for "when a new
+  game starts" (the section above).
+- **A scene** — NPCs talking to each other — is a `Scene` in `Scenes/` that belongs to a quest (`Quest`): its `Actors`
+  are the quest's aliases by `ID`, filled with the NPCs (an alias's `UniqueActor`, or a `GetIsID` condition, as
+  `DialogueSolitudeAddvarHouseScene2`'s are); its `Actions`, in their order, each name the actor (`ActorID`) and, for a
+  line, the dialogue topic whose response is said (the topic and responses written as in the section above). `Flags` with
+  `BeginOnQuestStart` plays it when the quest starts; mirror a vanilla scene, `readRecord` `AddvarHouse2`.
+- **The story manager** starts a quest when something happens in game: a `StoryManagerQuestNode` in
+  `StoryManagerQuestNodes/` whose `Parent` is the game's node for that event, with the quest under `Quests`; the quest's
+  `Event` is the event's code — `CLOC` for the player changing location (`DA09ChangeLocation`), `ADIA` for dialogue —
+  and its aliases can be filled from the event (`FindMatchingRefFromEvent`). `findRecords` with `types: ["SMEN"]` lists
+  the event nodes; mirror a vanilla quest node, `readRecord` `DA09ChangeLocationSharesEvent`.
 
 ## Workflow
 

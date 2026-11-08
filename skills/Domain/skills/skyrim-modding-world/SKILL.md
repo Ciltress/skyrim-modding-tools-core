@@ -1,6 +1,6 @@
 ---
 name: skyrim-modding-world
-description: Cells and what is placed in them in Skyrim SE - interiors like a player home and the exterior cells of a worldspace like a town's streets, the references the game places there (containers, furniture, doors, NPCs, items), a new object placed in one, and a cell arranged in Blender and brought back. Use when a mod should put something into the world - a chest with items in Breezehome, a bedroll beside Riverwood's cooking pot, an NPC standing in a room - when objects of a cell are to be moved, copied or removed, or when an object a mod placed is missing in game.
+description: Cells and what is placed in them in Skyrim SE - interiors like a player home and the exterior cells of a worldspace like a town's streets, the references the game places there (containers, furniture, doors, NPCs, items), a new object placed in one - a static, chair, lever, plant or light of the mod's own, a locked chest - a new interior cell with the doors to it, locations, encounter zones and regions, and a cell arranged in Blender and brought back. Use when a mod should put something into the world - a chest with items in Breezehome, a bedroll beside Riverwood's cooking pot, an NPC standing in a room - when objects of a cell are to be moved, copied or removed, or when an object a mod placed is missing in game.
 ---
 
 # Cells and placed objects
@@ -109,6 +109,39 @@ reference is placed there as indoors, in the cell's folder inside its worldspace
   edge has its neighbour beside it: the new reference goes in the folder of the cell its own position lies in.
 - **Navmesh and LOD** are the Creation Kit's: a large object placed on a road blocks the NPCs' paths there, and nothing
   placed is seen from afar. A chest, a bedroll, a barrel beside a house need neither.
+
+## A new object of the mod's own, placed
+
+A statue, a chair, a lever, a plant, a lamp of the mod's own is two files: the **base record** in its type's folder,
+mirroring a vanilla one of its kind (`readRecord` it: copy its `Model` and what the table names, write the name and what
+was asked), and a **reference** placing it in a cell, as the chest above.
+
+| A new … | Folder | Mirror | What makes it work |
+|---|---|---|---|
+| static (a statue, a rock) | `Statics/` | a vanilla static of its look | `Model` a mesh the game has; nothing else to do |
+| chair, bench, bed | `Furniture/` | `WoodenChair01`, a vanilla bed | `Model` and its `Markers` (where and how an actor sits or lies) copied whole: without them nobody can use it |
+| lever, button, shrine | `Activators/` | `SimpleLever`, `DweLever01` | `Model`; what it does is a script of its own in `VirtualMachineAdapter` with `Event OnActivate(ObjectReference akActionRef)` (`skyrim-modding-quests-and-scripts`) |
+| plant to harvest | `Florae/` | `BirdsNest` | `Ingredient` — what picking gives, the mod's own ingredient or a game one; `HarvestSound`; `Production` per season; `ActivateTextOverride` "Harvest" |
+| light | `Lights/` | `Torch01`, a candle's light | `Radius`, `Color` (`'#00RRGGBB'`), `Flags`; placed as a reference, it lights what is around it |
+
+A **locked** door or container is its reference with `Lock`: `Level` (`Novice` … `Master`, `RequiresKey`) and `Key`, the
+key that opens it (`skyrim-modding-items-and-crafting`).
+
+## A new interior cell and the door to it
+
+A new room — a cellar, a cave — is an interior cell of the mod's own: its folder holds its `RecordData.yaml`, written as a
+vanilla interior's (`readRecord` one: copy `Flags` with `IsInteriorCell`, its `Lighting` or `LightingTemplate`), and a
+reference file for each thing in it. The player walks between two cells through a **pair of doors**: a door reference in
+each cell, each with `TeleportDestination` naming the other door and where the player stands on arrival. Each door is
+placed as any reference, its base a vanilla door (`findRecords` with `types: ["DOOR"]`).
+
+## Locations, encounter zones, regions
+
+| To give … | Record | Fields | Set on |
+|---|---|---|---|
+| a place the game knows (map, quests, "Cleared") | `Location` in `Locations/` | `Name`, `ParentLocation` (the hold's, `WhiterunHoldLocation`), `Keywords` of its kind (`LocTypeDwelling`, `LocTypeDungeon`) | a cell's `Location` |
+| the level of a cell's enemies and loot | `EncounterZone` in `EncounterZones/` | `MinLevel`, `MaxLevel` (0: none), `Location`, `Flags` (`NeverResets`) | a cell's `EncounterZone` — a game cell's through its copy (addPatch) |
+| weather or sound over an area outdoors | `Region` in `Regions/` | `Worldspace`, `RegionAreas` (the area's points), its weather data naming `Weather` records with a chance | the exterior cells the area covers |
 
 ## Arrange a cell in Blender
 

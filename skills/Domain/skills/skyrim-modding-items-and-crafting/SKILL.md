@@ -1,6 +1,6 @@
 ---
 name: skyrim-modding-items-and-crafting
-description: Weapons, armor, ammo, potions, ingredients, books, misc items, and crafting and tempering recipes in Skyrim SE. Use when creating or changing an item or recipe, or diagnosing one - invisible armor, a recipe missing at the workbench, an item that perks or merchants ignore.
+description: Weapons, armor, ammo, potions, food, poisons, ingredients, books, misc items, soul gems, keys, and crafting, tempering, smelting and cooking recipes in Skyrim SE. Use when creating or changing an item or recipe, or diagnosing one - invisible armor, a recipe missing at the workbench, an item that perks or merchants ignore.
 ---
 
 # Items and crafting
@@ -209,6 +209,24 @@ ITMPotionDownSD`, `Weight: 0.5`. Skyrim.esm's records, written as they are:
 | Resist fire | `ResistFire25` | `AlchResistFire` | Magnitude 20, Duration 60 |
 | Cure disease | `CureDisease` | `AlchCureDisease` | Magnitude 100 |
 | Invisibility | `Invisibility01` | `AlchInvisibillity` | Duration 20 |
+
+## Food, poisons, ingredients and the small items
+
+Each is a new file in its type's folder, mirroring a vanilla record of its kind — `readRecord` it, copy its `Model`,
+sounds and keywords, then write the name, numbers and effects asked for. Effects are written as a potion's (above): a
+`BaseEffect` and its `Data`.
+
+| A new … | Folder | Mirror | What makes it one |
+|---|---|---|---|
+| food | `Ingestibles/` | `FoodSweetroll`, `FoodApple` | `Flags` with `FoodItem`; `ConsumeSound` an eating one (`ITMFoodEat`), not a potion's; keyword `VendorItemFood`; effects as `FoodRestoreHealth`-like restores |
+| poison | `Ingestibles/` | `DamageHealth01` ("Weak Poison") | `Flags` with `Poison`; `ConsumeSound: ITMPoisonUse`; keyword `VendorItemPoison`; harmful effects — a damage effect flagged `Detrimental`, frost's resisted by `ResistFrost` |
+| ingredient | `Ingredients/` | `FrostSalts`, `GlowingMushroom` | Up to four `Effects`, each an ingredient's (`Alch…` effects); `IngredientValue`; keyword `VendorItemIngredient` |
+| misc item | `MiscItems/` | a vanilla clutter or gem item | `Value`, `Weight`, a `Model` the game has; a `VendorItem…` keyword (`VendorItemClutter`, `VendorItemGems`, `VendorItemJewelry`) so merchants buy it |
+| soul gem | `SoulGems/` | `SoulGemGrand` (empty), `SoulGemGrandFilled` | `MaximumCapacity` (`Petty` … `Grand`, `Black` holds black souls), an empty one without a `ContainedSoul`; keyword `VendorItemSoulGem` |
+| key | `Keys/` | a vanilla house key (`AngasMillAeriHouseKey`) | `Model`, `PickUpSound: ITMKeyUpSD`; keyword `VendorItemKey`. It opens what names it in its `Lock`'s `Key` — a placed door or container (`skyrim-modding-world`) |
+
+A light the player carries — a torch, a lantern — is a `Light` in `Lights/` flagged `CanBeCarried`, mirroring
+`Torch01`; one placed only to light a room is a `Light` too, placed as a reference (`skyrim-modding-world`).
 
 ## Books and notes
 

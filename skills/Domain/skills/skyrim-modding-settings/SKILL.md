@@ -1,6 +1,6 @@
 ---
 name: skyrim-modding-settings
-description: Game settings, globals and keywords in Skyrim SE - the engine's numbers by name (jump height, fall damage, prices, the armor cap, trainings per level), global variables (time scale, the values scripts and conditions read), and the keywords the game checks on items (which merchant buys it, its material, silver). Use when a mod should change how the game plays rather than add an item - jump higher, time pass slower, more trainings - or should make an item count as another kind.
+description: Game settings, globals and keywords in Skyrim SE - the engine's numbers by name (jump height, fall damage, prices, the armor cap, trainings per level), global variables (time scale, the values scripts and conditions read), form lists (records checked as a group), and the keywords the game checks on items (which merchant buys it, its material, silver). Use when a mod should change how the game plays rather than add an item - jump higher, time pass slower, more trainings - or should make an item count as another kind.
 ---
 
 # Game settings, globals and keywords
@@ -51,6 +51,13 @@ real minute is), `GameDaysPassed`, a quest's counters. Its file's first line is 
 - **A save keeps each global's value.** A changed global reaches a new game; a game already running keeps its own.
   Tell the user so, and the console line that sets it there: `set timescale to 10`.
 - **A new global** is read by nothing but the mod's own scripts and conditions that name it.
+
+## Form lists (FLST): records the game checks as a group
+
+A form list is a list of records a condition or a script checks at once — `IsInList` in a condition, `HasForm` in Papyrus
+— or that the game reads for something (the plants a moth lands on, `AAAMothPlantTypes`). A new one is a `FormList` in
+`FormLists/`: its `EditorID`, and `Items`, each a record by editor ID or FormID. A record added to a game's list goes into
+that list's copy (addPatch), every item it holds kept, as a leveled list's.
 
 ## Keywords (KYWD): what the game checks on a record
 
