@@ -43,16 +43,19 @@ This is the engine of the Skyrim Modding Tools. Use it from your own code, or ta
   heightmap — and give any cell its navmesh in one call, made from the collision of what stands there.
 - 🩹 **Patch without touching.** Copy another mod's record into your patch and change it there; the original mod
   stays as it is.
+- ⚖️ **Conflicts and load order.** Which plugin's changes to a record are lost to another's, change by change, and a
+  patch that keeps them all; which mods' files hide each other's; the load order sorted by LOOT's own library, shown
+  first and applied on your word.
 - 📦 **Install mods.** Search Nexus Mods, read a mod's page and what it requires, download, install with its FOMOD
   installer answered, enable or disable, and check SKSE plugins against your game version.
 - 💥 **Read crash logs.** Crash Logger SSE's logs against 105 known crashes, with the mod behind every DLL, mesh,
-  texture and record the log names.
+  texture and record the log names; and the Papyrus log, its script errors grouped, counted and traced to their mods.
 - 📚 **Teach the agent.** Skills for items and crafting, magic, NPCs, leveled lists, perks, quests and scripts, the
   world, game updates and crash analysis, and guides to which tool does what — the knowledge a model needs to mod well.
 
-Some work still needs the Creation Kit, like distant LOD or a new NPC's face; what you make there, `pullProject`
-reads back into the project's text. Navmesh does not: `generateNavmesh` makes a cell's from what stands in it, and
-Blender edits it.
+Some work still needs other tools: a new NPC's face needs the Creation Kit, distant land needs LOD from xLODGen. What
+you make in the Creation Kit, `pullProject` reads back into the project's text. Navmesh does not: `generateNavmesh`
+makes a cell's from what stands in it, and Blender edits it.
 
 ## Modding with Muddy! 🦀
 
