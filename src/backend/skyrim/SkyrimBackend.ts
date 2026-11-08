@@ -234,6 +234,18 @@ export interface GenerateNavmeshRequest {
     project: string;
     /** The cell, by editor ID or FormID: an interior or an exterior cell of the load order, or an interior the project made. */
     cell: string;
+    /**
+     * importCell's: the cell's navmeshes as edited in Blender, made the cell's navmesh instead of one from the collision.
+     * Not a tool argument.
+     */
+    surface?: SceneNavmesh[];
+}
+
+/** A navmesh as exportCell hands it to Blender and export_layout gives it back: game units, triangles by vertex index. */
+export interface SceneNavmesh {
+    formId: string;
+    vertices: [number, number, number][];
+    triangles: [number, number, number][];
 }
 
 /** A cell's navmesh made from the collision of what stands in it (helper Navmesh.cs), written into the project. */
@@ -248,10 +260,15 @@ export interface GenerateNavmeshResult {
     files: string[];
     /** Each load door, the navmesh and the triangle before it. */
     doors: { door: string; navmesh: string; triangle: number }[];
-    /** The references whose meshes have collision, those without, and meshes that could not be read. */
-    objects: { withCollision: number; withoutCollision: number; unreadMeshes: string[] };
-    /** Pieces left out: table tops, shelves, gaps behind furniture no actor reaches. */
-    left: { pieces: number; triangles: number };
+    /** The references whose meshes have collision, those without, and meshes that could not be read. None from Blender. */
+    objects?: { withCollision: number; withoutCollision: number; unreadMeshes: string[] } | null;
+    /** Pieces left out: table tops, shelves, gaps behind furniture no actor reaches. None from Blender. */
+    left?: { pieces: number; triangles: number } | null;
+    /**
+     * The surface brought back from Blender (importCell): triangles turned counter-clockwise, dropped (no area seen from above,
+     * or drawn twice), left outside the cell, and the navmeshes whose object did not come back — each kept as it was.
+     */
+    fromBlender?: { turned: number; dropped: number; outside: number; notBack: string[] } | null;
     /** The navmesh it replaced: its size, and how much of each lies on the other (0–1). */
     before?: { triangles: number; areaM2: number; nowAreaM2: number; oldCovered: number; newOnOld: number };
     /** A cell of several navmeshes: each one's share of the new surface; one no new triangle lies on is kept as it was. */
@@ -669,6 +686,8 @@ export interface ImportCellResult {
     unchanged: number;
     /** The ground sculpted in Blender, written into the cell's copy and its neighbours' edges (as editTerrain answers it). */
     ground?: Omit<EditTerrainResult, 'action' | 'height'>;
+    /** The navmesh edited in Blender, made the cell's (as generateNavmesh answers it). */
+    navmesh?: GenerateNavmeshResult;
 }
 
 export interface RecordQuery {

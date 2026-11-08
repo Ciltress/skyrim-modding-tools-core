@@ -422,8 +422,18 @@ Blender with the PyNifly add-on; the Blender part runs in its Scripting tab, or 
 {"tool":"buildProject","args":{"project":"BreezehomeTidy"}}
 ```
 
-The cell's navmeshes — the project's version first, as `generateNavmesh` writes them — come as wireframe meshes drawn in
-front, `Navmesh <FormID>`, where NPCs walk (since v0.2.69; shown, not yet brought back). An exterior cell (`Riverwood`) comes with its ground, a mesh `Ground` of its landscape's 33×33 heights. Sculpted, or its
+The cell's navmeshes — the project's version first, as `generateNavmesh` writes them — come as green wireframe meshes
+drawn in front, `Navmesh <FormID>`, where NPCs walk (since v0.2.69). Edit one in Edit Mode — move its vertices, delete
+faces where nobody should walk, add faces (F) or extrude (E) where they should — and `export_layout` writes each one's
+triangles into layout.json (faces of more corners cut into triangles); where they differ from the exported ones,
+importCell makes them the cell's navmesh, as generateNavmesh would from the collision, answered as `navmesh` (since
+v0.2.70): each object's triangles stay its navmesh's, so FormIDs and what points at them stay; vertices
+within half a unit are one; a triangle drawn clockwise seen from above is turned, one with no area seen from above is
+dropped, and outdoors one outside the cell is left to its neighbour (`fromBlender`). The links between the cell's
+navmeshes, to the neighbouring cells' and to the load doors are made anew, and the road and water flags kept where a
+triangle lies on the old one. A navmesh whose object was deleted in Blender stays as it was (`notBack`): none is
+deleted, what links to it would break. Tested 2026-11-08 on the Sleeping Giant Inn (429 → 419 triangles) and Riverwood
+(4 navmeshes, 5 of the neighbours' relinked), both built clean. An exterior cell (`Riverwood`) comes with its ground, a mesh `Ground` of its landscape's 33×33 heights. Sculpted, or its
 vertices moved up and down, `export_layout` writes its heights into layout.json, and importCell sets the cell's ground to
 them — the edges its eight neighbours share moved with it, as editTerrain writes them, answered as `ground` (since
 v0.2.69); only the heights count, vertex by vertex, and a mesh with vertices added or removed is left out. The

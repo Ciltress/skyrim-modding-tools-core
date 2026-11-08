@@ -6,7 +6,12 @@ In Blender, with the PyNifly add-on enabled:
     import_cell(folder)     places every reference of the cell where the game places it: each mesh imported once
                             through PyNifly, each reference an instance of it, named after its reference
     export_layout(folder)   writes layout.json beside cell.json: where each reference stands now, the copies made
-                            with Shift+D, and — by their absence — the ones deleted; importCell brings it into a project
+                            with Shift+D, and — by their absence — the ones deleted; outdoors the ground's heights; and
+                            the navmeshes' triangles; importCell brings it into a project
+
+The cell's navmeshes are the green wireframes "Navmesh <FormID>", where NPCs walk. Edit one in Edit Mode: move its
+vertices, delete faces where nobody should walk, add faces (F) or extrude (E) where they should; importCell makes the
+result the cell's navmesh, linked to its neighbours and doors. Faces of more than three corners are cut into triangles.
 
 The game turns a reference by its rotation's z, then y, then x, each angle clockwise seen down its axis
 (NiMatrix3::SetEulerAnglesXYZ): in Blender that is the Euler order ZYX with every angle negated. Positions and
@@ -112,24 +117,49 @@ def _ground(ground, collection):
     collection.objects.link(obj)
 
 
+# How far above the game's navmesh Blender draws it, so the ground does not hide it; export_layout takes it off again.
+NAVMESH_LIFT = 2
+
+
 def _navmeshes(navmeshes, collection):
-    """The cell's navmeshes — where NPCs walk — each a wireframe mesh drawn in front, named after its FormID."""
+    """The cell's navmeshes — where NPCs walk — each a wireframe mesh drawn in front, named after its FormID, to edit."""
     if not navmeshes:
         return
     green = bpy.data.materials.new("Navmesh")
     green.diffuse_color = (0.1, 0.85, 0.25, 0.6)
     for navmesh in navmeshes:
         mesh = bpy.data.meshes.new("Navmesh " + navmesh["formId"])
-        # Two units above, so the ground does not hide it.
-        mesh.from_pydata([(x, y, z + 2) for x, y, z in navmesh["vertices"]], [], [tuple(t) for t in navmesh["triangles"]])
+        mesh.from_pydata([(x, y, z + NAVMESH_LIFT) for x, y, z in navmesh["vertices"]], [], [tuple(t) for t in navmesh["triangles"]])
         mesh.update()
         mesh.materials.append(green)
         obj = bpy.data.objects.new("Navmesh " + navmesh["formId"], mesh)
         obj["skyrim_navmesh"] = navmesh["formId"]
         obj.display_type = "WIRE"
         obj.show_in_front = True
-        obj.hide_select = True
         collection.objects.link(obj)
+
+
+def _navmesh_rows(root):
+    """Each navmesh object as it stands: its FormID, its vertices in game units, its faces cut into triangles."""
+    import bmesh
+
+    rows = []
+    for obj in root.all_objects:
+        if obj.type != "MESH" or not obj.get("skyrim_navmesh"):
+            continue
+        world = _world(obj)
+        shape = bmesh.new()
+        shape.from_mesh(obj.data)
+        bmesh.ops.triangulate(shape, faces=shape.faces[:])
+        shape.verts.index_update()
+        vertices = []
+        for vertex in shape.verts:
+            x, y, z = world @ vertex.co
+            vertices.append([round(x, 3), round(y, 3), round(z - NAVMESH_LIFT, 3)])
+        rows.append({"formId": obj["skyrim_navmesh"], "vertices": vertices,
+                     "triangles": [[v.index for v in face.verts] for face in shape.faces]})
+        shape.free()
+    return rows
 
 
 def import_cell(folder, clear=True):
@@ -257,9 +287,14 @@ def export_layout(folder=None):
         # In the order _ground made them: row by row, south to north, west to east.
         world = ground.matrix_world
         layout["ground"] = {"heights": [[round((world @ ground.data.vertices[y * 33 + x].co).z, 2) for x in range(33)] for y in range(33)]}
+    # The navmeshes: importCell compares them with cell.json's and makes the cell's navmesh from them where they differ.
+    navmeshes = _navmesh_rows(root)
+    if navmeshes:
+        layout["navmeshes"] = navmeshes
     path = os.path.join(folder, "layout.json")
     with open(path, "w", encoding="utf-8") as f:
         json.dump(layout, f, indent=1)
-    answer = {"layout": path, "references": len(rows), "copies": copies, "ground": "ground" in layout}
+    answer = {"layout": path, "references": len(rows), "copies": copies, "ground": "ground" in layout,
+              "navmeshes": sum(len(n["triangles"]) for n in navmeshes)}
     print("export_layout:", json.dumps(answer))
     return answer

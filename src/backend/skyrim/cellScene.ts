@@ -9,6 +9,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { SceneNavmesh } from './SkyrimBackend.js';
 
 /** One reference as the helper's cellScene reads it, and as cell.json holds it. */
 export interface SceneReference {
@@ -39,8 +40,8 @@ export interface CellSceneFile {
     };
     references: SceneReference[];
     ground?: { origin: [number, number]; spacing: number; heights: number[][] };
-    /** The cell's navmeshes — the project's version first — that Blender shows as wireframes. */
-    navmeshes?: { formId: string; vertices: [number, number, number][]; triangles: [number, number, number][] }[];
+    /** The cell's navmeshes — the project's version first — that Blender shows as green wireframes, to edit. */
+    navmeshes?: SceneNavmesh[];
 }
 
 /** One object of the cell as Blender's export_layout() writes it. */
@@ -62,6 +63,27 @@ export interface LayoutFile {
     references: LayoutReference[];
     /** An exterior cell's ground as it stands in Blender: 33 rows of 33 heights, south to north, west to east. */
     ground?: { heights: number[][] };
+    /** The cell's navmeshes as they stand in Blender, each object's triangles (faces of more corners cut into triangles). */
+    navmeshes?: SceneNavmesh[];
+}
+
+/**
+ * Whether Blender's navmeshes differ from the exported ones: one of them gone, a vertex moved by more than half a unit, or
+ * its triangles not the ones exported — faces deleted, added, or made of other vertices.
+ */
+export function navmeshesChanged(was: SceneNavmesh[] | undefined, now: SceneNavmesh[] | undefined): boolean {
+    if (!was?.length || !now) return false;
+    const exported = new Map(was.map(navmesh => [navmesh.formId, navmesh]));
+    if (now.length !== was.length || now.some(navmesh => !exported.has(navmesh.formId))) return true;
+    return now.some(navmesh => {
+        const old = exported.get(navmesh.formId)!;
+        if (navmesh.vertices.length !== old.vertices.length || navmesh.triangles.length !== old.triangles.length) return true;
+        if (navmesh.vertices.some((v, i) => v.some((value, axis) => Math.abs(value - old.vertices[i][axis]) > 0.5))) return true;
+        // The same triangle, whichever corner Blender starts it at.
+        const corners = (t: readonly number[]) => [...t].sort((a, b) => a - b).join(',');
+        const triangles = new Set(old.triangles.map(corners));
+        return navmesh.triangles.some(t => !triangles.has(corners(t)));
+    });
 }
 
 /** Whether Blender's ground differs from the exported one by more than half a unit anywhere: it was sculpted. */

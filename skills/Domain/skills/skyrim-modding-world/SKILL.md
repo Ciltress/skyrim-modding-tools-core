@@ -152,6 +152,9 @@ changed ground or a new room needs it; a chest or a chair does not. Done when th
 - **`objects.unreadMeshes`** — meshes it could not read: actors walk through those objects.
 
 To see it, exportCell the cell after the build: its navmeshes come into Blender as green wireframes, `Navmesh <FormID>`.
+To change it by hand — a path nobody should take, a ledge they should — edit that wireframe in Edit Mode (move vertices,
+delete or add faces), run the exportScript, and importCell makes it the cell's navmesh, linked to its doors and
+neighbours; then buildProject. Never write a navmesh file by hand: its links and grid are computed.
 
 ## Locations, encounter zones, regions
 

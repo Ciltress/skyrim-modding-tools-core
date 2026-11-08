@@ -49,6 +49,9 @@ public sealed partial class Session
     /// triangles' road and water flags where it lies on them. The links between them, and outdoors with the neighbouring
     /// cells' navmeshes both ways, are made by the edges they share; each navmesh changed gets its map entry (NAVI) anew.
     /// The meshes come from the server, `models`: each model path a loose `file` or an `archive` and the path `under` it.
+    /// With `surface` — the navmeshes as edited in Blender, brought back by importCell — that surface is the cell's navmesh
+    /// instead of one made from the collision (GivenSurface): each triangle stays with the navmesh of its Blender object, and
+    /// the rest is as above — flags, links, neighbours, doors and map entries.
     /// </summary>
     private async Task<JsonNode> GenerateNavmesh(JsonObject p)
     {
@@ -57,34 +60,44 @@ public sealed partial class Session
         var built = p["projectPlugin"]?.GetValue<string>();
         using var project = built is not null && File.Exists(built) ? SkyrimMod.Create(release).FromPath(built).Construct() : null;
         var scene = SceneForNavmesh(Required(p, "cell").Trim(), project);
+        var square = scene.Grid is { } g
+            ? (g.X * (float)CellContents.CellSize, g.Y * (float)CellContents.CellSize, (g.X + 1) * (float)CellContents.CellSize, (g.Y + 1) * (float)CellContents.CellSize)
+            : ((float, float, float, float)?)null;
+        var given = p["surface"] is JsonArray edited ? GivenSurface(edited, square) : null;
 
         // The collision: each reference's mesh where it stands, outdoors on the ground.
         var models = ReadModels(p["models"] as JsonObject);
         var collisionOf = new Dictionary<string, Navmesh.Geometry?>(StringComparer.OrdinalIgnoreCase);
         var collision = new Navmesh.Geometry();
-        foreach (var (at, heights) in scene.Ground) collision.Add(Navmesh.Ground(heights, at), Matrix4x4.Identity);
         var (solid, open) = (0, 0);
         var unread = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var reference in scene.References)
+        if (given is null)
         {
-            var baseRecord = scene.Winning(reference.Base.FormKey);
-            // A door opens: actors walk through its frame.
-            if (baseRecord is null or IDoorGetter || CellScene.ModelOf(baseRecord) is not { } model || reference.Placement is not { } at) continue;
-            if (!collisionOf.TryGetValue(model, out var shape))
-                collisionOf[model] = shape = models.TryGetValue(model, out var bytes) ? Navmesh.Collision(bytes) : null;
-            if (shape is null) { unread.Add(model); continue; }
-            if (shape.TriangleCount == 0) { open++; continue; }
-            collision.Add(shape, Navmesh.Placement(at.Position, at.Rotation, reference.Scale ?? 1f));
-            solid++;
+            foreach (var (at, heights) in scene.Ground) collision.Add(Navmesh.Ground(heights, at), Matrix4x4.Identity);
+            foreach (var reference in scene.References)
+            {
+                var baseRecord = scene.Winning(reference.Base.FormKey);
+                // A door opens: actors walk through its frame.
+                if (baseRecord is null or IDoorGetter || CellScene.ModelOf(baseRecord) is not { } model || reference.Placement is not { } at) continue;
+                if (!collisionOf.TryGetValue(model, out var shape))
+                    collisionOf[model] = shape = models.TryGetValue(model, out var bytes) ? Navmesh.Collision(bytes) : null;
+                if (shape is null) { unread.Add(model); continue; }
+                if (shape.TriangleCount == 0) { open++; continue; }
+                collision.Add(shape, Navmesh.Placement(at.Position, at.Rotation, reference.Scale ?? 1f));
+                solid++;
+            }
+            if (collision.TriangleCount == 0)
+                throw new HelperException("notFound", $"Nothing in {scene.CellName} has collision to walk on" +
+                    (unread.Count > 0 ? $" — {unread.Count} mesh(es) could not be read, {string.Join(", ", unread.Take(5))}." : ": place its floor first."));
         }
-        if (collision.TriangleCount == 0)
-            throw new HelperException("notFound", $"Nothing in {scene.CellName} has collision to walk on" +
-                (unread.Count > 0 ? $" — {unread.Count} mesh(es) could not be read, {string.Join(", ", unread.Take(5))}." : ": place its floor first."));
+        else if (given.Mesh.TriangleCount == 0)
+        {
+            throw new HelperException("badInput", $"The navmesh brought back from Blender has no triangle to walk on in {scene.CellName}" +
+                (given.Outside > 0 ? $": all {given.Outside} lie outside the cell." : ": every face was deleted, or stands upright.") +
+                " Undo that in Blender, export_layout again, then importCell.");
+        }
 
-        var square = scene.Grid is { } g
-            ? (g.X * (float)CellContents.CellSize, g.Y * (float)CellContents.CellSize, (g.X + 1) * (float)CellContents.CellSize, (g.Y + 1) * (float)CellContents.CellSize)
-            : ((float, float, float, float)?)null;
-        var made = Navmesh.Generate(collision, new Navmesh.Settings(), square);
+        var made = given?.Mesh ?? Navmesh.Generate(collision, new Navmesh.Settings(), square);
         // Water: the planes the cell places (each water activator's bounds, at their top) and the cell's own water level.
         // Deeper than an actor wades, it swims: no navmesh there; shallower, its triangles are flagged Water.
         var water = new Navmesh.Geometry();
@@ -94,20 +107,23 @@ public sealed partial class Session
                 water.Add(Navmesh.Plane(bounds.First.X, bounds.First.Y, bounds.Second.X, bounds.Second.Y, bounds.Second.Z), Navmesh.Placement(at.Position, at.Rotation, reference.Scale ?? 1f));
         if (scene.WaterHeight is { } level)
         {
-            var (lo, hi) = (collision.Vertices.Aggregate(Vector3.Min), collision.Vertices.Aggregate(Vector3.Max));
+            var reach = given is null ? collision : made;
+            var (lo, hi) = (reach.Vertices.Aggregate(Vector3.Min), reach.Vertices.Aggregate(Vector3.Max));
             water.Add(Navmesh.Plane(lo.X - 1000, lo.Y - 1000, hi.X + 1000, hi.Y + 1000, level), Matrix4x4.Identity);
         }
         float Depth(Vector3 point) => Enumerable.Range(0, water.TriangleCount).Select(w => Navmesh.HeightAt(water, w, point.X, point.Y)).Where(z => z is not null)
             .Select(z => z!.Value - point.Z).DefaultIfEmpty(float.MinValue).Max();
         const float wades = 80;
         var droppedInWater = made.TriangleCount;
-        if (water.TriangleCount > 0) made = Navmesh.Only(made, Enumerable.Range(0, made.TriangleCount).Where(t => Depth(made.Centre(t)) <= wades));
+        // A surface from Blender keeps what the modder drew, deep water too: only flagged.
+        if (water.TriangleCount > 0 && given is null) made = Navmesh.Only(made, Enumerable.Range(0, made.TriangleCount).Where(t => Depth(made.Centre(t)) <= wades));
         droppedInWater -= made.TriangleCount;
         if (made.TriangleCount == 0) throw new HelperException("notFound", $"No floor in {scene.CellName} is wide and high enough for an actor to walk on.");
 
         // The pieces kept: those a load door stands at or that reach a neighbouring cell, and every one at least a sixth the
-        // size of the largest. The rest are table tops, shelves and gaps behind furniture no actor reaches.
-        var pieces = Navmesh.Pieces(made);
+        // size of the largest. The rest are table tops, shelves and gaps behind furniture no actor reaches. A surface from
+        // Blender is kept whole, in its order: its triangles' objects are known by their index.
+        var pieces = given is null ? Navmesh.Pieces(made) : [Enumerable.Range(0, made.TriangleCount).ToList()];
         var atDoor = scene.Doors.Select(d => Navmesh.Nearest(made, Position(d))).ToHashSet();
         // Outdoors, the neighbouring cells' navmeshes by side: a piece at the cell's edge counts where it meets one — a roof
         // over the edge meets none — and the links are made with them.
@@ -123,13 +139,16 @@ public sealed partial class Session
         var probe = new NavmeshPart(FormKey.Null, made, new NavmeshTriangle.Flag[made.TriangleCount], null, true);
         bool MeetsNeighbour(int t) => square is { } sq && sides.Any(side => Enumerable.Range(0, 3)
             .Any(e => EdgeOn(made, t, e, sq, side.Line) && Overlapping(probe, t, e, side.Theirs, sq, side.Line) is not null));
-        var keep = pieces.Where(piece => piece.Count * 6 >= pieces[0].Count || piece.Any(atDoor.Contains) || piece.Any(MeetsNeighbour)).ToList();
+        var keep = given is not null ? pieces
+            : pieces.Where(piece => piece.Count * 6 >= pieces[0].Count || piece.Any(atDoor.Contains) || piece.Any(MeetsNeighbour)).ToList();
         var mesh = Navmesh.Only(made, keep.SelectMany(t => t));
 
         // The cell's navmeshes as they stand — the project's version where it has one — each to get its share.
         var olds = scene.Versions.SelectMany(v => v.NavigationMeshes).Select(n => n.FormKey).Distinct()
             .Select(key => CurrentNavmesh(key, project)).Where(n => n is not null).Select(n => n!).ToList();
         var oldMeshes = olds.Select(GeometryOf).ToList();
+        // From Blender, each object's triangles stay with its navmesh; one whose FormID is not the cell's goes by where it lies.
+        var ownerOfObject = given?.FormIds.Select(id => olds.FindIndex(o => string.Equals(FormKeyText(o.FormKey), id, StringComparison.OrdinalIgnoreCase))).ToArray();
         var owner = new int[mesh.TriangleCount];
         var flags = new NavmeshTriangle.Flag[mesh.TriangleCount];
         for (var t = 0; t < mesh.TriangleCount; t++)
@@ -150,7 +169,7 @@ public sealed partial class Session
                 }
                 if (bestDistance == 0) break;
             }
-            owner[t] = best;
+            owner[t] = ownerOfObject is not null && ownerOfObject[given!.ObjectOf[t]] is >= 0 and var mine ? mine : best;
             // The road and the water the old triangle was on, kept.
             if (bestDistance == 0 && bestTriangle >= 0)
                 flags[t] |= olds[best].Data!.Triangles[bestTriangle].Flags & (NavmeshTriangle.Flag.Preferred | NavmeshTriangle.Flag.Water | NavmeshTriangle.Flag.NoLargeCreatures);
@@ -298,8 +317,16 @@ public sealed partial class Session
             ["vertices"] = mesh.Vertices.Count,
             ["files"] = files,
             ["doors"] = new JsonArray(parts.SelectMany(x => x.Doors.Select(d => (JsonNode)new JsonObject { ["door"] = FormKeyText(d.Door.FormKey), ["navmesh"] = FormKeyText(x.Key), ["triangle"] = d.Triangle })).ToArray()),
-            ["objects"] = new JsonObject { ["withCollision"] = solid, ["withoutCollision"] = open, ["unreadMeshes"] = new JsonArray(unread.Take(10).Select(m => (JsonNode)m).ToArray()) },
-            ["left"] = new JsonObject { ["pieces"] = pieces.Count - keep.Count, ["triangles"] = made.TriangleCount - mesh.TriangleCount },
+            ["objects"] = given is not null ? null
+                : new JsonObject { ["withCollision"] = solid, ["withoutCollision"] = open, ["unreadMeshes"] = new JsonArray(unread.Take(10).Select(m => (JsonNode)m).ToArray()) },
+            ["left"] = given is not null ? null : new JsonObject { ["pieces"] = pieces.Count - keep.Count, ["triangles"] = made.TriangleCount - mesh.TriangleCount },
+            ["fromBlender"] = given is null ? null : new JsonObject
+            {
+                ["turned"] = given.Turned, ["dropped"] = given.Dropped, ["outside"] = given.Outside,
+                // Its navmesh's object deleted in Blender: the navmesh stays as it was, as below — none is deleted.
+                ["notBack"] = new JsonArray(olds.Where(o => !given.FormIds.Any(id => string.Equals(id, FormKeyText(o.FormKey), StringComparison.OrdinalIgnoreCase)))
+                    .Select(o => (JsonNode)FormKeyText(o.FormKey)).ToArray())
+            },
             ["water"] = water.TriangleCount == 0 ? null : new JsonObject { ["planes"] = waterPlanes, ["level"] = scene.WaterHeight, ["dropped"] = droppedInWater, ["flagged"] = flags.Count(f => f.HasFlag(NavmeshTriangle.Flag.Water)) }
         };
         if (parts.Count > 1)
@@ -321,6 +348,62 @@ public sealed partial class Session
             };
         }
         return answer;
+    }
+
+    /// <summary>The surface brought back from Blender: one mesh, each triangle's object, and what was set right in it.</summary>
+    private sealed record GivenNavmesh(Navmesh.Geometry Mesh, int[] ObjectOf, List<string?> FormIds, int Turned, int Dropped, int Outside);
+
+    /// <summary>
+    /// The navmeshes as Blender's export_layout writes them — each object's FormID, its vertices in game units and its triangles
+    /// — as one surface the game can walk. Vertices within half a unit are one: a cell's navmeshes meet at the same points, and
+    /// triangles that share an edge are neighbours. A triangle drawn clockwise seen from above is turned, as the game's run
+    /// counter-clockwise; one with no area seen from above (a sliver, a face standing upright) or drawn twice is dropped; and
+    /// outdoors one whose centre lies outside the cell is left to the neighbouring cell's navmesh.
+    /// </summary>
+    private static GivenNavmesh GivenSurface(JsonArray surface, (float MinX, float MinY, float MaxX, float MaxY)? square)
+    {
+        var welded = new Navmesh.Geometry();
+        var at = new Dictionary<(int, int, int), int>();
+        int Weld(Vector3 v)
+        {
+            var key = ((int)MathF.Round(v.X * 2), (int)MathF.Round(v.Y * 2), (int)MathF.Round(v.Z * 2));
+            if (at.TryGetValue(key, out var index)) return index;
+            at[key] = welded.Vertices.Count;
+            welded.Vertices.Add(v);
+            return welded.Vertices.Count - 1;
+        }
+        var objectOf = new List<int>();
+        var formIds = new List<string?>();
+        var drawn = new HashSet<(int, int, int)>();
+        var (turned, dropped, outside) = (0, 0, 0);
+        foreach (var node in surface)
+        {
+            if (node is not JsonObject navmesh) continue;
+            formIds.Add(navmesh["formId"]?.GetValue<string>());
+            var vertices = (navmesh["vertices"] as JsonArray ?? []).Select(v => v is JsonArray xyz && xyz.Count == 3
+                ? new Vector3(xyz[0]!.GetValue<float>(), xyz[1]!.GetValue<float>(), xyz[2]!.GetValue<float>())
+                : throw new HelperException("badInput", "A navmesh vertex from Blender is not x, y, z.")).ToList();
+            foreach (var triangle in navmesh["triangles"] as JsonArray ?? [])
+            {
+                var corners = (triangle as JsonArray ?? []).Select(i => i!.GetValue<int>()).ToArray();
+                if (corners.Length != 3 || corners.Any(i => i < 0 || i >= vertices.Count))
+                    throw new HelperException("badInput", "A navmesh triangle from Blender is not three of its vertices.");
+                var (a, b, c) = (Weld(vertices[corners[0]]), Weld(vertices[corners[1]]), Weld(vertices[corners[2]]));
+                var (pa, pb, pc) = (welded.Vertices[a], welded.Vertices[b], welded.Vertices[c]);
+                // Twice the area seen from above, positive counter-clockwise.
+                var turn = (pb.X - pa.X) * (pc.Y - pa.Y) - (pb.Y - pa.Y) * (pc.X - pa.X);
+                if (a == b || b == c || a == c || MathF.Abs(turn) < 1) { dropped++; continue; }
+                if (turn < 0) { (b, c) = (c, b); turned++; }
+                var centre = (pa + pb + pc) / 3;
+                if (square is { } s && (centre.X < s.MinX || centre.X > s.MaxX || centre.Y < s.MinY || centre.Y > s.MaxY)) { outside++; continue; }
+                var sorted = new[] { a, b, c }.Order().ToArray();
+                if (!drawn.Add((sorted[0], sorted[1], sorted[2]))) { dropped++; continue; }
+                welded.Triangles.AddRange([a, b, c]);
+                objectOf.Add(formIds.Count - 1);
+            }
+        }
+        // Only the vertices the triangles use, the triangles in their order.
+        return new GivenNavmesh(Navmesh.Only(welded, Enumerable.Range(0, welded.TriangleCount)), objectOf.ToArray(), formIds, turned, dropped, outside);
     }
 
     /// <summary>A navmesh being written: its triangles with their flags, each edge's neighbour or link, its links and doors.</summary>

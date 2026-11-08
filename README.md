@@ -48,8 +48,9 @@ This is the engine of the Skyrim Modding Tools. Use it from your own code, or ta
 - 📚 **Teach the agent.** Skills for items and crafting, magic, NPCs, leveled lists, perks, quests and scripts, the
   world, game updates and crash analysis, and guides to which tool does what — the knowledge a model needs to mod well.
 
-Some work still needs the Creation Kit, like navmesh, distant LOD or a new NPC's face; what you make there,
-`pullProject` reads back into the project's text.
+Some work still needs the Creation Kit, like distant LOD or a new NPC's face; what you make there, `pullProject`
+reads back into the project's text. Navmesh does not: `generateNavmesh` makes a cell's from what stands in it, and
+Blender edits it.
 
 ## Modding with Muddy! 🦀
 

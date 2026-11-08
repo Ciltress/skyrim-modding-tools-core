@@ -21,7 +21,7 @@ import { primaryPlugins } from './mo2.js';
 import { checkGameVersion, myGamesDir } from './gameVersion.js';
 import { Attributor, dataPath } from './crash/attribution.js';
 import {
-    BLENDER_SCRIPT, cellFolderOf, copyEditorId, findBlender, groundChanged, initiallyDisabled, layoutChanges, launcher, newReferenceText, normalRotation, recordFileOf,
+    BLENDER_SCRIPT, cellFolderOf, copyEditorId, findBlender, groundChanged, initiallyDisabled, layoutChanges, navmeshesChanged, launcher, newReferenceText, normalRotation, recordFileOf,
     saveBlendCode, sceneFolderName, texturesOf,
     triple, type CellSceneFile, type LayoutFile
 } from './cellScene.js';
@@ -898,6 +898,10 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
                 ...(scene.cell.worldspace ? { worldspace: scene.cell.worldspace.formId } : {})
             }, BUILD_TIMEOUT_MS);
         }
+        // The navmesh edited: made the cell's from Blender's triangles, with the references moved above built first.
+        if (navmeshesChanged(scene.navmeshes, layout.navmeshes)) {
+            result.navmesh = await this.generateNavmesh({ project, cell: scene.cell.formId, surface: layout.navmeshes });
+        }
         return result;
     }
 
@@ -1496,7 +1500,7 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
      * Navmesh.cs): the project built first where its files changed since, so its own references count; the meshes found
      * as exportCell finds them, loose or in an archive.
      */
-    async generateNavmesh({ project, cell }: GenerateNavmeshRequest): Promise<GenerateNavmeshResult> {
+    async generateNavmesh({ project, cell, surface }: GenerateNavmeshRequest): Promise<GenerateNavmeshResult> {
         await this.engine.ensureFresh();
         const instance = this.engine.modManager.readInstance();
         const paths = projectPaths(this.engine.projectsDir, project);
@@ -1515,12 +1519,15 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
             builtFirst = true;
         }
         const own = hasRecords && fs.existsSync(built) ? { projectPlugin: built } : {};
-        const { models } = await this.engine.helper.call<{ models: string[] }>('navmeshModels', { cell, ...own }, BUILD_TIMEOUT_MS);
-        const sources = await this.attributor(instance).sources(models);
+        // A surface from Blender needs no collision: no meshes read.
         const found: Record<string, { file: string } | { archive: string; under: string }> = {};
-        for (const [model, source] of sources) found[model] = 'file' in source ? { file: source.file } : { archive: source.archive, under: source.under };
+        if (!surface) {
+            const { models } = await this.engine.helper.call<{ models: string[] }>('navmeshModels', { cell, ...own }, BUILD_TIMEOUT_MS);
+            const sources = await this.attributor(instance).sources(models);
+            for (const [model, source] of sources) found[model] = 'file' in source ? { file: source.file } : { archive: source.archive, under: source.under };
+        }
         const result = await this.engine.helper.call<GenerateNavmeshResult>('generateNavmesh',
-            { plugin, projectPluginDir: paths.plugin, ...own, cell, models: found }, BUILD_TIMEOUT_MS * 4);
+            { plugin, projectPluginDir: paths.plugin, ...own, cell, models: found, ...(surface ? { surface } : {}) }, BUILD_TIMEOUT_MS * 4);
         return builtFirst ? { ...result, builtFirst } : result;
     }
 

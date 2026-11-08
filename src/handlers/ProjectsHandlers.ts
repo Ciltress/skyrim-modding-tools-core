@@ -691,7 +691,7 @@ export class ProjectsHandlers extends BaseHandler {
                     const doors = result.doors.length
                         ? ` ${result.doors.length} load door(s) linked.`
                         : ' No load door stands in the cell: NPCs walk inside it, but none comes in until a door links it to another cell (skyrim-modding-world).';
-                    const unread = result.objects.unreadMeshes.length
+                    const unread = result.objects?.unreadMeshes.length
                         ? ` ${result.objects.unreadMeshes.length} mesh(es) could not be read, so actors walk through them: ${result.objects.unreadMeshes.slice(0, 3).join(', ')}.`
                         : '';
                     const others = result.navmeshes?.length
@@ -798,7 +798,8 @@ export class ProjectsHandlers extends BaseHandler {
                         'Python that places them in Blender through the PyNifly add-on, where the game places them. An interior ' +
                         '(WhiterunBreezehome) or an exterior cell (Riverwood), with its ground. Creates the project when it does not ' +
                         'exist. Answers the folder and the two scripts: importScript places the cell, exportScript writes what was ' +
-                        'moved, copied (Shift+D) or deleted — run each in Blender\'s Scripting tab, or send its text through ' +
+                        'moved, copied (Shift+D) or deleted, the ground sculpted and the navmesh edited (the green wireframe: move, ' +
+                        'delete or add its faces in Edit Mode) — run each in Blender\'s Scripting tab, or send its text through ' +
                         'Blender\'s MCP server — then importCell brings the changes into the project.',
                     inputSchema: {
                         type: 'object',
@@ -855,7 +856,9 @@ export class ProjectsHandlers extends BaseHandler {
                         'moved, turned or scaled is written as the project\'s copy of its reference with the new placement; each copy ' +
                         'made in Blender as a new reference of the project, in the cell\'s Temporary folder; each one deleted ' +
                         'disabled — another plugin\'s reference is never deleted, what names it would break — or, the project\'s own, ' +
-                        'its file deleted. Answers the full path of each file written; run buildProject next.',
+                        'its file deleted. The ground sculpted is set in the cell, and the navmesh edited — its faces moved, deleted ' +
+                        'or added — becomes the cell\'s navmesh, linked and with its doors as generateNavmesh makes one. Answers the ' +
+                        'full path of each file written; run buildProject next.',
                     inputSchema: {
                         type: 'object',
                         properties: {
@@ -873,12 +876,21 @@ export class ProjectsHandlers extends BaseHandler {
                     const project = requireString(args, 'project');
                     const imported = await asRequestError(this.backend.importCell({ project, cell: optionalString(args, 'cell') }));
                     const changed = imported.moved.length + imported.added.length + imported.removed.length;
+                    const ground = imported.ground ? ' The ground sculpted is set in the cell.' : '';
+                    const made = imported.navmesh;
+                    const navmesh = made
+                        ? ` The navmesh edited is the cell's now: ${made.triangles} triangles, ${made.doors.length} load door(s) linked` +
+                          (made.fromBlender?.outside ? `, ${made.fromBlender.outside} triangle(s) outside the cell left to its neighbour` : '') +
+                          (made.fromBlender?.notBack.length
+                              ? `; ${made.fromBlender.notBack.join(', ')}, deleted in Blender, stays as it was — a navmesh is never deleted, what links to it would break`
+                              : '') + '.'
+                        : '';
                     return {
                         ...imported,
-                        nextStep: changed === 0
-                            ? `Nothing was changed in Blender: the layout holds every object where the game places it (${imported.unchanged}). ` +
-                              'Move, copy or delete objects there, run the exportScript again, then importCell.'
-                            : `Written: ${imported.moved.length} moved, ${imported.added.length} added, ${imported.removed.length} removed. ` +
+                        nextStep: changed === 0 && !imported.ground && !made
+                            ? `Nothing was changed in Blender: the layout holds every object where the game places it (${imported.unchanged}), ` +
+                              'the ground and the navmesh as they were. Change them there, run the exportScript again, then importCell.'
+                            : `Written: ${imported.moved.length} moved, ${imported.added.length} added, ${imported.removed.length} removed.${ground}${navmesh} ` +
                               `Build next: buildProject {"project": ${JSON.stringify(project)}}, and answer with what it says.`
                     };
                 }

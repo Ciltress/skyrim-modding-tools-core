@@ -49,7 +49,9 @@ A room the project made gets a new navmesh.
 
 - Two packages in the helper: NiflySharp (GPL-3.0, with Miniball, Apache-2.0) and DotRecast.Recast (Zlib).
 - A generated navmesh is no hand-tuned one: cover data is not written, and narrow gaps are walkable. NPCs path through the
-  room; a level designer's polish is the Creation Kit's still.
+  room. The polish is done in Blender: exportCell shows the navmesh as an editable mesh, and importCell hands the edited
+  triangles to the same pipeline in place of Recast's surface — assigned to the navmeshes by their objects, linked, with
+  doors and map entries — so a hand-made change is as consistent as a generated one.
 - The game's acceptance is shown in game, not by a test here. The first in-game check passed on 2026-11-08 in the test
   instance, with a plugin of generated navmeshes for the Sleeping Giant Inn and Riverwood. The inn's NPCs walked it,
   and so did Riverwood's, with the neighbouring cells' navmeshes relinked.

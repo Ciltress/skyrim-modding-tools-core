@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
-    BLENDER_MCP_NO_STDIN, BLENDER_SCRIPT, blenderMcpLaunch, cellFolderOf, copyEditorId, findBlender, initiallyDisabled, launcher, layoutChanges, newReferenceText, normalRotation,
+    BLENDER_MCP_NO_STDIN, BLENDER_SCRIPT, blenderMcpLaunch, cellFolderOf, copyEditorId, findBlender, initiallyDisabled, launcher, layoutChanges, navmeshesChanged, newReferenceText, normalRotation,
     saveBlendCode,
     recordFileOf, rotationMatrix, sameRotation, texturesOf, triple, type CellSceneFile, type LayoutFile
 } from '../backend/skyrim/cellScene.js';
@@ -110,6 +110,32 @@ describe('a cell in Blender and back', () => {
         const text = launcher('C:\\Mods\\Camp\\blender\\Riverwood', 'export_layout');
         expect(text).toContain('folder = "C:\\\\Mods\\\\Camp\\\\blender\\\\Riverwood"');
         expect(text).toContain('namespace["export_layout"](folder)');
+    });
+
+    it('tells a navmesh edited in Blender from one only turned around or written again', () => {
+        const exported = [{
+            formId: '0539F3:Skyrim.esm',
+            vertices: [[0, 0, 0], [100, 0, 0], [100, 100, 0], [0, 100, 0]] as [number, number, number][],
+            triangles: [[0, 1, 2], [0, 2, 3]] as [number, number, number][]
+        }];
+        const again = structuredClone(exported);
+        // Blender's triangles may start at another corner, and its floats differ in the last digits.
+        again[0].triangles[0] = [1, 2, 0];
+        again[0].vertices[2] = [100.0004, 99.9997, 0.2];
+        expect(navmeshesChanged(exported, again)).toBe(false);
+        expect(navmeshesChanged(exported, undefined)).toBe(false);
+
+        const moved = structuredClone(exported);
+        moved[0].vertices[3] = [0, 100, 12];
+        expect(navmeshesChanged(exported, moved)).toBe(true);
+        const deleted = structuredClone(exported);
+        deleted[0].triangles.pop();
+        expect(navmeshesChanged(exported, deleted)).toBe(true);
+        const rewired = structuredClone(exported);
+        rewired[0].triangles[1] = [1, 3, 0];
+        expect(navmeshesChanged(exported, rewired)).toBe(true);
+        // Its object deleted in Blender.
+        expect(navmeshesChanged(exported, [])).toBe(true);
     });
 });
 
