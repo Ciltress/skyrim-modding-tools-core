@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Mutagen.Bethesda.Plugins;
+using Mutagen.Bethesda.Plugins.Records;
 using Mutagen.Bethesda.Skyrim;
 using Noggog;
 
@@ -45,6 +46,9 @@ public sealed partial class Session
         if (!Index.ByEditorId.TryGetValue(climateName, out var climate) || !Index.ByFormKey.TryGetValue(climate, out var climateEntry) || climateEntry.Type != "Climate")
             throw new HelperException("badRequest", $"{climateName} is no climate of the load order: name one by its editor ID, e.g. SkyrimClimate, or leave climate out.");
         float? water = p["water"] is JsonValue w ? w.GetValue<float>() : null;
+        var textureName = p["texture"]?.GetValue<string>()?.Trim() is { Length: > 0 } t ? t : "LFieldGrass01";
+        if (!Index.ByEditorId.TryGetValue(textureName, out var texture) || !Index.ByFormKey.TryGetValue(texture, out var textureEntry) || textureEntry.Type != "LandscapeTexture")
+            throw new HelperException("badRequest", $"{textureName} is no landscape texture of the load order: name one by its editor ID, e.g. LFieldGrass01 or LSnow01, or leave texture out.");
 
         // The whole world's heights, vertex by vertex: 32 steps of 128 units a cell, the last row and column the edge.
         var span = size * 32 + 1;
@@ -81,7 +85,14 @@ public sealed partial class Session
             Flags = Worldspace.Flag.SmallWorld | Worldspace.Flag.CannotFastTravel | (water is null ? Worldspace.Flag.NoLodWater : 0),
             ObjectBoundsMin = new P2Float(first, first),
             ObjectBoundsMax = new P2Float(first + size - 1, first + size - 1),
+            // The worldspace's persistent cell, as the game's are (Giant's Tooth's): flagged persistent (0x400), its grid 0, 0.
             TopCell = new Cell(Next(), release)
+            {
+                Flags = Cell.Flag.HasWater,
+                MajorRecordFlagsRaw = 0x400,
+                Grid = new CellGrid { Point = new P2Int(0, 0) },
+                WaterHeight = float.MaxValue
+            }
         };
         var temp = new SkyrimMod(pluginName, release);
         temp.Worldspaces.Add(world);
@@ -109,18 +120,28 @@ public sealed partial class Session
                         var n = normals[y][x].Split(", ").Select(v => byte.Parse(v, CultureInfo.InvariantCulture)).ToArray();
                         normalMap[x, y] = new P3UInt8(n[0], n[1], n[2]);
                     }
+                var colours = new Array2d<P3UInt8>(new P3UInt8[Terrain.Size, Terrain.Size]);
+                for (var y = 0; y < Terrain.Size; y++) for (var x = 0; x < Terrain.Size; x++) colours[x, y] = new P3UInt8(255, 255, 255);
+                // As the Creation Kit writes a landscape (the game's, and Giant's Tooth's of a light plugin): flags 31, white vertex
+                // colours, and a base texture in each quadrant. A light plugin that is no master loses it in game (MadeNotes.LightWorldspace).
+                var land = new Landscape(Next(), release)
+                {
+                    Flags = (Landscape.Flag)31,
+                    VertexHeightMap = new LandscapeVertexHeightMap { Offset = encoded.Offset, HeightMap = heightMap },
+                    VertexNormals = normalMap,
+                    VertexColors = colours
+                };
+                foreach (var quadrant in new[] { Quadrant.BottomLeft, Quadrant.BottomRight, Quadrant.TopLeft, Quadrant.TopRight })
+                    land.Layers.Add(new BaseLayer { Header = new LayerHeader { Texture = new FormLink<ILandscapeTextureGetter>(texture), Quadrant = quadrant, LayerNumber = ushort.MaxValue } });
+                // Each cell's water is the worldspace's (no height of its own), as the game's cells have it.
                 var cell = new Cell(Next(), release)
                 {
                     Grid = new CellGrid { Point = new P2Int(gx, gy) },
-                    Flags = water is null ? 0 : Cell.Flag.HasWater,
-                    Landscape = new Landscape(Next(), release)
-                    {
-                        Flags = Landscape.Flag.VertexNormalsHeightMap,
-                        VertexHeightMap = new LandscapeVertexHeightMap { Offset = encoded.Offset, HeightMap = heightMap },
-                        VertexNormals = normalMap
-                    }
+                    Flags = Cell.Flag.HasWater,
+                    // The game's "none": the worldspace's water.
+                    WaterHeight = float.MaxValue,
+                    Landscape = land
                 };
-                if (water is { } level) cell.WaterHeight = level;
                 if (gx == 0 && gy == 0)
                 {
                     cell.EditorID = start;
@@ -156,6 +177,7 @@ public sealed partial class Session
             ["ground"] = new JsonObject { ["lowest"] = lowest, ["highest"] = highest, ["clamped"] = clamped },
             ["water"] = water,
             ["climate"] = climateName,
+            ["texture"] = textureName,
             ["files"] = files.Count,
             ["worldspaceFile"] = files.Select(f => f!.GetValue<string>()).FirstOrDefault(f => f.EndsWith("/RecordData.yaml") && f.Count(ch => ch == '/') == 2)
         };

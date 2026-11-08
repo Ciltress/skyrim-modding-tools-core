@@ -722,7 +722,8 @@ export class ProjectsHandlers extends BaseHandler {
                         'flat at `height` or shaped by a heightmap image (PNG or RAW, brighter higher, its top north) between `lowest` ' +
                         'and `highest`, under the game\'s sky and weather (`climate`), with water at `water` or none. Cell 0, 0 is ' +
                         'named <editorId>Start and holds a COC marker, so `coc <editorId>Start` in the console goes there and a ' +
-                        'door can lead there. Creates the project when it does not exist. Then buildProject; the ground can be ' +
+                        'door can lead there. Creates the project when it does not exist, as a full plugin, and makes a light ' +
+                        'one full: the game shows a light plugin\'s new worldspace without its ground. Then buildProject; the ground can be ' +
                         'shaped further with editTerrain or in Blender (exportCell), objects placed in its cells as anywhere, and ' +
                         'generateNavmesh makes each cell\'s navmesh.',
                     inputSchema: {
@@ -737,7 +738,8 @@ export class ProjectsHandlers extends BaseHandler {
                             lowest: { type: 'number', description: 'The height of the heightmap\'s darkest pixels, in game units. Defaults to 0.' },
                             highest: { type: 'number', description: 'The height of its brightest pixels. Defaults to 4096 (about 58 m above the lowest).' },
                             water: { type: 'number', description: 'The water\'s height, in game units: the ground below it is under water. Leave it out for none.' },
-                            climate: { type: 'string', description: 'The sky and weather, a climate\'s editor ID. Defaults to SkyrimClimate, the weather of Skyrim\'s own land.' }
+                            climate: { type: 'string', description: 'The sky and weather, a climate\'s editor ID. Defaults to SkyrimClimate, the weather of Skyrim\'s own land.' },
+                            texture: { type: 'string', description: 'The ground\'s look, a landscape texture\'s editor ID like LFieldGrass01 (the default, grass), LSnow01 or LDirt02.' }
                         },
                         required: ['project', 'editorId']
                     }
@@ -755,7 +757,8 @@ export class ProjectsHandlers extends BaseHandler {
                         lowest: optionalNumber(args, 'lowest'),
                         highest: optionalNumber(args, 'highest'),
                         water: optionalNumber(args, 'water'),
-                        climate: optionalString(args, 'climate')
+                        climate: optionalString(args, 'climate'),
+                        texture: optionalString(args, 'texture')
                     }));
                     const steep = made.ground.clamped
                         ? ` ${made.ground.clamped} step(s) of the ground were steeper than the game's landscape holds and were cut: give the heightmap a smaller range (lowest to highest) for smooth slopes.`

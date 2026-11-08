@@ -879,9 +879,12 @@ public sealed partial class Session : IDisposable
             throw new HelperException("badRecord", $"{raceless.Count} NPC(s) would have no body in game: {string.Join("; ", raceless)}");
 
         Directory.CreateDirectory(Path.GetDirectoryName(output)!);
+        // A worldspace the project makes gets its offset table: reserved here, filled from the written file (WorldOffsets).
+        WorldOffsets.Reserve(mod);
         try
         {
             await mod.BeginWrite.ToPath(output).WithLoadOrder(others).WriteAsync();
+            WorldOffsets.Fill(output, mod);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
@@ -907,7 +910,7 @@ public sealed partial class Session : IDisposable
             .Concat(EffectCasting.GivenBackNotes(mod, lookup, Index, dir)).Concat(MadeNotes.Shouts(mod, lookup, Index, dir))
             .Concat(MadeNotes.CopiedNames(mod, Index, dir)).Concat(MadeNotes.RecipePerks(mod, lookup, dir)).Concat(MadeNotes.PlayerCopy(mod, dir))
             .Concat(MadeNotes.NpcItems(mod, lookup, dir)).Concat(MadeNotes.ListEntries(mod, lookup, dir)).Concat(MadeNotes.KeywordsReplaced(mod, lookup, dir)).Concat(MadeNotes.Words(mod, dir))
-            .Concat(MadeNotes.Unplayable(mod, dir))
+            .Concat(MadeNotes.Unplayable(mod, dir)).Concat(MadeNotes.LightWorldspace(mod, dir))
             .Concat(CellContents.PlacedNotes(mod, Contexts, Index, dir)).Concat(DialogContents.Notes(mod, lookup, Index, dir)).Concat(GameSettings.Notes(mod, Index, dir))
             .Concat(NavmeshNotes.Stale(mod, lookup, dir))
             .Select(n => (JsonNode)n).ToArray();

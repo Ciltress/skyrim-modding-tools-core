@@ -168,6 +168,26 @@ internal static class MadeNotes
     private static readonly Mutagen.Bethesda.Plugins.FormKey Player = Mutagen.Bethesda.Plugins.FormKey.Factory("000007:Skyrim.esm");
 
     /// <summary>
+    /// A worldspace of the project's own whose cells have ground, in a light plugin that is no master. In the game test of
+    /// 2026-11-08, such a worldspace's cells stood without their ground — flat at its default land height, under its water —
+    /// and the same plugin as a full one, or as a master as well as light (as Bethesda's Giant's Tooth is), showed the ground.
+    /// newWorldspace makes its plugin full; this catches a header made light again, or a worldspace written by hand.
+    /// </summary>
+    public static List<string> LightWorldspace(ISkyrimModGetter mod, string pluginDir)
+    {
+        var flags = mod.ModHeader.Flags;
+        if (!flags.HasFlag(SkyrimModHeader.HeaderFlag.Small) || flags.HasFlag(SkyrimModHeader.HeaderFlag.Master)) return [];
+        var worlds = mod.Worldspaces.Where(w => w.FormKey.ModKey == mod.ModKey
+                && w.SubCells.SelectMany(b => b.Items).SelectMany(s => s.Items).Any(c => c.Landscape is not null))
+            .Select(w => w.EditorID ?? Session.FormKeyText(w.FormKey)).ToList();
+        if (worlds.Count == 0) return [];
+        return [$"RecordData.yaml: {string.Join(", ", worlds)} — a worldspace of the mod's own in a light plugin (the header's Small " +
+            "flag), and the game shows the cells of such a worldspace without their ground: flat at its default land height, under " +
+            $"its water. Take Small out of the header's Flags in {Path.Combine(pluginDir, "RecordData.yaml")} — the plugin is then a full " +
+            "one and takes a slot in the load order — and build again"];
+    }
+
+    /// <summary>
     /// A copy of the Player, the player's NPC: what it holds reaches a new game's player only, never one already saved, and a
     /// start or race mod that copies the player too takes one of the two. Asked for 500 gold when a game starts, eval round
     /// 128's quest #3 never read the quests skill, copied the Player and set its gold to 500, and the build answered success.

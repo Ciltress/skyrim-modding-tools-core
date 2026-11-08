@@ -37,7 +37,7 @@ import { PapyrusLogNotFoundError, papyrusLogFile } from './papyrus/papyrusLogFil
 import { buildPapyrusReport, type PapyrusLogging, type PapyrusReport, type PluginOf } from './papyrus/papyrusReport.js';
 import { findCaseInsensitive } from './paths.js';
 import {
-    ProjectError, assignFormIds, belongsAt, combinedFixes, orderedWarnings, correctCopiedEscapes, createProject, type CopiedEscape, deleteCall, deleteRecordFile, editCall, editedRecord, fencedRecordFiles, fileHash,
+    ProjectError, assignFormIds, belongsAt, combinedFixes, orderedWarnings, correctCopiedEscapes, createProject, type CopiedEscape, deleteCall, dropLightFlag, deleteRecordFile, editCall, editedRecord, fencedRecordFiles, fileHash,
     keepRecordTexts, misnamedRecordFiles, looseRecordFiles, moveCall, moveRecordFile, nearRecordFile, newestSourceTime, outsideRecordCalls, placeCall,
     projectExists, projectInfo, projectPaths, readDeployState, readProjectHeader, recordFileList, recordFiles, strayRecordFiles, syncFolder, syncYaml,
     whereRecordsGo, writeDeployState, type EditFix, type ProjectPaths
@@ -1498,12 +1498,14 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
 
     /**
      * A worldspace of the project's own (helper SessionWorldspace.cs), its ground flat or from a heightmap read here
-     * (heightmap.ts): the project created when it does not exist.
+     * (heightmap.ts): the project created when it does not exist, as a full plugin. A light one that is no master is made
+     * full once the worldspace is in it: in the game test of 2026-11-08, the cells of a new worldspace in a light plugin
+     * stood without their ground; the same plugin full, or a master as well as light, showed it (helper MadeNotes.LightWorldspace).
      */
     async newWorldspace(request: NewWorldspaceRequest): Promise<NewWorldspaceResult> {
         await this.engine.ensureFresh();
         const paths = projectPaths(this.engine.projectsDir, request.project);
-        if (!projectExists(paths)) await this.newProject({ project: request.project });
+        if (!projectExists(paths)) await this.newProject({ project: request.project, light: false });
         const { plugin } = readProjectHeader(paths);
         const cells = request.cells ?? 4;
         let heights: number[][] | undefined;
@@ -1522,9 +1524,18 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
             ...(request.name ? { name: request.name } : {}),
             ...(heights ? { heights } : { height: request.height ?? 0 }),
             ...(request.water !== undefined ? { water: request.water } : {}),
-            ...(request.climate ? { climate: request.climate } : {})
+            ...(request.climate ? { climate: request.climate } : {}),
+            ...(request.texture ? { texture: request.texture } : {})
         }, BUILD_TIMEOUT_MS);
-        return { project: request.project, ...result };
+        const madeFull = dropLightFlag(paths);
+        return {
+            project: request.project, ...result,
+            ...(madeFull ? {
+                note: `${plugin} was a light plugin (ESL): its Small flag is taken out of the project's header, ` +
+                    `${path.join(paths.plugin, 'RecordData.yaml')}, because the game shows a new worldspace of a light plugin ` +
+                    'without its ground. The plugin is now a full one and takes a slot in the load order.'
+            } : {})
+        };
     }
 
     /**

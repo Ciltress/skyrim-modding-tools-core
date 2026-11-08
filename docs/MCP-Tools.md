@@ -500,10 +500,16 @@ exterior cells around grid 0, 0, each 4096 units wide, into the project as recor
   (default 0 and 4096). The heightmap is a PNG (grey or colour, 8 or 16 bits, not interlaced) or a square RAW of 16-bit
   little-endian heights; brighter is higher, and the image's top is north. Each cell gets its landscape's heights and
   normals, with the edges two cells share the same in both. A step steeper than a landscape holds (127 × 8 units between
-  vertices 128 apart) is cut, counted as `ground.clamped`.
+  vertices 128 apart) is cut, counted as `ground.clamped`. Its look is the landscape texture `texture` (default
+  `LFieldGrass01`, the grass of Whiterun's plains; `LSnow01`, `LDirt02`…).
 - **Water:** at `water`, or none: the default water then lies below the lowest ground.
 - **The start:** cell 0, 0 is named `<editorId>Start` and holds a COC marker at its centre, on the ground, so
   `coc <editorId>Start` goes there and a load door can lead there.
+- **The plugin:** a full one. A new project is made full, and a light one (the header's `Small` flag) is made full, with a
+  `note` saying so: in game, a new worldspace in a light plugin stood without its ground, flat at the default land height
+  under the water. The same plugin full, or flagged a master as well as light, as Bethesda's Giant's Tooth is, showed the
+  ground. buildProject warns when a light plugin that is no master has a worldspace of its own with ground. The worldspace also
+  gets the offset table (OFST) the Creation Kit writes.
 
 The worldspace's cells work with the other tools like the game's:
 - objects placed in them;
@@ -513,7 +519,7 @@ The worldspace's cells work with the other tools like the game's:
 
 Its distant land needs LOD (xLODGen): until then the land ends at the loaded cells. Its map stays empty. Tested
 2026-11-08 on a 2 × 2 world from a 16-bit PNG: the ground read back where the image put it, the build was clean,
-and two cells' navmeshes linked across their edge.
+and two cells' navmeshes linked across their edge. In game, `coc` stood on the grass hill the image made, the water below.
 
 ```jsonc
 {"tool":"newWorldspace","args":{"project":"HiddenValley","editorId":"HiddenValleyWorld","name":"Hidden Valley","cells":8,

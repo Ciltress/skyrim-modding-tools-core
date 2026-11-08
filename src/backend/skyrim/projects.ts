@@ -609,6 +609,45 @@ export function createProject(paths: ProjectPaths, plugin: string, light: boolea
     fs.writeFileSync(path.join(paths.plugin, 'RecordData.yaml'), `ModKey: ${plugin}\nGameRelease: SkyrimSE\n${flags}`);
 }
 
+/**
+ * A light plugin's header made a full plugin's: its Small flag taken out, in either list form readProjectHeader reads, and
+ * the Flags line and an emptied ModHeader with it. A master that is light as well keeps both flags. Answers whether it changed.
+ */
+export function dropLightFlag(paths: ProjectPaths): boolean {
+    const file = path.join(paths.plugin, 'RecordData.yaml');
+    const lines = fs.readFileSync(file, 'utf8').split('\n');
+    const at = lines.findIndex(line => /^\s*Flags:/.test(line));
+    if (at < 0) return false;
+    const flow = /^(\s*Flags:\s*)\[([^\]]*)\]\s*$/.exec(lines[at]);
+    let items: { index: number; flag: string }[];
+    if (flow) {
+        items = flow[2].split(',').map(flag => flag.trim()).filter(Boolean).map(flag => ({ index: at, flag }));
+    } else {
+        items = [];
+        for (let i = at + 1; i < lines.length && /^\s*-\s*\w+\s*$/.test(lines[i]); i++) items.push({ index: i, flag: lines[i].replace(/[\s-]/g, '') });
+    }
+    const flags = items.map(item => item.flag);
+    if (!flags.includes('Small') || flags.includes('Master')) return false;
+    const rest = flags.filter(flag => flag !== 'Small');
+    const drop = new Set<number>();
+    if (flow) {
+        if (rest.length > 0) lines[at] = `${flow[1]}[${rest.join(', ')}]`;
+        else drop.add(at);
+    } else {
+        items.filter(item => item.flag === 'Small').forEach(item => drop.add(item.index));
+        if (rest.length === 0) drop.add(at);
+    }
+    // A ModHeader left with nothing under it goes too: a header without one is a full plugin's, as createProject writes it.
+    const header = lines.findIndex(line => /^ModHeader:\s*$/.test(line));
+    if (header >= 0) {
+        let next = header + 1;
+        while (next < lines.length && drop.has(next)) next++;
+        if (next >= lines.length || !/^\s+\S/.test(lines[next])) drop.add(header);
+    }
+    fs.writeFileSync(file, lines.filter((_, index) => !drop.has(index)).join('\n'));
+    return true;
+}
+
 // ---------------------------------------------------------------- FormIDs
 
 const LIGHT_MAX = 0xFFF;

@@ -299,6 +299,8 @@ export interface NewWorldspaceRequest {
     water?: number;
     /** The sky and weather, a climate's editor ID. Defaults to SkyrimClimate. */
     climate?: string;
+    /** The ground's look, a landscape texture's editor ID. Defaults to LFieldGrass01, grass of Whiterun's plains. */
+    texture?: string;
 }
 
 /** A worldspace of the project's own, its cells and ground written into the project (helper SessionWorldspace.cs). */
@@ -314,9 +316,12 @@ export interface NewWorldspaceResult {
     ground: { lowest: number; highest: number; clamped: number };
     water: number | null;
     climate: string;
+    texture: string;
     /** How many project files were written, and the worldspace's own. */
     files: number;
     worldspaceFile?: string | null;
+    /** Set when the project's plugin was light and is made a full one: the game shows a light plugin's new worldspace without its ground. */
+    note?: string;
 }
 
 export interface SortPluginsRequest {

@@ -160,9 +160,11 @@ neighbours; then buildProject. Never write a navmesh file by hand: its links and
 
 A land of the mod's own, apart from Skyrim's, is one call: `newWorldspace` `{"project": "HiddenValley", "editorId":
 "HiddenValleyWorld", "name": "Hidden Valley", "cells": 8}` — flat at `height`, or shaped by a `heightmap` image (PNG or
-RAW, brighter higher, top north) between `lowest` and `highest`, with `water` at a height or none. Never write a
-worldspace, its cells or their landscape by hand: the heights and normals are computed. Then buildProject.
+RAW, brighter higher, top north) between `lowest` and `highest`, its look a landscape `texture`, with `water` at a height
+or none. Never write a worldspace, its cells or their landscape by hand: the heights and normals are computed. Then buildProject.
 
+- Its plugin is a full one: newWorldspace takes a light project's `Small` flag off. Leave it off, or the game shows the
+  worldspace without its ground.
 - In game, `coc <editorId>Start` goes to its centre.
 - To let players in, a load door pair (A new interior cell and the door to it, above): one door where they come from,
   its twin in `<editorId>Start` near the COC marker, each one's `TeleportDestination` the other.

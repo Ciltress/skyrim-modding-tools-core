@@ -337,7 +337,7 @@ export class InMemorySkyrimBackend implements AppBackend {
         };
     }
 
-    /** The inn's navmesh made anew over the game's, its door linked. */
+    /** A worldspace of the project's own, cells × cells around grid 0, 0, its start cell named after it. */
     async newWorldspace(request: NewWorldspaceRequest): Promise<NewWorldspaceResult> {
         const cells = request.cells ?? 4;
         return {
@@ -345,7 +345,7 @@ export class InMemorySkyrimBackend implements AppBackend {
             grid: { from: `${-Math.floor(cells / 2)}, ${-Math.floor(cells / 2)}`, to: `${cells - Math.floor(cells / 2) - 1}, ${cells - Math.floor(cells / 2) - 1}` },
             start: { cell: `${request.editorId}Start`, formId: '000803:Sample.esp', marker: '000805:Sample.esp' },
             ground: { lowest: request.height ?? 0, highest: request.height ?? 0, clamped: 0 }, water: request.water ?? null,
-            climate: request.climate ?? 'SkyrimClimate', files: cells * cells + 2
+            climate: request.climate ?? 'SkyrimClimate', texture: request.texture ?? 'LFieldGrass01', files: cells * cells + 2
         };
     }
 

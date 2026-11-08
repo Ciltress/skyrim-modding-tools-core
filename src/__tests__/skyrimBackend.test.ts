@@ -7,7 +7,7 @@ import {
 } from '../backend/skyrim/mo2';
 import { InstallError, type FomodConfig } from '../backend/skyrim/installer';
 import { activatePlugins, enableMod } from '../backend/skyrim/mo2Profile';
-import { ProjectError, assignFormIds, copiedEscapes, orderedWarnings, projectPaths, projectsFile, readProjectHeader, syncYaml } from '../backend/skyrim/projects';
+import { ProjectError, assignFormIds, copiedEscapes, dropLightFlag, orderedWarnings, projectPaths, projectsFile, readProjectHeader, syncYaml } from '../backend/skyrim/projects';
 import { SkyrimEngine } from '../backend/skyrim/engine';
 import { SkyrimInstanceBackend } from '../backend/skyrim/SkyrimInstanceBackend';
 import { Mo2Manager } from '../backend/skyrim/mo2Manager';
@@ -278,6 +278,31 @@ describe('project files', () => {
         ] as const) {
             write(path.join(paths.plugin, 'RecordData.yaml'), `ModKey: Flags.esp\n${header}`);
             expect(`${JSON.stringify(header)}: ${readProjectHeader(paths).light}`).toBe(`${JSON.stringify(header)}: ${light}`);
+        }
+    });
+
+    it('makes a light header a full one, and leaves a light master and a full plugin as they are', () => {
+        // A new worldspace in a light plugin stood without its ground in game (2026-11-08): newWorldspace makes its plugin full.
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'skyrim-header-'));
+        roots.push(dir);
+        const paths = projectPaths(dir, 'Flags');
+        const top = 'ModKey: Flags.esp\nGameRelease: SkyrimSE\n';
+        for (const [header, after] of [
+            ['ModHeader:\n  Flags:\n  - Small\n', ''],
+            ['ModHeader:\n  Flags: [Small]\n', ''],
+            ['ModHeader:\n  Flags:\n  - Small\n  Author: Me\n', 'ModHeader:\n  Author: Me\n'],
+            ['ModHeader:\n  Flags:\n  - Small\n  - Localized\n', 'ModHeader:\n  Flags:\n  - Localized\n'],
+            ['ModHeader:\n  Flags: [Localized, Small]\n', 'ModHeader:\n  Flags: [Localized]\n'],
+            ['ModHeader:\n  Flags: [Master, Small]\n', null],
+            ['ModHeader:\n  Flags:\n  - Master\n  - Small\n', null],
+            ['', null]
+        ] as const) {
+            const file = path.join(paths.plugin, 'RecordData.yaml');
+            write(file, top + header);
+            const changed = dropLightFlag(paths);
+            expect(`${JSON.stringify(header)}: ${changed} ${JSON.stringify(fs.readFileSync(file, 'utf8'))}`)
+                .toBe(`${JSON.stringify(header)}: ${after !== null} ${JSON.stringify(top + (after ?? header))}`);
+            if (after !== null) expect(readProjectHeader(paths).light).toBe(false);
         }
     });
 
