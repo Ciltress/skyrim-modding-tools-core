@@ -155,7 +155,8 @@ voices have none) and a reference placing him where the player meets him (`skyri
 
 `Packages: [DefaultSandboxEditorLocation512]`, as Dalvos has above, is all it takes: a Sandbox package keeps him within
 512 units of where he is placed, and there he sits on the chairs, eats at the tables, chats and wanders by himself. Name
-no chair, table or food, and look none up: place him in that cell (`skyrim-modding-world`). The *Sit* and *Eat* templates
+no chair, table or food, and look none up: place him in that cell (`skyrim-modding-world`), a step from a chair or a
+table that one `readRecord` of the cell lists under `placed.references`. The *Sit* and *Eat* templates
 are for a set hour at furniture or food named in them. A package of the mod's own is a copy of
 `DefaultSandboxEditorLocation512` under an editor ID of its own — addPatch it, and its note gives the one call that makes
 the copy a new record — keeping `PackageTemplate: Sandbox`, its location's `Radius` kept or changed.

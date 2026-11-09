@@ -22,13 +22,22 @@ internal static class CellContents
     /// <summary>The most references listed; the rest are counted.</summary>
     private const int Listed = 40;
 
+    /// <summary>
+    /// The most of one kind listed while other kinds wait: the Bannered Mare's 40 containers filled its whole list, and its
+    /// tables, chairs, doors and NPCs were listed nowhere — eval round 141's package and door runs then read one furniture or
+    /// door record after another with `in` to find where the cell's stood, and ran out of turns.
+    /// </summary>
+    private const int PerKind = 8;
+
     /// <summary>The kinds of record a reference is listed by, in this order: what a new object is placed beside.</summary>
     private static readonly string[] Shown = ["Container", "Furniture", "Door", "Activator", "Npc", "TalkingActivator", "Flora",
         "Book", "Weapon", "Armor", "Ingestible", "MiscItem", "Ammunition", "Ingredient", "Key", "SoulGem", "Scroll"];
 
+    /// <param name="loadDoor">Where a load door stands (PlacedIndex.LoadDoor): what a listed load door leads to.</param>
     public static JsonObject? Of(IReadOnlyList<IModContext<ISkyrimMod, ISkyrimModGetter, IMajorRecord, IMajorRecordGetter>> contexts,
         RecordIndex index, string? cellFile,
-        Func<FormKey, List<IModContext<ISkyrimMod, ISkyrimModGetter, IMajorRecord, IMajorRecordGetter>>>? allContexts = null)
+        Func<FormKey, List<IModContext<ISkyrimMod, ISkyrimModGetter, IMajorRecord, IMajorRecordGetter>>>? allContexts = null,
+        Func<FormKey, PlacedIndex.Spot?>? loadDoor = null)
     {
         if (contexts.Count == 0 || contexts[0].Record is not ICellGetter winner) return null;
         var (rows, listed) = RowsOf(contexts, index, allContexts);
@@ -36,15 +45,23 @@ internal static class CellContents
         var byKind = rows.GroupBy(r => r.Base?.Type ?? "unknown").OrderByDescending(g => g.Count())
             .ToDictionary(g => g.Key, g => g.Count());
 
-        var references = new JsonArray(listed.Select(r => (JsonNode)new JsonObject
+        var references = new JsonArray(listed.Select(r =>
         {
-            ["formId"] = Session.FormKeyText(r.Reference.FormKey),
-            ["editorId"] = r.Reference.EditorID,
-            ["base"] = $"{r.Base!.EditorId ?? Session.FormKeyText(r.Base.FormKey)}{(r.Base.Name is { Length: > 0 } name ? $" \"{name}\"" : "")}, " +
-                $"{RecordFiles.Article(r.Base.Type)} ({r.Base.Signature})",
-            ["position"] = Triple(r.Placement!.Position),
-            ["rotation"] = Triple(r.Placement.Rotation),
-            ["persistent"] = r.Persistent
+            var row = new JsonObject
+            {
+                ["formId"] = Session.FormKeyText(r.Reference.FormKey),
+                ["editorId"] = r.Reference.EditorID,
+                ["base"] = $"{r.Base!.EditorId ?? Session.FormKeyText(r.Base.FormKey)}{(r.Base.Name is { Length: > 0 } name ? $" \"{name}\"" : "")}, " +
+                    $"{RecordFiles.Article(r.Base.Type)} ({r.Base.Signature})",
+                ["position"] = Triple(r.Placement!.Position),
+                ["rotation"] = Triple(r.Placement.Rotation),
+                ["persistent"] = r.Persistent
+            };
+            // A load door, with the cell it leads to: the house's front door, or the way down to its cellar.
+            if (r.Reference is IPlacedObjectGetter { TeleportDestination: { } to })
+                row["leadsTo"] = to.Door.FormKeyNullable is { } door && loadDoor?.Invoke(door) is { } there
+                    ? PlacedIndex.CellText(there) : "another cell";
+            return (JsonNode)row;
         }).ToArray());
 
         // A new reference beside the first object listed, moved a little along x — its rotation kept, so it faces the same way.
@@ -112,8 +129,14 @@ internal static class CellContents
         }
         var rows = placed.Select(p => new Row(p.Reference, p.Persistent, PlacementOf(p.Reference),
             BaseOf(p.Reference) is { } key && index.ByFormKey.TryGetValue(key, out var entry) ? entry : null)).ToList();
-        var listed = rows.Where(r => r.Base is not null && Array.IndexOf(Shown, r.Base.Type) >= 0 && r.Placement is not null)
-            .OrderBy(r => Array.IndexOf(Shown, r.Base!.Type)).Take(Listed).ToList();
+        var shown = rows.Where(r => r.Base is not null && Array.IndexOf(Shown, r.Base.Type) >= 0 && r.Placement is not null)
+            .OrderBy(r => Array.IndexOf(Shown, r.Base!.Type)).ToList();
+        // Up to PerKind of each kind first, then the rest in the same order, each kind's together: a cell's furniture and
+        // doors listed beside its many containers.
+        var first = shown.GroupBy(r => r.Base!.Type).SelectMany(g => g.Take(PerKind)).ToList();
+        var taken = first.Select(r => r.Reference.FormKey).ToHashSet();
+        var listed = first.Concat(shown.Where(r => !taken.Contains(r.Reference.FormKey))).Take(Listed)
+            .OrderBy(r => Array.IndexOf(Shown, r.Base!.Type)).ToList();
         return (rows, listed);
     }
 

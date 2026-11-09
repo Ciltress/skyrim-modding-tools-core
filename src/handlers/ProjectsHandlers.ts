@@ -836,7 +836,7 @@ export class ProjectsHandlers extends BaseHandler {
                                 description: 'A door pair into the room from the cell the player comes from.',
                                 properties: {
                                     in: { type: 'string', description: 'The cell the door to the room stands in, its editor ID, like "WhiterunBreezehome".' },
-                                    at: { type: 'array', items: { type: 'number', description: 'x, y or z, in game units.' }, minItems: 3, maxItems: 3, description: 'Where it stands there, [x, y, z] in game units: readRecord of the cell lists what is placed there, with the floor\'s height.' },
+                                    at: { type: 'array', items: { type: 'number', description: 'x, y or z, in game units.' }, minItems: 3, maxItems: 3, description: 'Where it stands there, [x, y, z] in game units: readRecord of the cell lists what is placed there, its doors too — a step from one of them, on its floor.' },
                                     rotation: { type: 'array', items: { type: 'number', description: 'About x, y or z, in radians.' }, minItems: 3, maxItems: 3, description: 'Its rotation, [x, y, z] in radians, as readRecord lists them. Defaults to [0, 0, 0].' },
                                     base: { type: 'string', description: 'The door placed there, a door record\'s editor ID. Defaults to the one the game pairs with the room\'s door.' }
                                 },

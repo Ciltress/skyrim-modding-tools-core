@@ -363,7 +363,10 @@ public sealed partial class Session : IDisposable
         // A cell with what is placed in it, from every plugin's version, and the lines of a new reference (CellContents).
         var cellFile = versions.OfType<JsonObject>().SelectMany(v => v["files"]!.AsArray().OfType<JsonObject>())
             .Select(f => f["path"]!.GetValue<string>()).FirstOrDefault(f => RecordFiles.IsCellFile(f.Split('/')));
-        if (CellContents.Of(contexts, Index, cellFile, Contexts) is { } placed) answer["placed"] = placed;
+        // A listed load door says where it leads: the placed index built on the first one (some 3 s, once per load order).
+        PlacedIndex.Spot? LoadDoor(FormKey door) =>
+            (placedIndex ??= PlacedIndex.Build(plugins.Select(x => (ISkyrimModGetter)x.Mod).ToList())).LoadDoor(door);
+        if (CellContents.Of(contexts, Index, cellFile, Contexts, LoadDoor) is { } placed) answer["placed"] = placed;
         // A dialogue topic with what is said in it: its responses are records of their own.
         else if (DialogContents.Of(contexts, Index, Contexts) is { } said) answer["responses"] = said;
         // A thing that can be placed: where the load order places it (PlacedIndex).

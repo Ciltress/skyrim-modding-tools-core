@@ -136,8 +136,10 @@ the player comes from.
 
 1. Find a game room like it: `findRecords` with `types: ["CELL"]` and "cellar", "cave", "basement" —
    `MorthalAlvasHouseCellar` is a small cellar.
-2. Find where the door stands: `readRecord` of the cell the player comes from lists what is placed there, with the
-   floor's height — the door stands on the floor, beside a wall, where nothing else does.
+2. Find where the door stands: `readRecord` of the cell the player comes from lists what is placed there under
+   `placed.references` — its doors among them, each load door with the cell it `leadsTo` — and the new door stands on
+   the floor of one of them, along the same wall, a step from it. One read is enough: no door record to choose, newCell
+   places the door the game pairs with the room's own.
 3. `newCell {"project": "BreezehomeCellar", "cell": "BreezehomeCellar", "name": "Breezehome Cellar", "like":
    "MorthalAlvasHouseCellar", "door": {"in": "WhiterunBreezehome", "at": [x, y, z]}}` — its answer names the doors and
    where the player arrives, and `coc BreezehomeCellar` goes there too.

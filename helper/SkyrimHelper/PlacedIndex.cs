@@ -21,6 +21,17 @@ internal sealed class PlacedIndex
 
     private readonly Dictionary<FormKey, List<Spot>> byBase = new();
 
+    /// <summary>Each load door's spot, by the door reference: the cell a door teleporting to it leads to.</summary>
+    private readonly Dictionary<FormKey, Spot> loadDoors = new();
+
+    /// <summary>Where a load door stands — its cell — or null for a reference that is none.</summary>
+    public Spot? LoadDoor(FormKey reference) => loadDoors.GetValueOrDefault(reference);
+
+    /// <summary>A spot's cell for a message: its editor ID and name, and outdoors its worldspace.</summary>
+    public static string CellText(Spot spot) =>
+        $"{spot.CellEditorId ?? Session.FormKeyText(spot.Cell)}" + (spot.CellName is { Length: > 0 } name ? $" \"{name}\"" : "") +
+        (spot.Grid is { } g ? $" (outdoors, {spot.Worldspace} {g.X}, {g.Y})" : "");
+
     /// <summary>The most places readRecord lists; the rest are counted.</summary>
     internal const int Listed = 40;
 
@@ -29,6 +40,8 @@ internal sealed class PlacedIndex
         var clock = Stopwatch.StartNew();
         var index = new PlacedIndex();
         var spots = new Dictionary<FormKey, (FormKey Base, Spot Spot)>();
+        // The load doors: a few thousand of the references, kept by their own FormKey.
+        var doors = new HashSet<FormKey>();
         // An exterior cell by its worldspace and grid, for a persistent reference of the worldspace's top cell, which lies in
         // the cell its position is in.
         var gridCells = new Dictionary<(FormKey, P2Int), ICellGetter>();
@@ -62,6 +75,7 @@ internal sealed class PlacedIndex
         }
         foreach (var (_, (baseKey, spot)) in spots)
             (index.byBase.TryGetValue(baseKey, out var list) ? list : index.byBase[baseKey] = []).Add(spot);
+        foreach (var door in doors) if (spots.TryGetValue(door, out var at)) index.loadDoors[door] = at.Spot;
         Console.Error.WriteLine($"[helper] placed index: {spots.Count} references of {index.byBase.Count} records in {clock.ElapsedMilliseconds} ms");
         return index;
 
@@ -83,6 +97,7 @@ internal sealed class PlacedIndex
             if (baseKey is not { } key) return;
             // The last plugin's version of a reference wins, as in game.
             spots[reference.FormKey] = (key, new Spot(reference.FormKey, cell, editorId, name, world, grid, position));
+            if (reference is IPlacedObjectGetter { TeleportDestination: not null }) doors.Add(reference.FormKey);
         }
     }
 
@@ -129,9 +144,7 @@ internal sealed class PlacedIndex
         {
             ["count"] = spots.Count,
             ["in"] = new JsonArray(listed.Select(s => (JsonNode)(
-                $"{s.CellEditorId ?? Session.FormKeyText(s.Cell)}" +
-                (s.CellName is { Length: > 0 } name ? $" \"{name}\"" : "") +
-                (s.Grid is { } g ? $" (outdoors, {s.Worldspace} {g.X}, {g.Y})" : "") +
+                CellText(s) +
                 $": {Whole(s.Position.X)}, {Whole(s.Position.Y)}, {Whole(s.Position.Z)} — reference {Session.FormKeyText(s.Reference)}")).ToArray()),
             ["note"] = "Where the load order places this record: each reference's cell and position. To place something beside one, " +
                 "readRecord that cell — its `newReference` names the folder a new reference goes in — and write the new one a little along " +
