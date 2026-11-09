@@ -210,7 +210,7 @@ is `BaseHandler`'s:
 | `toolSpecs()` | The handler's tools, declared once. `getTools()` and the router are both derived from it. |
 | `handle(name, args)` | Dispatches to `run`, never with `undefined` args, and with any argument sent as text for its declared type turned into that type (`coerceArgs` in [`args.ts`](../src/handlers/args.ts)); times the call; wraps the payload; maps errors. |
 | `envelope(payload)` | `{content:[{type:'text',text:<compact JSON>}]}`. Adds `status:'success'` to a plain object without a `status`; serialises a bare array as it stands. |
-| `asMcpError(error, onFailure)` | An `McpError` passes through untouched; anything else becomes `InternalError`, prefixed with the spec's `onFailure` and keeping the backend's own message. |
+| `asToolError(error, onFailure)` | A `ToolError` passes through untouched; anything else becomes `InternalError`, prefixed with the spec's `onFailure` and keeping the backend's own message (the original kept as its `cause`). |
 | `backend` | The one `AppBackend` this server talks to. |
 | `logger` | `createLogger(this.constructor.name)` — **all levels go to stderr**. |
 | `getMetrics()` | Requests, errors, timing, bytes returned, largest answer, answers withheld. Surfaced per handler by `healthcheck`. |
@@ -1112,7 +1112,7 @@ A one-file change. Add a `ToolSpec` to the handler's `toolSpecs()`:
     }
   },
   onFailure: 'Failed to list the masters',
-  // Returns plain data. A bad argument throws McpError(InvalidParams); asRequestError turns the
+  // Returns plain data. A bad argument throws ToolError(InvalidParams); asRequestError turns the
   // backend's own "that is about your request" failures into the same.
   run: args => asRequestError(this.backend.listMasters(requireString(args, 'plugin')))
 }
