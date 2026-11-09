@@ -52,6 +52,42 @@ internal static class RecordNeeds
     }
 
     /// <summary>
+    /// The project's packages whose PackageTemplate names a package that is no template — one the game's NPCs run, as
+    /// DefaultSandboxEditorLocation512 — as refusals naming the template that package is made from. A package does what its
+    /// template's procedures do, and only a package of the template type has them. Eval round 142's package+detailed #1
+    /// wrote its own sandbox package with `PackageTemplate: DefaultSandboxEditorLocation512`, and the build passed it.
+    /// </summary>
+    public static List<string> Untemplated(ISkyrimModGetter mod, ILinkCache lookup, RecordIndex index, string pluginDir)
+    {
+        var problems = new List<string>();
+        var files = EffectCasting.Files(pluginDir);
+        var project = ToolCalls.ProjectOf(pluginDir);
+        string Named(FormKey key) => index.ByFormKey.TryGetValue(key, out var entry) && entry.EditorId is { } id ? id
+            : mod.Packages.FirstOrDefault(p => p.FormKey == key)?.EditorID ?? Session.FormKeyText(key);
+        IPackageGetter? Package(FormKey key) => key.ModKey == mod.ModKey ? mod.Packages.FirstOrDefault(p => p.FormKey == key)
+            : lookup.TryResolve<IPackageGetter>(key, out var found) ? found : null;
+        foreach (var package in mod.Packages.Where(p => p.FormKey.ModKey == mod.ModKey && !p.PackageTemplate.IsNull))
+        {
+            if (Package(package.PackageTemplate.FormKey) is not { } named || named.Type == Mutagen.Bethesda.Skyrim.Package.Types.PackageTemplate) continue;
+            var name = package.EditorID ?? Session.FormKeyText(package.FormKey);
+            var relative = files.GetValueOrDefault(package.FormKey);
+            var wrong = Named(named.FormKey);
+            // The template the named package is made from: what the package meant runs.
+            var template = !named.PackageTemplate.IsNull && Package(named.PackageTemplate.FormKey) is { Type: Mutagen.Bethesda.Skyrim.Package.Types.PackageTemplate } t
+                ? Named(t.FormKey) : null;
+            var said = $"{relative ?? name}: its PackageTemplate is {wrong}, a package NPCs run, not a template — a package does what its " +
+                "template's procedures do, and only a package of `Type: PackageTemplate` has them";
+            problems.Add(template is null
+                ? said + ": write `PackageTemplate:` with the template meant — Sandbox, Sit, Eat, Travel, as the game's packages name theirs"
+                : relative is null
+                    ? said + $". {wrong} is made from {template}: write `PackageTemplate: {template}`"
+                    : said + $". {wrong} is made from {template}; one call names it and builds again: " +
+                      ToolCalls.Edit(project, relative, $"{{\"path\": \"PackageTemplate\", \"value\": {ToolCalls.Quoted(template)}}}", build: true));
+        }
+        return problems;
+    }
+
+    /// <summary>
     /// The project's leveled lists that give nothing: a new one with no entries, and an entry of Count 0 in any of them, as
     /// notes. A list of the load order emptied by its copy is a way to take what it gives out of the game, and is left alone.
     /// </summary>

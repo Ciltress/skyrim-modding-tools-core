@@ -881,6 +881,10 @@ public sealed partial class Session : IDisposable
         var raceless = RecordNeeds.Raceless(mod, lookup, Index, dir);
         if (raceless.Count > 0)
             throw new HelperException("badRecord", $"{raceless.Count} NPC(s) would have no body in game: {string.Join("; ", raceless)}");
+        // And a package made from a package that is no template, which does nothing (RecordNeeds).
+        var untemplated = RecordNeeds.Untemplated(mod, lookup, Index, dir);
+        if (untemplated.Count > 0)
+            throw new HelperException("badRecord", $"{untemplated.Count} package(s) would do nothing in game: {string.Join("; ", untemplated)}");
 
         Directory.CreateDirectory(Path.GetDirectoryName(output)!);
         // A worldspace the project makes gets its offset table: reserved here, filled from the written file (WorldOffsets).
