@@ -166,6 +166,10 @@ public static class RecordFiles
     /// <summary>A cell's folder as Spriggit names it: `WhiterunBreezehome - 0165A8_Skyrim.esm`, its editor ID, FormID and plugin.</summary>
     private static readonly Regex CellFolder = new(@"^.+ - (?<id>[0-9A-Fa-f]{6})_(?<plugin>.+\.(?:esm|esp|esl))$", RegexOptions.IgnoreCase);
 
+    /// <summary>A cell's folder as Spriggit names it, with its editor ID or, for a cell that has none, its FormID alone.</summary>
+    private static bool NamedCellFolder(string name) =>
+        CellFolder.IsMatch(name) || Regex.IsMatch(name, @"^[0-9A-Fa-f]{6}_.+\.(?:esm|esp|esl)$", RegexOptions.IgnoreCase);
+
     /// <summary>The folders of a cell's references: Spriggit writes each placed reference of a cell as a file in one of them.</summary>
     internal static readonly HashSet<string> PlacedFolders = new(StringComparer.Ordinal) { "Temporary", "Persistent" };
 
@@ -270,6 +274,15 @@ public static class RecordFiles
             : $"{relative} is read as nothing: {layout} — " + ToolCalls.Move(pluginDir, relative, $"DialogTopics/{topic}/RecordData.yaml");
     }
 
+    /// <summary>The one call that makes a new interior cell, said where a room was written by hand, and what to do with those files.</summary>
+    private static string NewCellCall(string pluginDir, string cell, string written) =>
+        $"Delete {written} with deleteRecord first — newCell refuses a name the project holds — then one call writes the " +
+        "room of the mod's own, its folder, its walls, lights and door: " +
+        $"newCell {{\"project\": {ToolCalls.Quoted(ToolCalls.ProjectOf(pluginDir))}, \"cell\": {ToolCalls.Quoted(cell)}, " +
+        "\"like\": \"<a room of the game like it, e.g. MorthalAlvasHouseCellar>\", \"door\": {\"in\": \"<the cell its door stands in>\", " +
+        "\"at\": [x, y, z]}} — and change the new cell's fields, its Location too, with editRecord; what else stands in the room goes " +
+        "into the Temporary/ folder of the cell newCell makes";
+
     /// <summary>
     /// What the reader skips in an interior cell's files without a word: fields a cell or a placed reference has not, and a
     /// reference's file that names no placed kind. Eval round 125's world #4 wrote a chest into Breezehome's file as `Items`,
@@ -281,6 +294,19 @@ public static class RecordFiles
         var placed = IsPlacedFile(parts);
         Type? type = IsCellFile(parts) ? typeof(Cell) : placed ? PlacedKind(text) : null;
         var cellFolder = string.Join('/', parts.Take(depth));
+        // A new room written by hand, its folder named by its editor ID alone: the reader answered "Malformed FormKey string:
+        // BreezehomeCellar", and an empty room has no floor to walk on (eval round 139's door runs, none of which built a cell).
+        // Said once, on the cell's own file, or on a reference where the folder has none.
+        if (parts[0] == "Cells" && depth == 4 && !NamedCellFolder(parts[3])
+            && (IsCellFile(parts) || !File.Exists(Path.Combine(pluginDir, cellFolder, "RecordData.yaml"))))
+            return $"{relative}: {cellFolder}/ is no cell folder the build reads — a cell's folder is named by its editor ID and FormID, " +
+                $"`<EditorID> - <FormID>_<plugin>`. {NewCellCall(pluginDir, parts[3], $"the files of {cellFolder}/")}";
+        if (parts[0] == "Cells" && depth == 4 && !NamedCellFolder(parts[3])) return null;
+        // The folder named as Spriggit names one, the cell's file without its FormKey line: the reader took the EditorID for the
+        // FormKey, "Malformed FormKey string: AshenCamp" (eval round 139's location runs, each of which wrote the room by hand).
+        if (parts[0] == "Cells" && IsCellFile(parts) && !FormKeyLine.Match(text).Success)
+            return $"{relative}: a cell's file begins with its FormKey line, and a room of the mod's own is no file to write by hand. " +
+                NewCellCall(pluginDir, Identity(text).EditorId ?? parts[3].Split(" - ")[0], $"the files of {cellFolder}/");
         // A reference in the folder of a cell the project has no copy of: the reader answered "RecordData.yaml cannot be read as
         // a record: Could not find file …", and the run never copied the cell (the mini-round after eval round 128,
         // world+detailed #1).
@@ -503,6 +529,10 @@ public static class RecordFiles
     // "Beside it" left a model nesting CalcMinLevel inside Level, or moving it to the top (eval probe 17): the
     // three lines, each as deep as Configuration's `Flags:` line. "Indented as its Flags line is" read as its items' lines
     // to 9 NPC runs of eval rounds 94–106, which wrote `- Level: {…}` among the flags.
+    /// <summary>A class's training, for a line of it written where it is not (eval round 139's class+detailed #3).</summary>
+    internal const string ClassTraining = "a class's trainers teach one skill, `Teaches` — that skill's number in the order SkillWeights " +
+        "lists them, OneHanded 0 … Enchanting 17 — up to `MaxTrainingLevel`, both lines at the margin";
+
     public const string NpcLevel = "an NPC's level is three lines under Configuration, each as deep as its `Flags:` line, with no dash: " +
         "`Level: {MutagenObjectType: PcLevelMult, LevelMult: 1}`, `CalcMinLevel: 1`, `CalcMaxLevel: 25` — the level follows " +
         "the player's between those two; or, for a fixed level, the one line `Level: {MutagenObjectType: NpcLevel, Level: 10}`";
@@ -1272,6 +1302,14 @@ public static class RecordFiles
                 else
                     (formKeys.TryGetValue(formKey, out var holders) ? holders : formKeys[formKey] = []).Add(relative);
             }
+            // A cell written as a file of Cells/ itself or of a block's folder: the reader takes it for nothing, and the build answered
+            // success without the cell (eval round 139's location runs).
+            if (parts[0] == "Cells" && CellDepth(parts) == 0 && parts[^1] != "GroupRecordData.yaml")
+            {
+                problems.Add($"{relative}: the build reads no record here — a cell is a folder of Cells/<block>/<sub-block>/, not a file. " +
+                    NewCellCall(pluginDir, Identity(text).EditorId ?? Path.GetFileNameWithoutExtension(parts[^1]), relative));
+                continue;
+            }
             if (CellDepth(parts) > 0 && CellProblem(relative, text, parts, pluginDir) is { } cellProblem) problems.Add(cellProblem);
             // A dialogue topic's own file and its responses are checked as the groups' records are; any other file in DialogTopics/
             // is read as nothing.
@@ -1302,8 +1340,16 @@ public static class RecordFiles
             if (Twice(text, known) is { } twice) problems.Add($"{relative}: {twice}");
             // A record type named at the margin that is not the folder's: the reader answered "Malformed FormKey string:
             // MiscItem" for a note's file (refusal probes of 2026-10-31, B14).
-            if (Regex.Match(text, @"^MutagenObjectType:[ \t]*(?<kind>\w+)", RegexOptions.Multiline) is { Success: true } named && kind is null
-                && named.Groups["kind"].Value is var said && !said.Equals(type.Name, StringComparison.OrdinalIgnoreCase))
+            // Its own type named so breaks the reader as well, "Malformed FormKey string: FormList": a group of one kind reads a
+            // FormKey first (eval round 139's formlist runs, one of which then deleted the FormKey line too).
+            var named = Regex.Match(text, @"^MutagenObjectType:[ \t]*(?<kind>\w+)", RegexOptions.Multiline);
+            var said = named.Groups["kind"].Value;
+            // The group's own type is a kind of itself, so KindIn found it: the probe of the fix still met the reader's answer.
+            if (named.Success && (kind == type || kind is null) && said.Equals(type.Name, StringComparison.OrdinalIgnoreCase)
+                && !type.Assembly.GetTypes().Any(t => t != type && !t.IsInterface && type.IsAssignableFrom(t)))
+                problems.Add($"{relative}: `MutagenObjectType: {said}` is no line of {Article(type.Name)}'s file — its folder names its type: " +
+                    "delete that one line, and keep the others, the FormKey line too");
+            else if (named.Success && kind is null)
                 // An archetype's kind written at the margin, told "delete it", was deleted with the actor value the model meant
                 // to write below it (eval round 128's effect+detailed #5).
                 problems.Add(type.Name == "MagicEffect" && said.EndsWith("Archetype", StringComparison.OrdinalIgnoreCase)

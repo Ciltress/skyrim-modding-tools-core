@@ -14,7 +14,7 @@ import type {
     NexusSearchQuery, NexusSearchResult, ProjectInfo, PullResult, ExportCellRequest, ExportCellResult, ImportCellRequest, ImportCellResult, RecordQuery, RecordRequest, RecordSearchResult,
     RecordSummary, RecordVersions, ListedMod, ModList, ModListQuery, GameVersionCheck,
     CrashLogSection, CrashReport, EditIniRequest, EditIniResult, EnableModRequest, EnableModResult, ReadCrashLogRequest, GameFile,
-    ConflictReport, FindConflictsRequest, MovePluginRequest, MovePluginResult, EditTerrainRequest, EditTerrainResult, GenerateNavmeshRequest, GenerateNavmeshResult, NewWorldspaceRequest, NewWorldspaceResult, SortPluginsRequest, SortPluginsResult, SetModPriorityRequest, SetModPriorityResult,
+    ConflictReport, FindConflictsRequest, MovePluginRequest, MovePluginResult, EditTerrainRequest, EditTerrainResult, GenerateNavmeshRequest, GenerateNavmeshResult, NewWorldspaceRequest, NewWorldspaceResult, NewCellRequest, NewCellResult, SortPluginsRequest, SortPluginsResult, SetModPriorityRequest, SetModPriorityResult,
     PapyrusReport, PapyrusScriptEntries, ReadPapyrusLogRequest
 } from '../backend/skyrim/SkyrimBackend.js';
 import { CrashLogNotFoundError } from '../backend/skyrim/crash/crashLogFiles.js';
@@ -349,6 +349,21 @@ export class InMemorySkyrimBackend implements AppBackend {
         };
     }
 
+    /** A new interior cell made like a room of the load order, with a load-door pair when `door` is given. */
+    async newCell(request: NewCellRequest): Promise<NewCellResult> {
+        return {
+            project: request.project, cell: request.cell, formId: '000800:Sample.esp', like: request.like, references: 42,
+            byKind: { Static: 30, Light: 8, Furniture: 4 },
+            doors: request.door ? {
+                in: request.door.in,
+                entrance: { editorId: `${request.cell}Entrance`, formId: '000830:Sample.esp', base: 'HouseDoor01', at: request.door.at.join(', ') },
+                roomDoor: { editorId: `${request.cell}Door`, formId: '00082F:Sample.esp', at: '512, 128, 0' },
+                arrival: '512, 224, 0'
+            } : null,
+            files: request.door ? 46 : 43, cellFile: `Cells/0/8/${request.cell} - 000800_Sample.esp/RecordData.yaml`
+        };
+    }
+
     async generateNavmesh(request: GenerateNavmeshRequest): Promise<GenerateNavmeshResult> {
         return {
             cell: request.cell, navmesh: '0539F3:Skyrim.esm', replaced: true, triangles: 342, vertices: 309,
@@ -495,7 +510,7 @@ export interface FakeBackendOptions {
 
 const DOMAIN_METHODS = [
     'findRecords', 'readRecord', 'newProject', 'addPatch', 'editRecord', 'buildProject', 'deployProject', 'pullProject', 'exportCell', 'importCell',
-    'searchNexus', 'readNexusMod', 'downloadNexusFile', 'installMod', 'disableMod', 'enableMod', 'listMods', 'movePlugin', 'sortPlugins', 'editTerrain', 'generateNavmesh', 'newWorldspace', 'setModPriority', 'checkGameVersion',
+    'searchNexus', 'readNexusMod', 'downloadNexusFile', 'installMod', 'disableMod', 'enableMod', 'listMods', 'movePlugin', 'sortPlugins', 'editTerrain', 'generateNavmesh', 'newWorldspace', 'newCell', 'setModPriority', 'checkGameVersion',
     'readCrashLog', 'readPapyrusLog', 'findConflicts', 'editIni', 'findGameFiles'
 ] as const;
 

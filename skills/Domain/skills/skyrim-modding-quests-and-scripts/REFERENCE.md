@@ -66,7 +66,8 @@ The game sends a script only the events its type declares, and every script OnIn
 
 | Attached to | Extends | Events it is sent, among others |
 |---|---|---|
-| a quest | `Quest` | OnInit, OnUpdate (after `RegisterForSingleUpdate`), OnUpdateGameTime, OnStory… (a story manager event) |
+| a quest | `Quest` | OnInit, OnUpdate (after `RegisterForSingleUpdate`), OnUpdateGameTime, OnStory… (a story manager event: `OnStoryChangeLocation(ObjectReference akActor, Location akOldLocation, Location akNewLocation)` for `CLOC`) |
+| a location alias | `LocationAlias` | none of its own; its functions are `GetLocation()`, `ForceLocationTo(Location)`, `Clear()` |
 | a quest alias | `ReferenceAlias` | the events of its reference: OnActivate, OnContainerChanged, OnDeath, OnItemAdded, OnPlayerLoadGame (the player's alias) |
 | a magic effect | `ActiveMagicEffect` | OnEffectStart, OnEffectFinish, OnHit, OnUpdate — on the actor the effect is on |
 | an item, a container, a door, an activator | `ObjectReference` | OnActivate, OnEquipped, OnUnequipped, OnContainerChanged, OnLoad, OnRead (a book), OnOpen, OnClose |

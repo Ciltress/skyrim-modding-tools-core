@@ -48,7 +48,7 @@ import type {
     AddPatchRequest, AddPatchResult, BuildResult, DeleteRecordRequest, DeleteRecordResult, DeployResult, DisableModRequest, DisableModResult,
     EditIniRequest, EditIniResult, EditRecordRequest, GameFile, EditRecordResult, EditInputRequest, EditInputResult, EnableModRequest, EnableModResult, InstallModQuestions, InstallModRequest, ReadCrashLogRequest, ReadPapyrusLogRequest, PapyrusScriptEntries,
     ConflictReport, FindConflictsRequest, MergedChanges, RecordConflict, MovePluginRequest, MovePluginResult, SetModPriorityRequest,
-    SetModPriorityResult, SortPluginsRequest, SortPluginsResult, EditTerrainRequest, EditTerrainResult, GenerateNavmeshRequest, GenerateNavmeshResult, NewWorldspaceRequest, NewWorldspaceResult,
+    SetModPriorityResult, SortPluginsRequest, SortPluginsResult, EditTerrainRequest, EditTerrainResult, GenerateNavmeshRequest, GenerateNavmeshResult, NewWorldspaceRequest, NewWorldspaceResult, NewCellRequest, NewCellResult,
     InstallModResult, GameVersionCheck, ModList, ModListQuery, MoveRecordRequest, MoveRecordResult,
     NewProjectRequest, NexusAccount, NexusDownload, NexusMod, NexusSearchQuery, NexusSearchResult, ProjectFile, ProjectInfo,
     PullResult, ExportCellRequest, ExportCellResult, ImportCellRequest, ImportCellResult, RecordQuery, RecordRequest, RecordSearchResult, RecordVersion, RecordVersions, SkyrimBackend
@@ -1536,6 +1536,24 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
                     'without its ground. The plugin is now a full one and takes a slot in the load order.'
             } : {})
         };
+    }
+
+    /**
+     * A new interior cell of the project's own, made like a room of the load order, with a load-door pair to a cell the
+     * player comes from (helper SessionCell.cs): the project created when it does not exist. A cell written by hand was
+     * named by a folder the build could not read, and stood empty (eval round 139's door runs: none built a cell).
+     */
+    async newCell(request: NewCellRequest): Promise<NewCellResult> {
+        await this.engine.ensureFresh();
+        const paths = projectPaths(this.engine.projectsDir, request.project);
+        if (!projectExists(paths)) await this.newProject({ project: request.project });
+        const { plugin } = readProjectHeader(paths);
+        const result = await this.engine.helper.call<Omit<NewCellResult, 'project'>>('newCell', {
+            plugin, projectPluginDir: paths.plugin, editorId: request.cell, like: request.like,
+            ...(request.name ? { name: request.name } : {}),
+            ...(request.door ? { door: request.door } : {})
+        }, BUILD_TIMEOUT_MS);
+        return { project: request.project, ...result };
     }
 
     /**

@@ -60,7 +60,8 @@ Effects:
 ```
 
 When the spell should be learned from a book, a spell tome teaches it: a second file, mirroring
-`SpellTomeFastHealing`, whose `Spell` is the new spell's own editor ID. Its `Model` and `InventoryArt`
+`SpellTomeFastHealing`, whose `Spell` is the new spell's own editor ID — or, for a tome of a game spell, that spell's,
+`Spell: Flames`, with no spell of the mod's own beside it. Its `Model` and `InventoryArt`
 are its school's — `SpellTomeDestructionLowPoly.nif` and `HighPolyDestructionBook` for Destruction, and
 likewise Restoration, Alteration, Conjuration and Illusion.
 

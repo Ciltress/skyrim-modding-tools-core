@@ -945,6 +945,12 @@ describe('the Skyrim backend', () => {
         await expect(backend.deleteRecord({ project: 'Nowhere', record: 'Weapons/FlameBlade.yaml' })).rejects.toThrow(/no project/);
         expect(fs.existsSync(outside)).toBe(true);
         expect(fs.existsSync(path.join(fixture.projects, 'FlameBlade', 'plugin', 'RecordData.yaml'))).toBe(true);
+
+        // A cell's own file is its record's, no header: the build's warning of an empty one names this call (eval round 139).
+        const cell = path.join(fixture.projects, 'FlameBlade', 'plugin', 'Cells', '0', '6', 'FlameBladeCellar', 'RecordData.yaml');
+        write(cell, '\n');
+        expect((await backend.deleteRecord({ project: 'FlameBlade', record: 'Cells/0/6/FlameBladeCellar/RecordData.yaml' })).deleted).toBe(cell);
+        expect(fs.existsSync(cell)).toBe(false);
     });
 
     it('builds past a record file in a folder that is no group, once its group\'s folder has it — numbering nothing in it', async () => {
@@ -1758,6 +1764,21 @@ describe('the Skyrim backend', () => {
         await expect(refused).rejects.toThrow(/has no field damage/);
         await expect(asRequestError(backend.buildProject('FlameBlade'))).rejects.toMatchObject({ code: ToolErrorCode.InvalidParams });
         expect(fs.readFileSync(invented, 'utf8')).not.toMatch(/FormKey/);
+    });
+
+    it('makes a new interior cell through the helper, the project created first, its door handed on as given', async () => {
+        // None of eval round 139's ten door runs built a cell written by hand: newCell writes it, its room and its doors.
+        const { backend, calls, helperAnswers } = makeBackend();
+        helperAnswers.newCell = () => ({ cell: 'BreezehomeCellar', formId: '000800:BreezehomeCellar.esp', like: 'MorthalAlvasHouseCellar',
+            references: 2, byKind: { Static: 2 }, doors: null, files: 3, cellFile: 'Cells/0/8/BreezehomeCellar - 000800_BreezehomeCellar.esp/RecordData.yaml' });
+        const door = { in: 'WhiterunBreezehome', at: [240, -96, 64] as [number, number, number] };
+        const made = await backend.newCell({ project: 'BreezehomeCellar', cell: 'BreezehomeCellar', name: 'Breezehome Cellar', like: 'MorthalAlvasHouseCellar', door });
+        expect(made).toMatchObject({ project: 'BreezehomeCellar', cell: 'BreezehomeCellar', references: 2 });
+        expect(calls.find(c => c.method === 'newCell')!.params).toMatchObject({
+            plugin: 'BreezehomeCellar.esp', editorId: 'BreezehomeCellar', name: 'Breezehome Cellar', like: 'MorthalAlvasHouseCellar', door
+        });
+        // The project's own plugin folder, the one newProject made.
+        expect(calls.find(c => c.method === 'newCell')!.params.projectPluginDir).toMatch(/BreezehomeCellar[\\/]plugin$/);
     });
 
     it('patches, builds, deploys and pulls a project — and guards each step', async () => {

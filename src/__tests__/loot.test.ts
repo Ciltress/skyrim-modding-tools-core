@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { SkyrimEngine } from '../backend/skyrim/engine';
 import type { HelperTransport } from '../backend/skyrim/helperClient';
-import type { LiblootModule, LootGame } from '../backend/skyrim/loot/libloot';
+import { LIBLOOT_VERSION, ownPackage, type LiblootModule, type LootGame } from '../backend/skyrim/loot/libloot';
 import { lootSort } from '../backend/skyrim/loot/lootSort';
 import { Mo2Manager } from '../backend/skyrim/mo2Manager';
 import { movedOrder, orderChanges, reorderedLines } from '../backend/skyrim/orderMoves';
@@ -75,6 +75,21 @@ function fakeLibloot(wanted: string[], meta: Record<string, object> = {}, crcs: 
     const module = { GameType: { SkyrimSE: 5 }, Game, liblootVersion: () => '0.29.7' } as unknown as LiblootModule;
     return { module, seen };
 }
+
+describe('ownPackage', () => {
+    it('makes the library folder a package of its own, and leaves one written before as it is', () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'libloot-package-'));
+        try {
+            ownPackage(dir);
+            expect(JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'))).toEqual({ name: 'skyrim-modding-tools-libloot', version: LIBLOOT_VERSION, private: true });
+            fs.writeFileSync(path.join(dir, 'package.json'), '{"name":"kept"}');
+            ownPackage(dir);
+            expect(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')).toBe('{"name":"kept"}');
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
+});
 
 describe('lootSort', () => {
     it('hands libloot the profile\'s order in asterisk form and the mod folders, and says what LOOT says, warnings first', () => {

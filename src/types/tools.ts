@@ -10,6 +10,9 @@ export interface ToolProperty {
   description?: string;
   /** Element schema, for properties of type 'array'. */
   items?: ToolProperty;
+  /** How many elements an array holds at least and at most: a position's three numbers. */
+  minItems?: number;
+  maxItems?: number;
   /** Component schemas, for properties of type 'object'. */
   properties?: Record<string, ToolProperty>;
   /** Mandatory components, for properties of type 'object'. */

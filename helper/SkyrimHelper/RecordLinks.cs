@@ -780,31 +780,30 @@ public static class RecordLinks
                 if (value is YamlScalarNode scalar) link(scalar, takes, field);
             }
             else if (typeof(ITranslatedStringGetter).IsAssignableFrom(propertyType))
-            {
-                // `Name: Hilda`, which the reader refuses for want of its language.
-                if (value is YamlScalarNode { Value.Length: > 0 } or YamlSequenceNode)
-                    problem($"{field} is written as {(value is YamlSequenceNode ? "a list" : "one value")} — a text takes two lines indented " +
-                        $"below `{field}:`, `TargetLanguage: English` and `Value: {(value as YamlScalarNode)?.Value ?? "…"}`");
-                // Any other line in a text the reader skips without a word (eval round 53's sword #2); one of the part's
-                // own fields is moved out of it before this (MisplacedFields).
-                else if (value is YamlMappingNode words)
-                    foreach (var other in words.Children.Keys.OfType<YamlScalarNode>().Select(k => k.Value).Where(k => k is not null && !TextFields.Contains(k)))
-                        problem($"{field}.{other}: a text holds `TargetLanguage` and `Value` alone — " +
-                            (RecordFiles.WhereIn(record, other!) is { } at ? $"{RecordFiles.Article(record.Name)}'s {other} is {at}"
-                                : Priced(record, other!, words.Children[new YamlScalarNode(other!)], $"{field}.{other}", deleting) is { } priced ? priced
-                                : $"delete `{other}`" + (deleting is null ? "" : $"; one call deletes it and builds again: {deleting($"{field}.{other}", "")}")));
-            }
+                Text(value, field, record, problem, deleting);
             else if (Gendered(propertyType) is { } sexed)
             {
                 // A part for each sex, `Male:` and `Female:`, each walked as the part it holds: an armor's WorldModel is one, an
                 // enumerable the walk below passed over — `File:` written straight under `Male:` built an armor with no male
                 // model, and a field no model has built with no word (refusal probes of 2026-10-31, A02, F12).
-                if (value is not YamlMappingNode sexes) continue;
+                // A text for each sex — a faction rank's Title — is checked as a text: walked as a part, the game's own
+                // `Value:` was refused as no field of it, on ThievesGuildFaction copied unchanged too, and `Title: Initiate`
+                // built a rank with no title (eval round 139's faction runs).
+                var text = typeof(ITranslatedStringGetter).IsAssignableFrom(sexed);
+                if (value is not YamlMappingNode sexes)
+                {
+                    if (text && value is YamlScalarNode { Value.Length: > 0 } said)
+                        problem($"{field} is written as one value — it holds `Male:` and `Female:`, each a text with two lines indented " +
+                            $"below it, `TargetLanguage: English` and `Value: {said.Value}`");
+                    continue;
+                }
                 foreach (var (sexNode, part) in sexes.Children)
                 {
                     if (sexNode is not YamlScalarNode { Value: { } sex }) continue;
                     if (sex is not ("Male" or "Female"))
                         problem($"{field} has no field {sex} — it holds `Male:` and `Female:`, each with its lines below it");
+                    else if (text)
+                        Text(part, $"{field}.{sex}", record, problem, deleting);
                     else if (part is YamlMappingNode inner)
                         Walk(inner, sexed, $"{field}.{sex}", link, problem, null, record, deleting);
                 }
@@ -823,6 +822,18 @@ public static class RecordLinks
                         if ((partType.IsEnum || partType.IsPrimitive) && written.Children.TryGetValue(new YamlScalarNode(part), out var node)
                             && node is YamlScalarNode { Value: { Length: > 0 } said } && Unfit(partType, said) is { } unfit)
                             problem($"{at}.{part} is {said} — {unfit}");
+                    // A Value of fields of its own, a package's data, walked as the part it is: `Link: WhiterunBanneredMare` in a
+                    // location's target was left for the reader, which refused it as a malformed FormKey (eval round 139's package #2).
+                    if (!pairs.Value.IsEnum && !pairs.Value.IsPrimitive && pairs.Value != typeof(string)
+                        && written.Children.TryGetValue(new YamlScalarNode("Value"), out var held) && held is YamlMappingNode fields)
+                        Walk(fields, pairs.Value, $"{at}.Value", link, problem, null, record, deleting);
+                    // A line beside Key and Value, which the reader refused as indented wrong: a class's TrainerLevel, written
+                    // in its One-Handed weight (eval round 139's class+detailed #3).
+                    foreach (var other in written.Children.Keys.OfType<YamlScalarNode>().Select(k => k.Value).Where(k => k is not ("Key" or "Value" or null)))
+                        problem($"{at}.{other}: an item of {field} holds `Key` and `Value` alone — " +
+                            (record.Name == "Class" ? $"{RecordFiles.ClassTraining}; delete `{other}` here"
+                                : RecordFiles.WhereIn(record, other!) is { } where ? $"{RecordFiles.Article(record.Name)}'s {other} is {where}"
+                                : $"delete `{other}`"));
                 }
             }
             else if (typeof(System.Collections.IList).IsAssignableFrom(propertyType) && ElementType(propertyType) is { } element)
@@ -972,6 +983,24 @@ public static class RecordLinks
     private static (Type Key, Type Value)? Pairs(Type type) => new[] { type }.Concat(type.GetInterfaces())
         .Where(i => i.IsGenericType && i.GetGenericTypeDefinition() is var d && (d == typeof(IReadOnlyDictionary<,>) || d == typeof(IDictionary<,>)))
         .Select(i => (i.GetGenericArguments()[0], i.GetGenericArguments()[1])).Cast<(Type, Type)?>().FirstOrDefault();
+
+    /// <summary>
+    /// A text's lines, <c>TargetLanguage</c> and <c>Value</c>: <c>Name: Hilda</c>, which the reader refuses for want of its
+    /// language, said with the two lines to write; any other line in it, which the reader skips without a word (eval round 53's
+    /// sword #2), named with where it goes. One of the part's own fields is moved out of it before this (MisplacedFields).
+    /// </summary>
+    private static void Text(YamlNode value, string field, Type record, Action<string> problem, Func<string, string, string>? deleting)
+    {
+        if (value is YamlScalarNode { Value.Length: > 0 } or YamlSequenceNode)
+            problem($"{field} is written as {(value is YamlSequenceNode ? "a list" : "one value")} — a text takes two lines indented " +
+                $"below `{field}:`, `TargetLanguage: English` and `Value: {(value as YamlScalarNode)?.Value ?? "…"}`");
+        else if (value is YamlMappingNode words)
+            foreach (var other in words.Children.Keys.OfType<YamlScalarNode>().Select(k => k.Value).Where(k => k is not null && !TextFields.Contains(k)))
+                problem($"{field}.{other}: a text holds `TargetLanguage` and `Value` alone — " +
+                    (RecordFiles.WhereIn(record, other!) is { } at ? $"{RecordFiles.Article(record.Name)}'s {other} is {at}"
+                        : Priced(record, other!, words.Children[new YamlScalarNode(other!)], $"{field}.{other}", deleting) is { } priced ? priced
+                        : $"delete `{other}`" + (deleting is null ? "" : $"; one call deletes it and builds again: {deleting($"{field}.{other}", "")}")));
+    }
 
     /// <summary>What a part of one for each sex holds — an armor's WorldModel an ArmorModel — or null for any other type.</summary>
     private static Type? Gendered(Type type) => new[] { type }.Concat(type.GetInterfaces())
@@ -1303,6 +1332,11 @@ public static class RecordLinks
             if (editorId is null) unnamed.Add((relative, type));
             else own.TryAdd(editorId, new Target(formKey, editorId, type));
         }
+        // A cell's own file and the references placed in it, by an editor ID they have: a load door's TeleportDestination
+        // naming its twin in a cell of the mod's own was refused as no record of that editor ID (eval round 139's door runs).
+        foreach (var (file, _, type) in RecordFiles.CellRecords(pluginDir))
+            if (type is not null && RecordFiles.Identity(File.ReadAllText(file)) is (var formKey, { } editorId))
+                own.TryAdd(editorId, new Target(formKey, editorId, type));
         return (own, unnamed);
     }
 

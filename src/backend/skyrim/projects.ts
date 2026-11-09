@@ -352,7 +352,12 @@ export function projectsFile(projectsDir: string, paths: ProjectPaths, given: st
         throw new ProjectError(`${file} is outside the projects folder, ${projectsDir}: only its record files are moved or deleted here.`);
     }
     if (relative.split(path.sep).some(part => part.toLowerCase() === '.git')) throw new ProjectError(`${file} is git's, no record file.`);
-    if (path.basename(file).toLowerCase() === 'recorddata.yaml') throw new ProjectError(`${file} is the project's header, no record file: it stays.`);
+    // The header is the plugin folder's own RecordData.yaml alone: a cell's and a dialogue topic's, in their folders, are their
+    // records' files — refused as the header, a new cell's file the build had named, with this call, stayed, and so did the
+    // cell's folder the model was renaming (eval round 139's door+detailed #1).
+    if (path.basename(file).toLowerCase() === 'recorddata.yaml' && path.basename(path.dirname(file)).toLowerCase() === 'plugin') {
+        throw new ProjectError(`${file} is the project's header, no record file: it stays.`);
+    }
     return file;
 }
 

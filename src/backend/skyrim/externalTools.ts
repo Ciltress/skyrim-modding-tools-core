@@ -50,10 +50,68 @@ export async function compileScripts(options: CompileOptions): Promise<number> {
         // The compiler reports problems as `<file>(line,col): message`, then a summary.
         const lines = `${error?.stdout ?? ''}\n${error?.stderr ?? ''}`.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
         const problems = lines.filter(line => /\(\d+,\d+\):|failed|unable/i.test(line));
+        const vanilla = SOURCE_FOLDERS.map(folder => findCaseInsensitive(options.creationKitDir, folder)).find(Boolean);
+        const hints = vanilla ? papyrusHints(problems, scriptsDir, vanilla) : [];
         throw new ScriptCompileError(
-            `Papyrus compilation failed:\n${(problems.length ? problems : lines).slice(0, 25).join('\n') || error?.message}`);
+            `Papyrus compilation failed:\n${(problems.length ? problems : lines).slice(0, 25).join('\n') || error?.message}` +
+            (hints.length ? `\n${hints.join('\n')}` : ''));
     }
     return sources.length;
+}
+
+/** A game script's source by its name, from the vanilla sources, with its file's own name; null where it has none. */
+function vanillaSource(vanilla: string, script: string): { text: string; file: string } | null {
+    const file = findCaseInsensitive(vanilla, `${script}.psc`);
+    return file && fs.existsSync(file) ? { text: fs.readFileSync(file, 'latin1'), file: path.basename(file) } : null;
+}
+
+/** A function's or event's declaration in a script's source, its continued lines joined; null where it declares none. */
+export function declarationIn(source: string, name: string): string | null {
+    const lines = source.split(/\r?\n/);
+    const at = lines.findIndex(line => new RegExp(`^\\s*(?:\\w+(?:\\[\\])?\\s+)?(?:Event|Function)\\s+${name}\\s*\\(`, 'i').test(line));
+    if (at < 0) return null;
+    let declared = lines[at].trim();
+    for (let i = at + 1; declared.endsWith('\\') && i < lines.length; i++) declared = `${declared.slice(0, -1).trim()} ${lines[i].trim()}`;
+    return declared.replace(/\s*;.*$/, '').replace(/\s+native\b.*$/i, '').trim();
+}
+
+/**
+ * What the compiler's words leave out, from the game's sources the model's file tools cannot read: the parent's declaration
+ * of an event written with other parameters, and the functions of the type a call named none of. Eval round 139's
+ * storymanager runs guessed six names of a location alias's functions and two parameter lists of OnStoryChangeLocation, a
+ * build each, and the sources were outside the sandbox.
+ */
+export function papyrusHints(problems: readonly string[], scriptsDir: string, vanilla: string): string[] {
+    const hints = new Set<string>();
+    for (const problem of problems) {
+        const mismatch = /parameter types of function (\w+) .*do not match the parent script (\w+)/i.exec(problem);
+        if (mismatch) {
+            const [, name, parent] = mismatch;
+            const declared = vanillaSource(vanilla, parent);
+            const line = declared ? declarationIn(declared.text, name) : null;
+            if (declared && line) hints.add(`${declared.file} declares it so — write these parameter types: ${line}`);
+            continue;
+        }
+        const missing = /^(.+?\.psc)\((\d+),\d+\):\s*(\w+) is not a function or does not exist/i.exec(problem);
+        if (!missing) continue;
+        const [, file, lineNumber, called] = missing;
+        const script = path.isAbsolute(file) ? file : path.join(scriptsDir, path.basename(file));
+        if (!fs.existsSync(script)) continue;
+        const source = fs.readFileSync(script, 'latin1');
+        const line = source.split(/\r?\n/)[Number(lineNumber) - 1] ?? '';
+        const variable = new RegExp(`(\\w+)\\s*\\.\\s*${called}\\s*\\(`, 'i').exec(line)?.[1];
+        if (!variable) continue;
+        const type = new RegExp(`^\\s*(\\w+)\\s+(?:Property\\s+)?${variable}\\b`, 'im').exec(source)?.[1];
+        const declared = type ? vanillaSource(vanilla, type) : null;
+        if (!type || !declared) continue;
+        const functions = [...declared.text.matchAll(/^\s*(?:\w+(?:\[\])?\s+)?Function\s+(\w+)\s*\(/gim)].map(m => m[1]);
+        const parent = /^\s*Scriptname\s+\w+\s+extends\s+(\w+)/im.exec(declared.text)?.[1];
+        if (functions.length) {
+            hints.add(`${variable} is ${/^[AEIOU]/i.test(type) ? 'an' : 'a'} ${type}, whose functions are ${functions.join(', ')}` +
+                (parent ? `, and ${parent}'s, which it extends` : '') + ` (${declared.file} of the game's sources)`);
+        }
+    }
+    return [...hints];
 }
 
 /**

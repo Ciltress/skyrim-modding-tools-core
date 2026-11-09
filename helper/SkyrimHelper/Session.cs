@@ -63,6 +63,7 @@ public sealed partial class Session : IDisposable
         "navmeshModels" => NavmeshModels(p),
         "setTerrain" => await SetTerrain(p),
         "newWorldspace" => await NewWorldspace(p),
+        "newCell" => await NewCell(p),
         "readArchive" => Archives.Read(p),
         "extractArchive" => Archives.Extract(p),
         "pluginHeaders" => PluginHeaders(p),

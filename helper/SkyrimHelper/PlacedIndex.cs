@@ -104,17 +104,26 @@ internal sealed class PlacedIndex
     {
         if (!byBase.TryGetValue(record, out var all) || all.Count == 0) return null;
         var wanted = place?.Trim();
-        var spots = string.IsNullOrEmpty(wanted) ? all : all.Where(s =>
-            (s.CellEditorId?.Contains(wanted, StringComparison.OrdinalIgnoreCase) ?? false)
-            || (s.CellName?.Contains(wanted, StringComparison.OrdinalIgnoreCase) ?? false)).ToList();
+        bool There(Spot s) => (s.CellEditorId?.Contains(wanted!, StringComparison.OrdinalIgnoreCase) ?? false)
+            || (s.CellName?.Contains(wanted!, StringComparison.OrdinalIgnoreCase) ?? false);
+        var spots = string.IsNullOrEmpty(wanted) ? all : all.Where(There).ToList();
         if (spots.Count == 0)
+        {
+            // The place found, and the record not there: told "try a shorter part of the name" for a chair the Bannered Mare has
+            // none of, a run asked three times more by shorter names (eval round 139's package #3).
+            var cells = byBase.Values.SelectMany(v => v).Where(There).Select(s => s.CellEditorId ?? Session.FormKeyText(s.Cell))
+                .Distinct(StringComparer.OrdinalIgnoreCase).Take(3).ToList();
             return new JsonObject
             {
                 ["count"] = all.Count,
                 ["in"] = new JsonArray(),
-                ["note"] = $"Placed in {all.Count} places, none in a cell whose editor ID or name holds \"{wanted}\": a town's outdoor cells " +
-                    "are named after it (Riverwood, Riverwood01…), a house's or a dungeon's after it — try a shorter part of the name"
+                ["note"] = cells.Count > 0
+                    ? $"Placed in {all.Count} places, none in {string.Join(", ", cells)} — the cell{(cells.Count > 1 ? "s" : "")} whose editor ID or " +
+                      $"name holds \"{wanted}\": this record does not stand there. readRecord of the cell lists what does, under `placed`"
+                    : $"Placed in {all.Count} places, none in a cell whose editor ID or name holds \"{wanted}\": a town's outdoor cells " +
+                      "are named after it (Riverwood, Riverwood01…), a house's or a dungeon's after it — try a shorter part of the name"
             };
+        }
         var listed = spots.OrderBy(s => s.CellEditorId ?? "￿", StringComparer.OrdinalIgnoreCase).ThenBy(s => s.Reference.ToString()).Take(Listed);
         return new JsonObject
         {

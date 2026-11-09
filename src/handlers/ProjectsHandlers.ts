@@ -25,6 +25,37 @@ const PROJECT = {
 /** "a" or "an" before a type's name: an Armor, a Weapon. */
 const article = (type: string) => (/^[AEIOU]/i.test(type) ? 'an' : 'a');
 
+/** Three numbers, as a list or as a text "x, y, z" — small models send an argument as text now and then. */
+function tripleOf(value: unknown, field: string, example: string): [number, number, number] | undefined {
+    if (value === undefined || value === null || value === '') return undefined;
+    const parts = typeof value === 'string' ? value.replace(/[[\]]/g, '').split(/[\s,]+/).filter(Boolean).map(Number) : value;
+    if (!Array.isArray(parts) || parts.length !== 3 || parts.some(n => typeof n !== 'number' || !Number.isFinite(n))) {
+        throw new ToolError(ToolErrorCode.InvalidParams, `'${field}' is three numbers, [x, y, z] — e.g. ${example}.`);
+    }
+    return parts as [number, number, number];
+}
+
+/** newCell's `door`: the cell it stands in and where, as an object or as its JSON text. */
+function doorOf(value: unknown): { in: string; at: [number, number, number]; rotation?: [number, number, number]; base?: string } | undefined {
+    if (value === undefined || value === null || value === '') return undefined;
+    let door: any = value;
+    if (typeof door === 'string') {
+        try { door = JSON.parse(door); } catch { door = undefined; }
+    }
+    if (typeof door !== 'object' || door === null || Array.isArray(door)) {
+        throw new ToolError(ToolErrorCode.InvalidParams, '\'door\' is the door into the room: {"in": "WhiterunBreezehome", "at": [x, y, z]}.');
+    }
+    const at = tripleOf(door.at, 'door.at', '[256, -128, 64]');
+    if (!at) throw new ToolError(ToolErrorCode.InvalidParams, '\'door.at\' is where the door stands in its cell, [x, y, z]: readRecord of the cell lists what is placed there, with the floor\'s height.');
+    const rotation = tripleOf(door.rotation, 'door.rotation', '[0, 0, 1.5708]');
+    return {
+        in: requireString(door, 'in', 'The cell the door stands in, by editor ID, e.g. "WhiterunBreezehome".'),
+        at,
+        ...(rotation ? { rotation } : {}),
+        ...(optionalString(door, 'base') ? { base: optionalString(door, 'base')! } : {})
+    };
+}
+
 /**
  * The enchantment a copied record's text carries — its `ObjectEffect:` line, `049BB7:Skyrim.esm  # EnchWeaponFireDamage01` —
  * as its editor ID (from the comment) with its FormID, and the reference addPatch takes for it; null without one, or
@@ -771,6 +802,73 @@ export class ProjectsHandlers extends BaseHandler {
                             `door pair — one where they come from, its twin in ${made.start.cell}, each teleporting to the other (skyrim-modding-world). ` +
                             `Once objects stand in a cell, generateNavmesh {"project": ${JSON.stringify(project)}, "cell": "<the cell>"} makes where NPCs walk. ` +
                             'Distant land shows only once LOD is made for it (xLODGen); until then the land ends at the loaded cells.'
+                    };
+                }
+            },
+            {
+                definition: {
+                    name: 'newCell',
+                    annotations: {
+                        title: 'Make a new interior cell',
+                        readOnlyHint: false,
+                        destructiveHint: false,
+                        // A second call with the same editor ID is refused: the cell is made once.
+                        idempotentHint: false,
+                        openWorldHint: false
+                    },
+                    description:
+                        'Make a new interior cell — a room of the mod\'s own: a cellar, a cave, a shop\'s back room — made like a room ' +
+                        'of the game (`like`): its lighting and sound, and its walls, floor, lights and furniture copied as the mod\'s ' +
+                        'own references, so it stands lit and walkable. With `door`, the player walks in: the room keeps its own load ' +
+                        'door, and the door the game pairs with it is placed `at` a spot in the cell `in` — each teleporting to the ' +
+                        'other — and the new room takes that cell\'s location and owner. A COC marker stands where the player arrives, ' +
+                        'so `coc <cell>` goes there. Creates the project when it does not exist. Then generateNavmesh the new cell and ' +
+                        'the door\'s cell, and buildProject. Move, add or remove what stands in the room as in any cell.',
+                    inputSchema: {
+                        type: 'object',
+                        properties: {
+                            project: PROJECT,
+                            cell: { type: 'string', description: 'The new cell\'s editor ID, like "BreezehomeCellar": letters and digits.' },
+                            name: { type: 'string', description: 'Its in-game name, shown on the door, like "Breezehome Cellar". Defaults to the editor ID.' },
+                            like: { type: 'string', description: 'The game\'s room it is made like, a cell\'s editor ID — findRecords with types ["CELL"] and "cellar", "cave"…: e.g. MorthalAlvasHouseCellar.' },
+                            door: {
+                                type: 'object',
+                                description: 'A door pair into the room from the cell the player comes from.',
+                                properties: {
+                                    in: { type: 'string', description: 'The cell the door to the room stands in, its editor ID, like "WhiterunBreezehome".' },
+                                    at: { type: 'array', items: { type: 'number', description: 'x, y or z, in game units.' }, minItems: 3, maxItems: 3, description: 'Where it stands there, [x, y, z] in game units: readRecord of the cell lists what is placed there, with the floor\'s height.' },
+                                    rotation: { type: 'array', items: { type: 'number', description: 'About x, y or z, in radians.' }, minItems: 3, maxItems: 3, description: 'Its rotation, [x, y, z] in radians, as readRecord lists them. Defaults to [0, 0, 0].' },
+                                    base: { type: 'string', description: 'The door placed there, a door record\'s editor ID. Defaults to the one the game pairs with the room\'s door.' }
+                                },
+                                required: ['in', 'at']
+                            }
+                        },
+                        required: ['project', 'cell', 'like']
+                    }
+                },
+                onFailure: 'Failed to make the cell',
+                run: async args => {
+                    const project = requireString(args, 'project');
+                    const door = doorOf(args?.door);
+                    const made = await asRequestError(this.backend.newCell({
+                        project,
+                        cell: requireString(args, 'cell', 'The new cell\'s editor ID, like "BreezehomeCellar".'),
+                        name: optionalString(args, 'name'),
+                        like: requireString(args, 'like', 'The game\'s room it is made like, by editor ID, e.g. "MorthalAlvasHouseCellar".'),
+                        ...(door ? { door } : {})
+                    }));
+                    const navmesh = (cell: string) => `generateNavmesh {"project": ${JSON.stringify(project)}, "cell": ${JSON.stringify(cell)}}`;
+                    const kinds = Object.entries(made.byKind).map(([kind, count]) => `${count} ${kind}`).join(', ');
+                    return {
+                        ...made,
+                        nextStep: `${made.cell} is written into the project, made like ${made.like}: ${made.references} references (${kinds}).` +
+                            (made.doors
+                                ? ` Its door ${made.doors.roomDoor.editorId} and ${made.doors.entrance.editorId} at ${made.doors.entrance.at} in ` +
+                                  `${made.doors.in} lead to each other. Next: ${navmesh(made.cell)}, then ${navmesh(made.doors.in)} — the door ` +
+                                  `there is new to its navmesh — then buildProject {"project": ${JSON.stringify(project)}}.`
+                                : ` It has no door yet: the player gets there with \`coc ${made.cell}\` alone. Next: ${navmesh(made.cell)}, then ` +
+                                  `buildProject {"project": ${JSON.stringify(project)}}.`) +
+                            ' Change what stands in the room as in any cell: its references are files in its Temporary folder.'
                     };
                 }
             },

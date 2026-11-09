@@ -125,7 +125,19 @@ export async function loadLibloot(cacheDir: string, system = `${process.platform
             throw new LootUnavailableError(`LOOT's library downloaded from ${RELEASE} is not the build the core pins: nothing was loaded.`);
         }
     }
+    ownPackage(dir);
     return createRequire(import.meta.url)(file) as LiblootModule;
+}
+
+/**
+ * The library's folder made a package of its own. A host that checks the native modules a plugin loads can take a module's
+ * nearest package.json for its package and read all of that folder: OpenClaw found one in the user's home folder, read the
+ * home and refused a link in it that leads to another drive, and no sort ran (eval round 139's loot runs).
+ */
+export function ownPackage(dir: string): void {
+    const manifest = path.join(dir, 'package.json');
+    if (fs.existsSync(manifest)) return;
+    fs.writeFileSync(manifest, `${JSON.stringify({ name: 'skyrim-modding-tools-libloot', version: LIBLOOT_VERSION, private: true }, null, 2)}\n`);
 }
 
 /**

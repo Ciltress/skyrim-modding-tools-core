@@ -117,6 +117,12 @@ default.
 | townsperson | `Citizen` |
 | farmer | `Farmer` |
 
+A **new class** is a copy of the closest of these — readRecord it, write its lines under an `EditorID` and `Name` of its
+own — with its numbers changed: `SkillWeights`, `Key`/`Value` pairs, the skills it favours weighing most; `StatWeights`;
+`Teaches`, the one skill its trainers teach, written as that skill's number in the order `SkillWeights` lists them
+(`OneHanded` 0 … `Enchanting` 17); `MaxTrainingLevel`, the level they train it to. `Teaches` and `MaxTrainingLevel` stand
+at the margin, never inside a weight. A class only matters to an NPC with `AutoCalcStats`.
+
 | Dressed in | `DefaultOutfit` |
 |---|---|
 | farm clothes | `FarmClothesOutfit01` |
@@ -126,6 +132,8 @@ default.
 | leather armor | `ArmorLeatherAllOutfit` |
 | iron armor | `ArmorIronAllOutfit` |
 | steel armor | `ArmorSteelAllOutfit` |
+
+A **new outfit** names the game's armor in its `Items` by editor ID, `ArmorHideCuirass`: no copies of the armor.
 
 A follower carries the factions the game's followers carry — as `HousecarlWhiterun` (Lydia) does:
 
@@ -137,3 +145,46 @@ Factions:
 ```
 
 A spouse-to-be adds `PotentialMarriageFaction` at rank -1 the same way.
+
+That is the whole follower: the game's own `DialogueFollower` quest, always running, gives every NPC in
+`PotentialFollowerFaction` the lines the player recruits him with, and does the following — write no quest, topic or
+script for it. Besides the factions he needs a voice with the follower lines (REFERENCE.md, *Followers*: the `ElfHaughty`
+voices have none) and a reference placing him where the player meets him (`skyrim-modding-world`).
+
+## An NPC who spends his days in one place
+
+`Packages: [DefaultSandboxEditorLocation512]`, as Dalvos has above, is all it takes: a Sandbox package keeps him within
+512 units of where he is placed, and there he sits on the chairs, eats at the tables, chats and wanders by himself. Name
+no chair, table or food, and look none up: place him in that cell (`skyrim-modding-world`). The *Sit* and *Eat* templates
+are for a set hour at furniture or food named in them. A package of the mod's own is a copy of
+`DefaultSandboxEditorLocation512` under an editor ID of its own — addPatch it, and its note gives the one call that makes
+the copy a new record — keeping `PackageTemplate: Sandbox`, its location's `Radius` kept or changed.
+
+## A new faction
+
+```yaml
+EditorID: CircleOfEmbers
+Name:
+  TargetLanguage: English
+  Value: Circle of Embers
+Ranks:
+- Number: 0
+  Title:
+    Male:
+      TargetLanguage: English
+      Value: Novice
+    Female:
+      TargetLanguage: English
+      Value: Novice
+- Number: 1
+  Title:
+    Male:
+      TargetLanguage: English
+      Value: Keeper
+    Female:
+      TargetLanguage: English
+      Value: Keeper
+```
+
+Each rank's `Title` is a text for each sex, as in the game's factions (`ThievesGuildFaction`). An NPC of it has
+`Factions: [{Faction: CircleOfEmbers, Rank: 1}]` — `Rank` is a rank's `Number`.

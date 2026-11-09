@@ -82,6 +82,9 @@ mod changes her — and `<FormID>` is her local number as eight hex digits (`000
   **Quest alias packages** sit above her own and win while the quest runs.
 - Packages come from templates — *Sandbox*, *Travel*, *Sleep*, *Eat*, *Sit*, *Follow*, *Escort*… —
   with a location, a schedule and conditions.
+- **Sandbox** is a whole day in one place: within its radius the NPC uses the chairs, tables, food and idle markers
+  there by himself — `DefaultSandboxEditorLocation512` around where he is placed. *Sit* and *Eat* are for a set hour,
+  their furniture or food named in them.
 - Changes apply when the AI re-evaluates; a script forces it with `EvaluatePackage()`.
 
 ## Race, class, voice type
@@ -99,11 +102,14 @@ mod changes her — and `<FormID>` is her local number as eight hex digits (`000
 The vanilla recipe:
 
 - membership in `PotentialFollowerFaction` (rank 0) and in `CurrentFollowerFaction` at rank `-1`;
-- a voice type with follower dialogue;
+- a voice type with follower dialogue: `MaleEvenToned`, `MaleEvenTonedAccented`, `MaleCommander`, `MaleYoungEager`,
+  `MaleNord`, `MaleBrute`, `MaleSoldier`, `MaleCommoner`, `MaleDrunk`, `MaleCondescending`, `MaleArgonian`, `MaleOrc`,
+  `MaleKhajiit`, `MaleDarkElf`, and the `Female…` voices of the same names with `FemaleSultry` and `FemaleShrill` — not
+  the `ElfHaughty` ones;
 - for some NPCs, a friendly relationship with the player first.
 
-The follower framework then offers the recruit dialogue. Follower mods (NFF, AFT…) add their own
-factions on top.
+The game's own `DialogueFollower` quest, always running, then offers the recruit lines and does the following: a
+follower needs no dialogue, quest or script of the mod's own. Follower mods (NFF, AFT…) add their own factions on top.
 
 ## What a save keeps
 

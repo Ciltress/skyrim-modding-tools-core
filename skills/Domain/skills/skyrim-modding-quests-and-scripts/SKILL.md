@@ -1,6 +1,6 @@
 ---
 name: skyrim-modding-quests-and-scripts
-description: Quests, Papyrus scripts and dialogue in Skyrim SE - a quest that starts with the game, scripts on quests, items, magic effects and NPCs, their properties and the events the game sends them, and dialogue - a topic the player can ask an NPC and what the NPC answers - message boxes, scenes of NPCs talking, and quests the story manager starts. Use when a mod should do something rather than only add a record - give the player items, spells or perks when a game starts, react to an item being equipped or an actor dying, give an NPC a new line - or when a script compiles or a line builds but does nothing in game.
+description: Quests, Papyrus scripts and dialogue in Skyrim SE - a quest that starts with the game, scripts on quests, items, magic effects and NPCs, their properties and the events the game sends them, and dialogue - a topic the player can ask an NPC and what the NPC answers - message boxes, scenes of NPCs talking, and quests the story manager starts. A follower the player recruits needs no dialogue of the mod's own: skyrim-modding-npcs. Use when a mod should do something rather than only add a record - give the player items, spells or perks when a game starts, react to an item being equipped or an actor dying, give an NPC a new line - or when a script compiles or a line builds but does nothing in game.
 ---
 
 # Quests, scripts and dialogue
@@ -171,7 +171,13 @@ Conditions:
   `StoryManagerQuestNodes/` whose `Parent` is the game's node for that event, with the quest under `Quests`; the quest's
   `Event` is the event's code — `CLOC` for the player changing location (`DA09ChangeLocation`), `ADIA` for dialogue —
   and its aliases can be filled from the event (`FindMatchingRefFromEvent`). `findRecords` with `types: ["SMEN"]` lists
-  the event nodes; mirror a vanilla quest node, `readRecord` `DA09ChangeLocationSharesEvent`.
+  the event nodes; mirror a vanilla quest node, `readRecord` `DA09ChangeLocationSharesEvent`. The node and the quest are
+  all it takes: a script is only for what the quest does.
+- **Started each time**, the quest has no `RunOnce` flag and stops itself: the story manager starts a quest that is not
+  running. Its script is sent the event — for `CLOC` `Event OnStoryChangeLocation(ObjectReference akActor, Location
+  akOldLocation, Location akNewLocation)`, as `Quest.psc` declares it — and ends with `Stop()`. A location alias filled
+  from the event answers its location with `GetLocation()`; a location's name is no function of the game's Papyrus
+  (`GetName` is SKSE's).
 
 ## Workflow
 

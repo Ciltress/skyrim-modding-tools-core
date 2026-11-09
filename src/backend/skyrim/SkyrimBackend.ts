@@ -54,6 +54,7 @@ export interface SkyrimBackend extends Backend {
     editTerrain(request: EditTerrainRequest): Promise<EditTerrainResult>;
     generateNavmesh(request: GenerateNavmeshRequest): Promise<GenerateNavmeshResult>;
     newWorldspace(request: NewWorldspaceRequest): Promise<NewWorldspaceResult>;
+    newCell(request: NewCellRequest): Promise<NewCellResult>;
 
     /** A mod moved to just before or after another in the mod order: after wins, its files are the game's. */
     setModPriority(request: SetModPriorityRequest): Promise<SetModPriorityResult>;
@@ -322,6 +323,45 @@ export interface NewWorldspaceResult {
     worldspaceFile?: string | null;
     /** Set when the project's plugin was light and is made a full one: the game shows a light plugin's new worldspace without its ground. */
     note?: string;
+}
+
+export interface NewCellRequest {
+    project: string;
+    /** The new interior cell's editor ID; its doors are named after it, `<cell>Door` inside and `<cell>Entrance` outside. */
+    cell: string;
+    /** Its in-game name, shown on the door's prompt. Defaults to the editor ID. */
+    name?: string;
+    /** The load order's room it is made like, by editor ID: its lighting, sound, walls, floor, lights and furniture are copied. */
+    like: string;
+    /** A load-door pair: the room's own load door kept inside, its twin placed `at` a spot in the cell `in`. */
+    door?: {
+        in: string;
+        at: [number, number, number];
+        /** Radians about x, y and z, as readRecord's `placed` lists them. Defaults to 0, 0, 0. */
+        rotation?: [number, number, number];
+        /** The door placed in `in`, a door record's editor ID. Defaults to the one the game pairs with the room's door. */
+        base?: string;
+    };
+}
+
+/** A new interior cell of the project's own, made like a room of the load order (helper SessionCell.cs). */
+export interface NewCellResult {
+    project: string;
+    cell: string;
+    formId: string;
+    like: string;
+    /** How many of the room's references were copied, and of which kinds. */
+    references: number;
+    byKind: Record<string, number>;
+    /** The load-door pair, where the player arrives in the room, or null without `door`. */
+    doors: {
+        in: string;
+        entrance: { editorId: string; formId: string; base: string; at: string };
+        roomDoor: { editorId: string; formId: string; at: string };
+        arrival: string;
+    } | null;
+    files: number;
+    cellFile?: string | null;
 }
 
 export interface SortPluginsRequest {

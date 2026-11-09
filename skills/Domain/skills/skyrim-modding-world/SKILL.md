@@ -129,12 +129,23 @@ key that opens it (`skyrim-modding-items-and-crafting`).
 
 ## A new interior cell and the door to it
 
-A new room — a cellar, a cave — is an interior cell of the mod's own: its folder holds its `RecordData.yaml`, written as a
-vanilla interior's (`readRecord` one: copy `Flags` with `IsInteriorCell`, its `Lighting` or `LightingTemplate`), and a
-reference file for each thing in it. The player walks between two cells through a **pair of doors**: a door reference in
-each cell, each with `TeleportDestination` naming the other door and where the player stands on arrival. Each door is
-placed as any reference, its base a vanilla door (`findRecords` with `types: ["DOOR"]`).
-Then `generateNavmesh` the room (next section): without a navmesh, no follower comes in.
+A new room — a cellar, a cave, a back room — is an interior cell of the mod's own, and one call makes it, made like a room
+of the game: its lighting and sound, its walls, floor, lights and furniture copied as the mod's own references, and the
+player's way in, a **pair of load doors** each teleporting to the other — the room's own door, and its twin placed where
+the player comes from.
+
+1. Find a game room like it: `findRecords` with `types: ["CELL"]` and "cellar", "cave", "basement" —
+   `MorthalAlvasHouseCellar` is a small cellar.
+2. Find where the door stands: `readRecord` of the cell the player comes from lists what is placed there, with the
+   floor's height — the door stands on the floor, beside a wall, where nothing else does.
+3. `newCell {"project": "BreezehomeCellar", "cell": "BreezehomeCellar", "name": "Breezehome Cellar", "like":
+   "MorthalAlvasHouseCellar", "door": {"in": "WhiterunBreezehome", "at": [x, y, z]}}` — its answer names the doors and
+   where the player arrives, and `coc BreezehomeCellar` goes there too.
+4. `generateNavmesh` the new cell, then the door's cell — its door is new to its navmesh (next section) — and build.
+
+What stands in the room then changes as in any cell: its references are files in its folder's `Temporary/`, and its own
+fields — its `Location`, its `EncounterZone` — change with `editRecord` of its file. No cell is written by hand, not even
+an empty one: its folder is named by the FormID newCell gives it, and a room written as a file has no floor to stand on.
 
 ## A cell's navmesh
 
@@ -176,9 +187,9 @@ or none. Never write a worldspace, its cells or their landscape by hand: the hei
 
 | To give … | Record | Fields | Set on |
 |---|---|---|---|
-| a place the game knows (map, quests, "Cleared") | `Location` in `Locations/` | `Name`, `ParentLocation` (the hold's, `WhiterunHoldLocation`), `Keywords` of its kind (`LocTypeDwelling`, `LocTypeDungeon`) | a cell's `Location` |
-| the level of a cell's enemies and loot | `EncounterZone` in `EncounterZones/` | `MinLevel`, `MaxLevel` (0: none), `Location`, `Flags` (`NeverResets`) | a cell's `EncounterZone` — a game cell's through its copy (addPatch) |
-| weather or sound over an area outdoors | `Region` in `Regions/` | `Worldspace`, `RegionAreas` (the area's points), its weather data naming `Weather` records with a chance | the exterior cells the area covers |
+| a place the game knows (map, quests, "Cleared") | `Location` in `Locations/` | `Name`, `ParentLocation` (the hold's, `WhiterunHoldLocation`), `Keywords` of its kind (`LocTypeDwelling`, `LocTypeDungeon`) | a cell's `Location` — a new room's: newCell, then `editRecord` of its file |
+| the level of a cell's enemies and loot | `EncounterZone` in `EncounterZones/` | `MinLevel`, `MaxLevel` (0: none), `Location`, `Flags` (`NeverResets`) | a cell's `EncounterZone` — a game cell's through its copy (addPatch); or the zone a game cell has, copied with addPatch, which changes every cell that has it |
+| weather or sound over an area outdoors | `Region` in `Regions/` | `Worldspace`, `RegionAreas` (the area's points), its weather data naming `Weather` records with a chance | the exterior cells the area covers — each cell's copy names it in its `Regions`, as the game's cells name theirs |
 
 ## Change the ground outdoors
 

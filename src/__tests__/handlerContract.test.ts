@@ -37,7 +37,7 @@ function sampleValue(name: string, property: ToolProperty): any {
         case 'string': return SAMPLE;
         case 'number': return 1;
         case 'boolean': return true;
-        case 'array': return property.items ? [sampleValue(name, property.items)] : [];
+        case 'array': return property.items ? Array.from({ length: property.minItems ?? 1 }, () => sampleValue(name, property.items!)) : [];
         case 'object':
             return property.properties
                 ? Object.fromEntries(

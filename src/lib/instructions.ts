@@ -52,7 +52,7 @@ export function serverInstructions(target: string): string {
         '- Answer short: what you made, each file you wrote by its full path, what is left to do.',
         '',
         'If you know the job but not the tool, call readServerGuide with `{"guide":"router"}`; with no ' +
-        'arguments it lists the guides. healthcheck reports the binding, the profile ' +
+        'arguments it lists the guides. healthcheck reports the binding ' +
         'and anything withheld. An answer marked status:"truncated" was too large: ' +
         'narrow the request as its nextStep says.'
     ].join('\n');

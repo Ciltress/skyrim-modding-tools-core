@@ -42,7 +42,7 @@ export interface Skill {
 export const FAMILY_SKILLS = [
     { skill: 'skyrim-modding-items-and-crafting', covers: 'weapons, armor, other items, enchantments, recipes' },
     { skill: 'skyrim-modding-magic', covers: 'spells, magic effects, enchantments, shouts' },
-    { skill: 'skyrim-modding-npcs', covers: 'NPCs' },
+    { skill: 'skyrim-modding-npcs', covers: 'NPCs, followers' },
     // Asked for bandits carrying a sword, eval round 128's 5 runs of the plain prompt read the NPC and item skills, never
     // this one, and changed the bandit NPCs.
     { skill: 'skyrim-modding-leveled-lists', covers: 'leveled lists: what NPCs carry, loot, merchant stock' },
@@ -51,7 +51,7 @@ export const FAMILY_SKILLS = [
     // HearthFires recipe.
     { skill: 'skyrim-modding-world', covers: 'cells and what is placed in them, indoors or out: a chest, an NPC; a cell in Blender' },
     { skill: 'skyrim-modding-perks', covers: 'perks' },
-    { skill: 'skyrim-modding-settings', covers: 'game settings, globals, keywords' }
+    { skill: 'skyrim-modding-settings', covers: 'game settings, globals, keywords, form lists' }
 ] as const;
 
 /** URI prefix for the resource form of a skill, as a product serves it. */

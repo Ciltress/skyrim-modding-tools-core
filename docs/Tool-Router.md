@@ -50,6 +50,7 @@ Workflows and the error model: [`MCP-Tools.md`](./MCP-Tools.md). The vocabulary:
 | Flatten, raise, lower or smooth the ground outdoors — a plot for a house, a hill | `editTerrain` with `at`, `radius` and the `action`, then `buildProject`; it names the game's objects the ground moved under |
 | A navmesh for a cell — a new room, a house whose furniture moved, ground changed outdoors, followers that cannot follow | `generateNavmesh` with the cell, then `buildProject` |
 | A new land of the mod's own, apart from Skyrim — a valley, an island, a realm — flat or from a heightmap | `newWorldspace`, then `buildProject`; `coc <editorId>Start` in game; a load door pair to get in |
+| A new room of the mod's own — a cellar under a house, a cave, a back room — and the door into it | `newCell` with `like` (a game room like it) and `door` (`in` the cell the player comes from, `at` a spot there), then `generateNavmesh` both cells, then `buildProject` — skill `skyrim-modding-world` |
 | Put a record file where the build reads it, or drop one | `moveRecord`, `deleteRecord` — a build's answer names each misplaced or left-over file with its call |
 | Put the mod into the game | `deployProject` — enables it in the mod manager; with Amethyst, also deploys or says to |
 | Bring back what you did in the Creation Kit or xEdit | `pullProject` — commit first, review with `git diff` after |
