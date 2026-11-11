@@ -228,6 +228,38 @@ Effects:
   art are; an Alteration spell's effect is `MagicSkill: Alteration`.
 - **`CastType`** and the spell's `TargetType` are the same as the spell's: `FireAndForget`, `Self`.
 
+## A scroll
+
+A scroll is a spell cast once from the inventory, which the player need not know: a `Scroll` in `Scrolls/` — no
+`Spell`, and no book or misc item beside it. It carries the spell's lines itself, `CastType`, `TargetType` and
+`Effects`, with a scroll's model, value and weight, as the game's `LightningBoltScroll` has them. `CastType: 3` is a
+scroll's own, cast once; its effects are named as a spell's are, the `FF` version of the effect, and its `TargetType`
+their delivery — `Aimed` for a bolt at a target.
+
+```yaml
+# <project>/plugin/Scrolls/ScrollOfStorms.yaml
+EditorID: ScrollOfStorms
+Name:
+  TargetLanguage: English
+  Value: Scroll of Storms
+Keywords:
+- VendorItemScroll
+MenuDisplayObject: HighPolyBookTest01
+EquipmentType: EitherHand
+Model:
+  File: Clutter\Common\Scroll03.nif
+Value: 60
+Weight: 0.5
+BaseCost: 373
+ChargeTime: 0.5
+CastType: 3
+TargetType: Aimed
+Effects:
+- BaseEffect: ShockDamageFFAimed
+  Data:
+    Magnitude: 30
+```
+
 ## A shout
 
 A shout like Frost Breath, frost at three strengths: one `Shout`, three `WordsOfPower`, three spells

@@ -43,6 +43,14 @@ public sealed partial class Session
         if (size is < 1 or > MaxWorldCells)
             throw new HelperException("badRequest", $"cells is the worldspace's width in cells, 1 to {MaxWorldCells} (each 4096 units, about 58 m): {size} is not.");
         var climateName = p["climate"]?.GetValue<string>()?.Trim() is { Length: > 0 } c ? c : "SkyrimClimate";
+        // A weather named as the climate: asked for snow over Riverwood with SkyrimOvercastSnow, eval round 144's 5 detailed region
+        // runs made a worldspace of their own with it, were told only it is no climate, and built a new land with no snow over Riverwood.
+        if (Index.ByEditorId.TryGetValue(climateName, out var named) && Index.ByFormKey.TryGetValue(named, out var namedEntry) && namedEntry.Type == "Weather")
+            throw new HelperException("badRequest", $"{climateName} is a weather, not a climate: a climate lists a land's weathers. Weather over cells " +
+                "of the game's — snow around Riverwood — is a Region of the mod's own over them, no new worldspace: a file in Regions/ with " +
+                $"`Worldspace: Tamriel`, its RegionAreas around the cells, and its weather data naming {climateName} with a chance, as the " +
+                "skyrim-modding-world skill's \"Locations, encounter zones, regions\" shows (readSkill {\"skill\": \"skyrim-modding-world\"}). " +
+                "newWorldspace makes a new land apart from Tamriel; there, name a climate, e.g. SkyrimClimate, or leave climate out.");
         if (!Index.ByEditorId.TryGetValue(climateName, out var climate) || !Index.ByFormKey.TryGetValue(climate, out var climateEntry) || climateEntry.Type != "Climate")
             throw new HelperException("badRequest", $"{climateName} is no climate of the load order: name one by its editor ID, e.g. SkyrimClimate, or leave climate out.");
         float? water = p["water"] is JsonValue w ? w.GetValue<float>() : null;

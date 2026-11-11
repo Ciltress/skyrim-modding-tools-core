@@ -171,6 +171,67 @@ internal static class DialogContents
     }
 
     /// <summary>
+    /// A quest of the project that a story manager node of the project starts, with no Event: the story manager starts a node's
+    /// quests on the event each quest names, and this one on none, so never. Answered with the code of the event the node is
+    /// under, read from the game's event node above it. Eval round 144's storymanager runs built 7 such quests without a word,
+    /// and one answered its node "linked to the Change Location event".
+    /// </summary>
+    public static List<string> StoryNotes(ISkyrimModGetter mod, ILinkCache lookup, string pluginDir)
+    {
+        var notes = new List<string>();
+        var files = Files(pluginDir);
+        var project = ToolCalls.ProjectOf(pluginDir);
+        IAStoryManagerNodeGetter? Node(FormKey key) =>
+            mod.StoryManagerQuestNodes.FirstOrDefault(n => n.FormKey == key) as IAStoryManagerNodeGetter
+            ?? mod.StoryManagerBranchNodes.FirstOrDefault(n => n.FormKey == key)
+            ?? (lookup.TryResolve<IAStoryManagerNodeGetter>(key, out var found) ? found : null);
+        foreach (var node in mod.StoryManagerQuestNodes.Where(n => n.FormKey.ModKey == mod.ModKey))
+        {
+            var code = EventOf(node, mod, lookup);
+            var nodeName = node.EditorID ?? Session.FormKeyText(node.FormKey);
+            // Under a quest node, which holds quests and no nodes: the game's DA09ChangeLocationSharesEvent, the node the quests skill
+            // has a model mirror, was named as its Parent by 4 of eval round 144's 5 detailed storymanager runs.
+            if (!node.Parent.IsNull && Node(node.Parent.FormKey) is IStoryManagerQuestNodeGetter above && !above.Parent.IsNull)
+            {
+                var file = files.GetValueOrDefault(node.FormKey) ?? $"StoryManagerQuestNodes/{node.EditorID}.yaml";
+                var aboveName = above.EditorID ?? Session.FormKeyText(above.FormKey);
+                var branch = Node(above.Parent.FormKey) is { EditorID: { } id } ? id : Session.FormKeyText(above.Parent.FormKey);
+                notes.Add($"{file}: the node {nodeName} is under {aboveName}, a quest node, which holds quests and no nodes: the story manager " +
+                    $"never reaches it. Its Parent is the node {aboveName} is under, {branch}: " +
+                    ToolCalls.Edit(project, file, $"{{\"path\": \"Parent\", \"value\": \"{branch}\"}}", build: true));
+            }
+            foreach (var link in node.Quests.Select(q => q.Quest).Where(l => !l.IsNull).DistinctBy(l => l.FormKey))
+            {
+                if (mod.Quests.FirstOrDefault(q => q.FormKey == link.FormKey) is not { } quest || quest.FormKey.ModKey != mod.ModKey
+                    || quest.Event is { } had && had.TypeInt != 0)
+                    continue;
+                var file = files.GetValueOrDefault(quest.FormKey) ?? $"Quests/{quest.EditorID}.yaml";
+                notes.Add($"{file}: the story manager node {nodeName} starts the quest " +
+                    $"{quest.EditorID ?? Session.FormKeyText(quest.FormKey)}, which names no Event: the story manager starts a node's quests on the " +
+                    $"event each quest names, so never this one. Write {(code is null ? "the code of the node's event" : $"`Event: {code}`, the node's event,")} " +
+                    "at the margin of the quest's file: " +
+                    ToolCalls.Edit(project, file, $"{{\"path\": \"Event\", \"value\": \"{code ?? "<the event's code, as CLOC>"}\"}}", build: true));
+            }
+        }
+        return notes;
+    }
+
+    /// <summary>The four-letter code of the event a story manager node is under — CLOC — from the event node above it; null for none.</summary>
+    private static string? EventOf(IAStoryManagerNodeGetter node, ISkyrimModGetter mod, ILinkCache lookup)
+    {
+        IAStoryManagerNodeGetter? at = node;
+        for (var depth = 0; depth < 16 && at is not null; depth++)
+        {
+            if (at is IStoryManagerEventNodeGetter top) return top.Type is { } type ? new RecordType(Convert.ToInt32(type)).Type : null;
+            if (at.Parent.IsNull) return null;
+            var parent = at.Parent.FormKey;
+            at = mod.StoryManagerBranchNodes.FirstOrDefault(b => b.FormKey == parent) as IAStoryManagerNodeGetter
+                ?? (lookup.TryResolve<IAStoryManagerNodeGetter>(parent, out var found) ? found : null);
+        }
+        return null;
+    }
+
+    /// <summary>
     /// Each topic subtype's code as the game's topics carry it — CUST for a player's topic, HELO for a greeting — the first
     /// topic of the load order of each subtype giving it.
     /// </summary>

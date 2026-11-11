@@ -1059,6 +1059,11 @@ public static class RecordLinks
         if (type == typeof(float) || type == typeof(double))
             return double.TryParse(raw, NumberStyles.Float, invariant, out _) ? null : "it takes a number, such as 1.5";
         if (type == typeof(char)) return null;
+        // An actor of a scene named where its alias's number goes: told only "ActorID takes a whole number" three times, eval round
+        // 144's scene #4 wrote Hulda's editor ID again each time.
+        if (!decimal.TryParse(raw, NumberStyles.Float, invariant, out _) && key?[(key.LastIndexOf('.') + 1)..] is "ActorID" or "HeadtrackActorID" or "AliasID" or "Alias")
+            return $"it takes the number of the quest's alias that holds the actor, not the actor's name: the `ID:` of that alias under the quest's " +
+                $"Aliases — `- ID: 1` with `UniqueActor: {raw.Trim()}` below it, as the game's quests fill an alias with one NPC";
         if (!decimal.TryParse(raw, NumberStyles.Integer, invariant, out var whole))
             return decimal.TryParse(raw, NumberStyles.Float, invariant, out var number)
                 ? $"it takes a whole number, such as {decimal.Round(number)}" : "it takes a whole number";

@@ -22,7 +22,10 @@ The loop in `skyrim-modding-basics` — look up, get the text, edit, build, depl
   into `assets/` at the same paths, so the deploy carries them.
 - **What NPCs of a kind carry** — a sword more among the bandits' weapons, a potion in their loot — is
   the leveled item list their `Items` name: add it there, as the `skyrim-modding-leveled-lists` skill
-  shows, and change no NPC. Bandits' one-handed weapons are `LItemBanditWeapon1H`.
+  shows, and change no NPC. Bandits' one-handed weapons are `LItemBanditWeapon1H`. So too what they cast: a spell
+  more for bandit mages goes into the leveled spell list in their `ActorEffect`, `LSpellBandit01FireFrostShock`.
+- **How strong a place's enemies are** — the bandits of a mine at least level 20 — is the cell's encounter zone,
+  its `MinLevel` and `MaxLevel`, not their NPCs: `skyrim-modding-world`, *Locations, encounter zones, regions*.
 - **Many NPCs at once** — a perk for every bandit, an outfit for every guard — go into a SPID
   `<Mod>_DISTR.ini` in `assets/`, with no NPC overridden (REFERENCE, *Distribution instead of edits*).
 - **Done** when built and deployed, and the user knows to test on a new game or with `coc` from the

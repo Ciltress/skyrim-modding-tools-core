@@ -758,6 +758,9 @@ public sealed partial class Session : IDisposable
         corrected.AddRange(GameSettings.Kinds(dir, Index));
         // And one of two new records of different types under one editor ID, which a link of the other names.
         corrected.AddRange(RecordFiles.RenameSharedEditorIds(dir, Index));
+        // A list's items written as names, where each takes the name as its link's line; then a node's Event, into the quests it names.
+        corrected.AddRange(MisplacedFields.NamesAsItems(dir));
+        corrected.AddRange(MisplacedFields.EventToQuests(dir));
         // Before the moves: what is left of another record type may break the reader they use.
         corrected.AddRange(RecordFiles.DropOtherTypesFields(dir));
         // A part's field written among its Flags, and a flag written as a field, before the moves read the part's fields.
@@ -778,6 +781,8 @@ public sealed partial class Session : IDisposable
         corrected.AddRange(RecordFiles.MendLevel(dir));
         // And the level its bounds bound, where it has bounds and no level.
         corrected.AddRange(RecordFiles.LevelForBounds(dir));
+        // An NPC placed as a PlacedObject is a PlacedNpc, before the kind is put first.
+        corrected.AddRange(RecordFiles.NpcsPlacedAsObjects(dir, Index));
         // And a part's kind as its first field, once each field is in its part: the reader takes the part by it.
         corrected.AddRange(MisplacedFields.KindFirst(dir));
         // A spell's or enchantment's lines from its effects, read where each is: its cast, and an effect's flags in the spell's.
@@ -918,8 +923,8 @@ public sealed partial class Session : IDisposable
             .Concat(EffectCasting.GivenBackNotes(mod, lookup, Index, dir)).Concat(MadeNotes.Shouts(mod, lookup, Index, dir))
             .Concat(MadeNotes.CopiedNames(mod, Index, dir)).Concat(MadeNotes.RecipePerks(mod, lookup, dir)).Concat(MadeNotes.PlayerCopy(mod, dir))
             .Concat(MadeNotes.NpcItems(mod, lookup, dir)).Concat(MadeNotes.ListEntries(mod, lookup, dir)).Concat(MadeNotes.KeywordsReplaced(mod, lookup, dir)).Concat(MadeNotes.Words(mod, dir))
-            .Concat(MadeNotes.Unplayable(mod, dir)).Concat(MadeNotes.LightWorldspace(mod, dir))
-            .Concat(CellContents.PlacedNotes(mod, Contexts, Index, dir)).Concat(DialogContents.Notes(mod, lookup, Index, dir)).Concat(GameSettings.Notes(mod, Index, dir))
+            .Concat(MadeNotes.Unplayable(mod, dir)).Concat(MadeNotes.LightWorldspace(mod, dir)).Concat(MadeNotes.NotScrolls(mod, dir))
+            .Concat(CellContents.PlacedNotes(mod, Contexts, Index, dir)).Concat(DialogContents.Notes(mod, lookup, Index, dir)).Concat(DialogContents.StoryNotes(mod, lookup, dir)).Concat(GameSettings.Notes(mod, Index, dir))
             .Concat(NavmeshNotes.Stale(mod, lookup, dir))
             .Select(n => (JsonNode)n).ToArray();
         // The sequence file the plugin's start-game-enabled quests need for their dialogue, beside it in the build.
@@ -1124,7 +1129,7 @@ public sealed partial class Session : IDisposable
             throw new HelperException("badRequest", $"'action' is flatten, raise, lower or smooth, not '{action}'.");
         if (radius <= 0 || falloff < 0) throw new HelperException("badRequest", "'radius' is above 0, and 'falloff' 0 or more.");
         var worlds = Contexts(worldspace).Where(c => c.Record is IWorldspaceGetter).ToList();
-        if (worlds.Count == 0) throw new HelperException("notFound", $"{FormKeyText(worldspace)} is no worldspace.");
+        if (worlds.Count == 0) throw NoWorldspace(worldspace);
 
         // Every cell within a vertex of the edit's reach: its ground or its normals may change.
         var reach = radius + falloff + Terrain.Spacing;
@@ -1286,7 +1291,7 @@ public sealed partial class Session : IDisposable
         var projectDir = Required(p, "projectPluginDir");
         var worldspace = Resolve(p["worldspace"]?.GetValue<string>() ?? "Tamriel");
         var worlds = Contexts(worldspace).Where(c => c.Record is IWorldspaceGetter).ToList();
-        if (worlds.Count == 0) throw new HelperException("notFound", $"{FormKeyText(worldspace)} is no worldspace.");
+        if (worlds.Count == 0) throw NoWorldspace(worldspace);
         var cellGrid = Regex.Match(Required(p, "grid"), @"^\s*(-?\d+)\s*,\s*(-?\d+)\s*$");
         if (!cellGrid.Success) throw new HelperException("badRequest", "'grid' is the cell's x, y, e.g. \"4, -12\".");
         var grid = new Noggog.P2Int(int.Parse(cellGrid.Groups[1].Value), int.Parse(cellGrid.Groups[2].Value));
@@ -1379,6 +1384,29 @@ public sealed partial class Session : IDisposable
         }
         foreach (var (relative, text) in rewrites) File.WriteAllText(Path.Combine(copy, relative), text);
         return copy;
+    }
+
+    /// <summary>
+    /// What a record named as a worldspace is, where it is none: an exterior cell named so — Riverwood is one — with the
+    /// worldspace it lies in and where, as the call's `worldspace` and `at`. Told only "009732:Skyrim.esm is no worldspace.", 8 of
+    /// eval round 144's 10 navmesh-outdoor runs sent Riverwood again or "Skyrim", and raised the ground at 0, 0 or elsewhere.
+    /// </summary>
+    private HelperException NoWorldspace(FormKey named)
+    {
+        var name = Index.ByFormKey.TryGetValue(named, out var entry) && entry.EditorId is { } id ? $"{id} ({FormKeyText(named)})" : FormKeyText(named);
+        var versions = Contexts(named);
+        if (versions.FirstOrDefault()?.Record is ICellGetter { Grid: { } grid }
+            && versions.Select(CellContents.WorldspaceOf).FirstOrDefault(w => w is not null) is { } worldKey)
+        {
+            var world = Index.ByFormKey.TryGetValue(worldKey, out var worldEntry) && worldEntry.EditorId is { } worldId ? worldId : FormKeyText(worldKey);
+            var (x0, y0) = (grid.Point.X * CellContents.CellSize, grid.Point.Y * CellContents.CellSize);
+            return new HelperException("notFound", $"{name} is a cell of the worldspace {world}, at grid {grid.Point.X}, {grid.Point.Y}, and no " +
+                $"worldspace: send \"worldspace\": \"{world}\", and an \"at\" in its units — the cell runs from x {x0} to {x0 + CellContents.CellSize} " +
+                $"and y {y0} to {y0 + CellContents.CellSize}, its middle \"{x0 + CellContents.CellSize / 2}, {y0 + CellContents.CellSize / 2}\".");
+        }
+        var kind = entry is not null ? $"{RecordFiles.Article(entry.Type)}, " : "";
+        return new HelperException("notFound", $"{name} is {kind}no worldspace: the land outside is Tamriel's, and readRecord of an exterior " +
+            "cell names the worldspace it lies in and its grid.");
     }
 
     /// <summary>

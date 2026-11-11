@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.RegularExpressions;
 using Mutagen.Bethesda.Plugins.Aspects;
 using Mutagen.Bethesda.Plugins.Cache;
 using Mutagen.Bethesda.Plugins.Records;
@@ -438,6 +439,66 @@ internal static class MadeNotes
                 $". A recipe for {game.Name} in a new mod is the game's {game.Name}: a new mod is no ask for a new {type}. Only where the " +
                 $"user asked for a {type} of its own beside the game's — another of its name — is the copy meant; then nothing to change, " +
                 "and this warning stays");
+        }
+        notes.AddRange(CopiedMaterials(mod, index, pluginDir, records, files));
+        return notes;
+    }
+
+    /// <summary>
+    /// A new record of the project named as a scroll that is no Scroll — a Spell, a Book, a misc item — in a project with no
+    /// Scroll: a scroll is a record of its own, cast once from the inventory. Asked for a Scroll of Storms, 8 of eval round
+    /// 144's 10 scroll runs wrote a Spell, with a Book or a MiscItem beside it or none, and answered it a scroll.
+    /// </summary>
+    public static List<string> NotScrolls(ISkyrimModGetter mod, string pluginDir)
+    {
+        if (mod.Scrolls.Any(s => s.FormKey.ModKey == mod.ModKey)) return [];
+        var files = EffectCasting.Files(pluginDir);
+        return mod.EnumerateMajorRecords().Where(r => r.FormKey.ModKey == mod.ModKey && r is ISpellGetter or IBookGetter or IMiscItemGetter)
+            .Where(r => (r as INamedGetter)?.Name is { } name && Regex.IsMatch(name, @"\bscroll\b", RegexOptions.IgnoreCase))
+            .Select(r => $"{files.GetValueOrDefault(r.FormKey) ?? r.EditorID}: {r.EditorID} \"{((INamedGetter)r).Name}\" is {RecordFiles.Article(RecordIndex.TypeName(r))}, " +
+                "and a scroll is a record of its own: a Scroll in Scrolls/, cast once from the inventory, which carries the spell's CastType " +
+                "(3), TargetType and Effects itself — as the game's LightningBoltScroll has them (readRecord {\"record\": \"LightningBoltScroll\"}, " +
+                "the skyrim-modding-magic skill's \"A scroll\"). Where a scroll was asked for, write it there; where this " +
+                $"{RecordIndex.TypeName(r)} was meant, nothing to change, and this warning stays")
+            .ToList();
+    }
+
+    /// <summary>The kinds of record a player carries, and so a recipe's material may be.</summary>
+    private static readonly HashSet<string> CarriedKinds = new(["Ingestible", "Ingredient", "MiscItem", "Weapon", "Armor", "Ammunition", "Book",
+        "SoulGem", "Key", "Scroll"], StringComparer.Ordinal);
+
+    /// <summary>
+    /// A recipe of the project's whose material is a new record of the project's with the in-game name of an item of the load
+    /// order's, of any kind: the player carries the game's, and nothing gives the copy, so the recipe is never made. Asked for a
+    /// soup of two potatoes and a salt pile, 4 of eval round 144's 5 plain cooking runs made a Potato and a Salt Pile of their
+    /// own — as ingredients, where the game's potato is FoodPotato, an Ingestible — and built them with no word.
+    /// </summary>
+    private static List<string> CopiedMaterials(ISkyrimModGetter mod, RecordIndex index, string pluginDir,
+        IReadOnlyDictionary<Mutagen.Bethesda.Plugins.FormKey, IMajorRecordGetter> records, IReadOnlyDictionary<Mutagen.Bethesda.Plugins.FormKey, string> files)
+    {
+        var notes = new List<string>();
+        foreach (var recipe in mod.ConstructibleObjects.Where(c => c.FormKey.ModKey == mod.ModKey && c.Items is not null))
+        {
+            if (files.GetValueOrDefault(recipe.FormKey) is not { } relative) continue;
+            for (var at = 0; at < recipe.Items!.Count; at++)
+            {
+                if (!records.TryGetValue(recipe.Items[at].Item.Item.FormKey, out var material) || (material as INamedGetter)?.Name is not { Length: > 0 } name)
+                    continue;
+                var game = index.ByFormKey.Values.Where(e => CarriedKinds.Contains(e.Type) && e.FormKey.ModKey != mod.ModKey && !e.Unplayable
+                        && e.EditorId is not null && string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(e => e.Type == RecordIndex.TypeName(material) ? 0 : 1).FirstOrDefault();
+                if (game is null) continue;
+                var copy = material.EditorID ?? Session.FormKeyText(material.FormKey);
+                var copyFile = files.GetValueOrDefault(material.FormKey);
+                notes.Add($"{relative}: {recipe.EditorID ?? Session.FormKeyText(recipe.FormKey)} takes {copy} \"{name}\", a new {RecordIndex.TypeName(material)} " +
+                    $"of this mod's own, as a material — the player carries the game's {game.EditorId} (\"{game.Name}\", {RecordFiles.Article(game.Type)}, " +
+                    $"{Session.FormKeyText(game.FormKey)}), and nothing gives the copy, so the recipe is never made. One call makes it take the game's " +
+                    "and builds again: " +
+                    ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, $"{{\"path\": \"Items[{at}].Item.Item\", \"value\": {ToolCalls.Quoted(game.EditorId!)}}}", build: true) +
+                    (copyFile is null ? "" : $"; {copyFile} is then named by nothing: delete it, which builds again too, {ToolCalls.Delete(pluginDir, copyFile, build: true)}") +
+                    ". Only where the mod gives the player its own — a material of its own beside the game's — is the copy meant; then nothing to " +
+                    "change, and this warning stays");
+            }
         }
         return notes;
     }

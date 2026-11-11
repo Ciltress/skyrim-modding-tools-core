@@ -193,6 +193,31 @@ or none. Never write a worldspace, its cells or their landscape by hand: the hei
 | the level of a cell's enemies and loot | `EncounterZone` in `EncounterZones/` | `MinLevel`, `MaxLevel` (0: none), `Location`, `Flags` (`NeverResets`) | a cell's `EncounterZone` — a game cell's through its copy (addPatch); or the zone a game cell has, copied with addPatch, which changes every cell that has it |
 | weather or sound over an area outdoors | `Region` in `Regions/` | `Worldspace`, `RegionAreas` (the area's points), its weather data naming `Weather` records with a chance | the exterior cells the area covers — each cell's copy names it in its `Regions`, as the game's cells name theirs |
 
+Weather over a place of the game's — snow around Riverwood — is a region of the mod's own in Tamriel, never a new
+worldspace (newWorldspace makes a land apart). Its area's points are world units, the corners around the cells: the cell
+at grid x, y runs from x·4096 to (x+1)·4096, and readRecord of an exterior cell names its grid — `Riverwood` is at 4, -12.
+A `Priority` above the game's regions there (theirs are about 50) and the `Override` flag make its weather the one shown,
+as the game's `WeatherPineForest` has them:
+
+```yaml
+EditorID: SnowyRiverwoodRegion
+Worldspace: Tamriel
+RegionAreas:
+- EdgeFallOff: 1024
+  RegionPointListData:
+  - 12288, -53248
+  - 24576, -53248
+  - 24576, -40960
+  - 12288, -40960
+Weather:
+  Flags:
+  - Override
+  Priority: 60
+  Weathers:
+  - Weather: SkyrimOvercastSnow
+    Chance: 100
+```
+
 ## Change the ground outdoors
 
 A plot flattened for a house, a hill raised, a ditch dug: `editTerrain` with the centre `at` ("x, y" in world units,

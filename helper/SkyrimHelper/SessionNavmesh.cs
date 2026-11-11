@@ -465,11 +465,16 @@ public sealed partial class Session
         return part;
     }
 
-    /// <summary>An exterior navmesh's cell: the cell at its grid in its worldspace.</summary>
+    /// <summary>
+    /// An exterior navmesh's cell: the cell at its grid in its worldspace. The parent holds the grid as y, then x — the game's
+    /// navmesh of the cell at -1, 0 reads "Coordinates: 0, -1", as NewNavmesh writes them. Read as x, y, a neighbour's navmesh
+    /// relinked along a side was written into the cell across the other axis, the same FormKey in two cells' folders, and the
+    /// build refused the project until the end of eval round 144's navmesh-outdoor #2 and #5.
+    /// </summary>
     private FormKey? OuterCellOf(INavigationMeshGetter navmesh)
     {
         if (navmesh.Data?.Parent is not WorldspaceNavmeshParent world) return null;
-        return CellContents.CellAt(WorldsOf(world.Parent.FormKey), new P2Int(world.Coordinates.X, world.Coordinates.Y))?.FormKey;
+        return CellContents.CellAt(WorldsOf(world.Parent.FormKey), new P2Int(world.Coordinates.Y, world.Coordinates.X))?.FormKey;
     }
 
     /// <summary>The project's built plugin the navmesh being made reads (SceneForNavmesh sets it): its own worldspaces count.</summary>

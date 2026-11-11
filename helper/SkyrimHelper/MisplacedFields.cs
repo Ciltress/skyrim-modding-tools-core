@@ -300,6 +300,154 @@ public static class MisplacedFields
     }
 
     /// <summary>
+    /// A list whose items take fields, one of them the link the item is for, written as names alone — a story manager node's
+    /// `Quests:` with `- ArrivalRumorQuest` below it: each name written as that link's line, `- Quest: ArrivalRumorQuest`. As
+    /// written, the reader refused the file "Expected 'SequenceEnd', got 'DocumentEnd'", which names nothing; 3 of eval round
+    /// 144's 10 storymanager runs met it, one after editRecord had written the list so from `"value": ["ArrivalRumorQuest"]`.
+    /// And a field of one value at the margin that the record has nowhere, which the items of one list of it have as their link:
+    /// told "a StoryManagerQuestNode has no field Quest (it is spelled Quests)", round 144's storymanager+detailed #2 wrote
+    /// `Quests: ArrivalRumorQuest`, then the list of names, and built no node.
+    /// </summary>
+    public static List<(string File, string Change)> NamesAsItems(string pluginDir)
+    {
+        var changes = new List<(string File, string Change)>();
+        foreach (var (file, relative, type) in RecordFiles.FlatRecords(pluginDir))
+        {
+            var text = File.ReadAllText(file).Replace("\r\n", "\n");
+            if (Root(text) is not { } root) continue;
+            var lines = text.Split('\n').ToList();
+            var made = new List<string>();
+            // Bottom up: a list written in brackets becomes lines of its own, which moves those below it.
+            foreach (var (keyNode, value) in root.Children.Reverse())
+            {
+                if (keyNode is not YamlScalarNode { Value: { } key } || value is not YamlSequenceNode { Children.Count: > 0 } list
+                    || ItemLink(type, key) is not { } link
+                    || list.Children.Any(item => item is not YamlScalarNode { Value: { Length: > 0 } name } || IsNumber(name)))
+                    continue;
+                var names = list.Children.Cast<YamlScalarNode>().Select(n => n.Value!).ToList();
+                if (list.Style == SequenceStyle.Flow)
+                {
+                    var at = (int)keyNode.Start.Line - 1;
+                    if ((int)list.End.Line - 1 != at || Indent(lines[at]) != 0) continue;
+                    lines[at] = $"{key}:";
+                    lines.InsertRange(at + 1, names.Select(n => $"- {link}: {n}"));
+                }
+                else
+                {
+                    var items = list.Children.Select(item => (int)item.Start.Line - 1).ToList();
+                    if (items.Any(i => !System.Text.RegularExpressions.Regex.IsMatch(lines[i], @"^[ \t]*-[ \t]+\S"))) continue;
+                    foreach (var i in items)
+                        lines[i] = System.Text.RegularExpressions.Regex.Replace(lines[i], @"^(?<dash>[ \t]*-[ \t]+)", $"${{dash}}{link}: ");
+                }
+                made.Add($"wrote each item of `{key}` as its {link}, `- {link}: {names[0]}` — an item of {key} takes fields, " +
+                    $"and a name alone reads as none");
+            }
+            // Then a field the record has nowhere, of one value, that one of its lists' items has as their link, in a record with no
+            // such list yet: the list's one item. Beside items written already it may be one of their lines, and is left to the refusal.
+            if (Root(string.Join('\n', lines)) is { } mended)
+                foreach (var (keyNode, value) in mended.Children)
+                {
+                    if (keyNode is not YamlScalarNode { Value: { } key } || value is not YamlScalarNode { Value: { Length: > 0 } name }
+                        || Has(type, key) || value.End.Line != keyNode.Start.Line
+                        || type.GetProperties(Public).Where(p => ItemLink(type, p.Name) == key).Select(p => p.Name).ToList() is not [var listKey]
+                        || At(mended, listKey) is not null)
+                        continue;
+                    var at = (int)keyNode.Start.Line - 1;
+                    var item = $"- {key}: {name}";
+                    lines[at] = $"{listKey}:";
+                    lines.Insert(at + 1, item);
+                    made.Add($"wrote `{key}: {name}` (line {at + 1}) as the item of `{listKey}` it is, `{item}` — {RecordFiles.Article(type.Name)} " +
+                        $"has no {key} of its own: it names each of its {listKey} so");
+                    break;
+                }
+            var result = string.Join('\n', lines);
+            if (made.Count == 0 || Root(result) is null) continue;
+            Save(file, result);
+            changes.AddRange(made.Select(m => (relative, m)));
+        }
+        return changes;
+    }
+
+    /// <summary>
+    /// The link field the items of a record's list field are for, where the items take fields of a part and one of them is a
+    /// link: a story manager node's Quests, `- Quest: …`; an NPC's Perks, `- Perk: …`. Null for a list of links, of numbers, or
+    /// of parts with no link or several.
+    /// </summary>
+    private static string? ItemLink(Type type, string field)
+    {
+        if (type.GetProperties(Public).FirstOrDefault(p => p.Name == field) is not { } property) return null;
+        var held = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+        if (held == typeof(string) || !held.IsGenericType || !typeof(System.Collections.IList).IsAssignableFrom(held)) return null;
+        var item = held.GetGenericArguments()[0];
+        if (!item.IsClass || item.Namespace != typeof(Mutagen.Bethesda.Skyrim.Weapon).Namespace
+            || typeof(Mutagen.Bethesda.Plugins.Records.IMajorRecordGetter).IsAssignableFrom(item)) return null;
+        return item.GetProperties(Public).Where(p => typeof(Mutagen.Bethesda.Plugins.IFormLinkGetter).IsAssignableFrom(p.PropertyType))
+            .Select(p => p.Name).Distinct().ToList() is [var link] ? link : null;
+    }
+
+    private static bool IsNumber(string value) =>
+        double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out _);
+
+    /// <summary>
+    /// A story manager quest node's `Event:` — the event a quest is started on, which is the quest's own line — moved into the
+    /// project's quests the node names under Quests, where they have none: 4 of eval round 144's 10 storymanager runs wrote
+    /// `Event: CLOC` on the node, were told "delete it: a StoryManagerQuestNode has it nowhere", deleted it, and built a quest the
+    /// story manager starts on no event; one answered its node linked. Where each quest has the same event already, the node's
+    /// line is only deleted; a node naming no quest of the project's, or one with another event, is left to the refusal.
+    /// </summary>
+    public static List<(string File, string Change)> EventToQuests(string pluginDir)
+    {
+        var changes = new List<(string File, string Change)>();
+        var records = RecordFiles.FlatRecords(pluginDir).ToList();
+        var quests = records.Where(r => r.Type == typeof(Mutagen.Bethesda.Skyrim.Quest)).ToList();
+        foreach (var (file, relative, _) in records.Where(r => r.Type == typeof(Mutagen.Bethesda.Skyrim.StoryManagerQuestNode)))
+        {
+            var text = File.ReadAllText(file).Replace("\r\n", "\n");
+            if (Root(text) is not { } root || root.Children.Keys.OfType<YamlScalarNode>().FirstOrDefault(k => k.Value == "Event") is not { } eventKey
+                || root.Children[eventKey] is not YamlScalarNode { Value: { Length: > 0 } code } eventValue || eventValue.End.Line != eventKey.Start.Line)
+                continue;
+            var named = At(root, "Quests") is YamlSequenceNode list
+                ? list.Children.OfType<YamlMappingNode>().Select(item => At(item, "Quest")).OfType<YamlScalarNode>()
+                    .Select(s => s.Value).OfType<string>().ToList()
+                : [];
+            var theirs = quests.Select(q => (q.File, q.Relative, Text: File.ReadAllText(q.File).Replace("\r\n", "\n")))
+                .Where(q => named.Any(n => Names(q.Text, n))).ToList();
+            if (theirs.Count == 0) continue;
+            var events = theirs.Select(q => Root(q.Text) is { } r && At(r, "Event") is YamlScalarNode { Value: { Length: > 0 } e } ? e : null).ToList();
+            if (events.Any(e => e is not null && !e.Equals(code, StringComparison.OrdinalIgnoreCase))) continue;
+            var written = new List<string>();
+            foreach (var (quest, _) in theirs.Zip(events).Where(p => p.Second is null))
+            {
+                var lines = quest.Text.Split('\n').ToList();
+                // Below its identity, as the game's quests have it near their top.
+                var at = lines.FindLastIndex(Math.Min(lines.Count - 1, 4), l => l.StartsWith("EditorID:") || l.StartsWith("FormKey:")) + 1;
+                lines.Insert(at, $"Event: {code}");
+                Save(quest.File, string.Join('\n', lines));
+                changes.Add((quest.Relative, $"wrote `Event: {code}` (line {at + 1}), moved from {relative}, the story manager node that starts it — " +
+                    "the event a quest is started on is the quest's own line"));
+                written.Add(quest.Relative);
+            }
+            var nodeLines = text.Split('\n').ToList();
+            var line = (int)eventKey.Start.Line - 1;
+            nodeLines.RemoveAt(line);
+            Save(file, string.Join('\n', nodeLines));
+            changes.Add((relative, written.Count > 0
+                ? $"moved `Event: {code}` (line {line + 1}) into {string.Join(", ", written)} — the story manager starts a node's quests on the " +
+                  "event each quest names: a node has no Event"
+                : $"deleted `Event: {code}` (line {line + 1}): the quests it names have that Event already, and a node has none"));
+        }
+        return changes;
+
+        static bool Names(string text, string name)
+        {
+            var (formKey, editorId) = RecordFiles.Identity(text);
+            return name.Equals(editorId, StringComparison.OrdinalIgnoreCase)
+                || formKey is { } key && (name.Equals(Session.FormKeyText(key), StringComparison.OrdinalIgnoreCase)
+                    || name.Equals(key.ToString(), StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    /// <summary>
     /// A part's `MutagenObjectType:` written below its other fields, moved up as its first: the reader takes a part of several
     /// kinds by its first field. An NPC's level written with `LevelMult: 1` above its kind was refused "cannot be read as a
     /// record: Object reference not set to an instance of an object", which names nothing, and the model wrote the file four

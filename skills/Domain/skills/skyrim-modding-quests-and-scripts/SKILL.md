@@ -166,13 +166,72 @@ Conditions:
   are the quest's aliases by `ID`, filled with the NPCs (an alias's `UniqueActor`, or a `GetIsID` condition, as
   `DialogueSolitudeAddvarHouseScene2`'s are); its `Actions`, in their order, each name the actor (`ActorID`) and, for a
   line, the dialogue topic whose response is said (the topic and responses written as in the section above). `Flags` with
-  `BeginOnQuestStart` plays it when the quest starts; mirror a vanilla scene, `readRecord` `AddvarHouse2`.
+  `BeginOnQuestStart` plays it when the quest starts; mirror a vanilla scene, `readRecord` `AddvarHouse2`. The game's own
+  NPCs are no new records: an alias names each with `UniqueActor`, and the scene names the alias by its number. Each
+  line's topic is `Category: Scene`, `Subtype: Scene`, `SubtypeName: SCEN`, with one response conditioned on its speaker
+  (`GetIsID`). Two NPCs, one line each, the quest starting with the game:
+
+  ```yaml
+  # Quests/InnChatterQuest.yaml
+  EditorID: InnChatterQuest
+  Flags:
+  - StartGameEnabled
+  NextAliasID: 3
+  Aliases:
+  - ID: 1
+    Name: Hulda
+    Flags:
+    - AllowReuseInQuest
+    - AllowReserved
+    UniqueActor: Hulda
+  - ID: 2
+    Name: Ysolda
+    Flags:
+    - AllowReuseInQuest
+    - AllowReserved
+    UniqueActor: Ysolda
+  ```
+
+  ```yaml
+  # Scenes/InnChatterScene.yaml
+  EditorID: InnChatterScene
+  Quest: InnChatterQuest
+  Flags:
+  - BeginOnQuestStart
+  Phases:
+  - Name: ''
+  - Name: ''
+  Actors:
+  - ID: 1
+  - ID: 2
+  Actions:
+  - ActorID: 1
+    Index: 1
+    StartPhase: 0
+    EndPhase: 0
+    Topic: InnChatterHuldaLine
+  - ActorID: 2
+    Index: 2
+    StartPhase: 1
+    EndPhase: 1
+    Topic: InnChatterYsoldaLine
+  LastActionIndex: 2
+  ```
 - **The story manager** starts a quest when something happens in game: a `StoryManagerQuestNode` in
-  `StoryManagerQuestNodes/` whose `Parent` is the game's node for that event, with the quest under `Quests`; the quest's
-  `Event` is the event's code — `CLOC` for the player changing location (`DA09ChangeLocation`), `ADIA` for dialogue —
-  and its aliases can be filled from the event (`FindMatchingRefFromEvent`). `findRecords` with `types: ["SMEN"]` lists
-  the event nodes; mirror a vanilla quest node, `readRecord` `DA09ChangeLocationSharesEvent`. The node and the quest are
-  all it takes: a script is only for what the quest does.
+  `StoryManagerQuestNodes/` whose `Parent` is the game's branch node for that event — `QuestNode` for the player changing
+  location — with the quest under `Quests`, each as `- Quest: ArrivalRumorQuest`. The event is the quest's, not the
+  node's: the quest's file has `Event:` at its margin, the event's code — `CLOC` for the player changing location
+  (`DA09ChangeLocation`), `ADIA` for dialogue — and its aliases can be filled from the event (`FindMatchingRefFromEvent`).
+  Mirror a vanilla quest node, `readRecord` `DA09ChangeLocationSharesEvent`, keeping its `Parent` line: a quest node holds
+  quests, and no node under it is ever reached. The node and the quest are all it takes: a script is only for what the
+  quest does.
+
+  ```yaml
+  EditorID: ArrivalRumorNode
+  Parent: QuestNode
+  Quests:
+  - Quest: ArrivalRumorQuest
+  ```
 - **Started each time**, the quest has no `RunOnce` flag and stops itself: the story manager starts a quest that is not
   running. Its script is sent the event — for `CLOC` `Event OnStoryChangeLocation(ObjectReference akActor, Location
   akOldLocation, Location akNewLocation)`, as `Quest.psc` declares it — and ends with `Stop()`. A location alias filled

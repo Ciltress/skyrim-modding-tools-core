@@ -409,7 +409,7 @@ internal static class CellContents
     }
 
     /// <summary>The worldspace a cell's version lies in, through its parents.</summary>
-    private static FormKey? WorldspaceOf(IModContext<ISkyrimMod, ISkyrimModGetter, IMajorRecord, IMajorRecordGetter> context)
+    internal static FormKey? WorldspaceOf(IModContext<ISkyrimMod, ISkyrimModGetter, IMajorRecord, IMajorRecordGetter> context)
     {
         for (var parent = context.Parent; parent is not null; parent = parent.Parent)
             if (parent.Record is IWorldspaceGetter world) return world.FormKey;

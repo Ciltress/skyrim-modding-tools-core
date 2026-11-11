@@ -436,6 +436,9 @@ public static class RecordFiles
         // (mini-round of 2026-11-08, outdoor+detailed #1). The build sets each item in place below Items.
         (["Container"], ["Inventory", "Inventories", "Contents", "Content", "ContainerItems", "ContainerItem", "Loot"], "Items",
             "a container's contents are Items: write that line as `Items:` in its place, its items below it as they are"),
+        // Told "delete it: a StoryManagerQuestNode has it nowhere", 4 of eval round 144's storymanager runs deleted their node's
+        // `Event: CLOC` and built a quest started on no event; the build moves it into a quest the node names, and this is the rest.
+        (["StoryManagerQuestNode", "StoryManagerBranchNode"], ["Event", "Events", "EventType", "StoryEvent", "EventCode"], null, StoryEvent),
         // Its cell found by editRecord, a model would set `Placed[0]` on it (eval round 128's world+detailed #4).
         (["Cell"], ["Placed", "References", "Refs", "Objects", "Items", "Containers", "Contents", "Chest", "Chests", "PlacedObjects"], null,
             "what is placed in a cell is no field of its file: each reference is a file of its own in the cell's Temporary/ folder, beside " +
@@ -446,6 +449,11 @@ public static class RecordFiles
     /// <summary>A Projectile's own fields, which a model copied from one into an arrow it wrote as a Weapon.</summary>
     private static readonly HashSet<string> ProjectileFields = new(["Gravity", "Speed", "Range", "CollisionRadius", "FadeDuration",
         "ImpactForce", "RelaunchInterval", "LifeTime", "TracerChance", "ConeSpread", "MuzzleFlash", "MuzzleFlashDuration"], StringComparer.Ordinal);
+
+    /// <summary>Where the event a story manager node starts its quests on is written: in each quest.</summary>
+    internal const string StoryEvent = "the event a quest is started on is the quest's own line, `Event: CLOC` at the margin of the quest's " +
+        "file for the player changing location, as the game's DA09ChangeLocation has it; a node names its quests under Quests, each as " +
+        "`- Quest: <the quest's editor ID>`, and its Parent is the game's node under that event — write it in the quest and delete it here";
 
     /// <summary>Where a spell's school is: in its magic effects, not in the spell — a field to delete there.</summary>
     private const string SpellSchool = "delete it here, and keep the magic effect's: a spell's school is the MagicSkill of the magic effects its Effects name";
@@ -819,7 +827,8 @@ public static class RecordFiles
     {
         // A block of the record's own fields: an armor's Value, Weight and ArmorRating written under a weapon's BasicStats, told
         // only to delete it, built as 0, 0 and 0 (refusal probes of 2026-10-31, A05) — written at the margin with one call.
-        var hinted = keys.Select(key => (Key: key, Hint: Lifted(type, known, key, text, pluginDir, relative) ?? HintIn(type, known, key, text))).ToList();
+        var hinted = keys.Select(key => (Key: key, Hint: Lifted(type, known, key, text, pluginDir, relative)
+            ?? LockHint(type, key, text, pluginDir) ?? HintIn(type, known, key, text))).ToList();
         // A file whose fields are all another type's: the move alone, not a hint for each field — "Model (move it in each item of
         // Stages, under Destructible)" pointed a sword written in Armors/ the wrong way (refusal probes, G06).
         var whole = TopLevelKey.Matches(text).Select(m => m.Groups[1].Value).Where(k => k != "MutagenObjectType").Distinct().ToList();
@@ -868,6 +877,46 @@ public static class RecordFiles
                 ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, "", string.Join(", ", bare.Select(ToolCalls.Quoted)), build: true);
         return string.Join(", ", named.Append(bare.Count == 0 ? "" : $"{string.Join(", ", bare)} ({deleted})")
             .Where(s => s.Length > 0));
+    }
+
+    /// <summary>Fields a lock was written with on what it locks, or on its key.</summary>
+    private static readonly Regex LockField = new(@"^(Lock|Locks|Locked|LockLevel|LockKey|LockData|LockedBy|KeyLevel|Lockpicking)$", RegexOptions.IgnoreCase);
+
+    /// <summary>
+    /// A lock written on a base record — a chest, a door, its key, a recipe — where the game has it on the placed reference: the
+    /// reference's `Lock`, with its `Level` and `Key`. With the call that writes it there, where the project places the record
+    /// in one reference. Told only "delete it", 8 of eval round 144's 10 key runs met it on the chest, the key or the recipe,
+    /// and 6 of them built a chest no lock or key held. Null for any other field.
+    /// </summary>
+    private static string? LockHint(Type type, string key, string text, string pluginDir)
+    {
+        if (!LockField.IsMatch(key) || typeof(IPlaced).IsAssignableFrom(type)) return null;
+        var block = BlockOf(text, key);
+        var level = Regex.Match(block, @"^[ \t]*(?:Lock)?Level:[ \t]*(\w+)", RegexOptions.Multiline | RegexOptions.IgnoreCase) is { Success: true } l ? l.Groups[1].Value
+            : Regex.Match(text, @"^LockLevel:[ \t]*(\w+)", RegexOptions.Multiline) is { Success: true } top ? top.Groups[1].Value : null;
+        var opener = Regex.Match(block, @"^[ \t]*(?:Lock)?Key:[ \t]*([^\s#]+)", RegexOptions.Multiline | RegexOptions.IgnoreCase) is { Success: true } k ? k.Groups[1].Value
+            : Regex.Match(text, @"^LockKey:[ \t]*([^\s#]+)", RegexOptions.Multiline) is { Success: true } topKey ? topKey.Groups[1].Value : null;
+        if (level is not null && !Enum.TryParse<LockLevel>(level, true, out _)) level = null;
+        var (formKey, editorId) = Identity(text);
+        // The project's references placing this record: a key places nothing, and a chest's references name it as their Base.
+        var placed = type == typeof(Key) ? [] : CellRecords(pluginDir).Where(c => c.Type is not null && typeof(IPlaced).IsAssignableFrom(c.Type))
+            .Where(c => Regex.Match(File.ReadAllText(c.File), @"^Base:[ \t]*([^\s#]+)", RegexOptions.Multiline) is { Success: true } b
+                && (b.Groups[1].Value.Equals(editorId, StringComparison.OrdinalIgnoreCase)
+                    || formKey is { } own && b.Groups[1].Value.Equals(Session.FormKeyText(own), StringComparison.OrdinalIgnoreCase)))
+            .Select(c => c.Relative).ToList();
+        var said = "a lock is the placed reference's, not " + (type == typeof(Key) ? "its key's" : $"{Article(type.Name)}'s") +
+            ": the reference of the chest or door, in its cell's Temporary/ folder, has `Lock:` and below it, two spaces in, `Level:` — " +
+            "Novice, Apprentice, Adept, Expert, Master, or RequiresKey — and `Key:`, the key that opens it" +
+            (type == typeof(Key) ? $" — {editorId ?? "this key"}" : "");
+        if (placed is [var reference])
+        {
+            var set = $"{{\"path\": \"Lock.Level\", \"value\": \"{level ?? "<its level, as Expert>"}\"}}" +
+                (opener is not null ? $", {{\"path\": \"Lock.Key\", \"value\": {ToolCalls.Quoted(opener)}}}" : "");
+            said += $"; the project places it in {reference}: one call writes the lock there — " +
+                ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), reference, set) + " — then delete it here";
+        }
+        else said += "; write it there, and delete it here";
+        return said;
     }
 
     /// <summary>
@@ -1793,6 +1842,35 @@ public static class RecordFiles
             count = i - at + 1;
         }
         return count;
+    }
+
+    /// <summary>
+    /// A reference written as a PlacedObject whose Base is an NPC or a leveled NPC, made the PlacedNpc it is: an NPC is placed by
+    /// a PlacedNpc, and a PlacedObject's Base takes no NPC. Refused "Base names OldHroki, which is a Npc; Base takes a
+    /// PlaceableObject — write the editor ID of the one meant", 7 of eval round 144's package and follower runs never found the
+    /// kind, named other bases or none, and 6 of them failed.
+    /// </summary>
+    public static List<(string File, string Change)> NpcsPlacedAsObjects(string pluginDir, RecordIndex index)
+    {
+        var changes = new List<(string File, string Change)>();
+        var projectNpcs = FlatRecords(pluginDir).Where(f => f.Type == typeof(Npc) || f.Type == typeof(LeveledNpc))
+            .Select(f => Identity(File.ReadAllText(f.File))).ToList();
+        bool IsNpc(string named) =>
+            projectNpcs.Any(n => named.Equals(n.EditorId, StringComparison.OrdinalIgnoreCase)
+                || n.FormKey is { } key && (named.Equals(Session.FormKeyText(key), StringComparison.OrdinalIgnoreCase) || named.Equals(key.ToString(), StringComparison.OrdinalIgnoreCase)))
+            || (index.ByEditorId.TryGetValue(named, out var byId) ? byId : FormKey.TryFactory(named, out var byKey) ? byKey : (FormKey?)null) is { } found
+                && index.ByFormKey.TryGetValue(found, out var entry) && entry.Type is "Npc" or "LeveledNpc";
+        foreach (var (file, relative, type) in CellRecords(pluginDir).Where(c => c.Type == typeof(PlacedObject)))
+        {
+            var text = File.ReadAllText(file).Replace("\r\n", "\n");
+            if (MisplacedFields.Root(text) is not { } root || root.Children.TryGetValue(new YamlDotNet.RepresentationModel.YamlScalarNode("Base"), out var baseNode) is false
+                || baseNode is not YamlDotNet.RepresentationModel.YamlScalarNode { Value: { Length: > 0 } named } || !IsNpc(named.Trim()))
+                continue;
+            MisplacedFields.Save(file, ObjectTypeLine.Replace(text, "MutagenObjectType: PlacedNpc", 1));
+            changes.Add((relative, $"wrote `MutagenObjectType: PlacedNpc` in place of PlacedObject — its Base, {named.Trim()}, is an NPC, and an NPC " +
+                "is placed by a PlacedNpc"));
+        }
+        return changes;
     }
 
     /// <summary>

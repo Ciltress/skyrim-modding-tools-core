@@ -18,6 +18,11 @@ The loop in `skyrim-modding-basics` — look up, get the text, edit, build, depl
   `LItem…` lists hold items, `LChar…` lists hold NPCs: an item never goes into an `LChar…` list.
 - **What NPCs of a kind carry** comes from the leveled item list their template's `Items` name: add an
   item to that list, not to the NPCs — *Where a new record goes* below names the bandits'.
+- **What NPCs of a kind cast** comes from the leveled spell list among their template's `ActorEffect`: bandit
+  mages cast from `LSpellBandit01FireFrostShock` (and its `03`, `05` for stronger ones). Add the spell to that list,
+  `addPatch` and an entry with its `Level`, as for items, and change no NPC.
+- **How strong a place's enemies are** is no list's: a leveled NPC's level follows the player's within the cell's
+  encounter zone, its `MinLevel` and `MaxLevel` — `skyrim-modding-world`, *Locations, encounter zones, regions*.
 - **Adding to an existing list**: `addPatch` the list, then append your entries to the copy, every
   entry already in it kept. A new item or NPC goes into a list once a build has given it its FormID.
 - **Other mods changing the same list**: `readRecord` with `allVersions: true` shows every version.

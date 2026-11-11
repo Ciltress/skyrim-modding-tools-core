@@ -222,7 +222,7 @@ sounds and keywords, then write the name, numbers and effects asked for. Effects
 | A new … | Folder | Mirror | What makes it one |
 |---|---|---|---|
 | food | `Ingestibles/` | `FoodSweetroll`, `FoodApple` | `Flags` with `FoodItem`; `ConsumeSound` an eating one (`ITMFoodEat`), not a potion's; keyword `VendorItemFood`; effects as `FoodRestoreHealth`-like restores |
-| poison | `Ingestibles/` | `DamageHealth01` ("Weak Poison") | `Flags` with `Poison`; `ConsumeSound: ITMPoisonUse`; keyword `VendorItemPoison`; harmful effects — a damage effect flagged `Detrimental`, frost's resisted by `ResistFrost` |
+| poison | `Ingestibles/` | `DamageHealth01` ("Weak Poison") | `Flags` with `Poison`; `ConsumeSound: ITMPoisonUse`; keyword `VendorItemPoison`; harmful effects — a damage effect flagged `Detrimental`, named by its editor ID: health `AlchDamageHealth` (Weak Poison's own), frost `EnchFrostDamageFFContact`, fire `EnchFireDamageFFContact`, shock `EnchShockDamageFFContact` — the effects the game's frost, fire and shock weapons strike with, resisted by `ResistFrost`, `ResistFire`, `ResistShock`; the damage is the effect's `Magnitude` |
 | ingredient | `Ingredients/` | `FrostSalts`, `GlowingMushroom` | Up to four `Effects`, each an ingredient's (`Alch…` effects); `IngredientValue`; keyword `VendorItemIngredient` |
 | misc item | `MiscItems/` | a vanilla clutter or gem item | `Value`, `Weight`, a `Model` the game has; a `VendorItem…` keyword (`VendorItemClutter`, `VendorItemGems`, `VendorItemJewelry`) so merchants buy it |
 | soul gem | `SoulGems/` | `SoulGemGrand` (empty), `SoulGemGrandFilled` | `MaximumCapacity` (`Petty` … `Grand`, `Black` holds black souls), an empty one without a `ContainedSoul`; keyword `VendorItemSoulGem` |

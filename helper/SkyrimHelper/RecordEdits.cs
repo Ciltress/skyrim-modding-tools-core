@@ -630,6 +630,17 @@ public static class RecordEdits
             // past the check above (mini-round of 2026-11-08, keyword+detailed #4).
             RefuseRenamed(value);
         }
+        // A list of plain values sent as the lines a file writes — a region's points, "- 77366.93, 760.45703\n- …" — is those items,
+        // each whole: set as one text, it was written as a block of text, the build refused the file, the same text sent again
+        // answered success, and eval round 144's region #3 answered built.
+        if (steps[^1].Index is null && value is JsonValue plainSent && plainSent.TryGetValue<string>(out var plainSaid)
+            && Items(types[^1]) is { } plain && !plain.IsEnum && RecordLinks.LinkTarget(plain) is null && !typeof(Loqui.ILoquiObject).IsAssignableFrom(plain)
+            && Regex.IsMatch(plainSaid.Trim(), @"^-[ \t]"))
+        {
+            value = new JsonArray(Regex.Split(plainSaid.Trim(), @"\\n|\r?\n").Select(l => l.Trim()).Where(l => l.Length > 0)
+                .Select(l => (JsonNode?)JsonValue.Create(Regex.Replace(l, @"^-[ \t]*", "").Trim().Trim('"', '\''))).ToArray());
+            label += " (a list, sent as a text)";
+        }
         // A list of parts sent as a text — a leveled list's Entries as a JSON list in a text, then as the lines a file writes —
         // was written as that text, in quotes, then as a block of text: the build after each refused the file, the same text
         // sent again answered success, and the model wrote the file whole (eval round 117's npc+detailed #5). A text that
@@ -768,7 +779,7 @@ public static class RecordEdits
         if (value is not JsonValue one) return null;
         var said = one.TryGetValue<string>(out var text) ? text : one.ToJsonString();
         if (field.IsEnum || field.IsPrimitive && field != typeof(char))
-            return RecordLinks.Unfit(field, said) is { } unfit ? $"{said} — {unfit}" : null;
+            return RecordLinks.Unfit(field, said, Regex.Replace(path, @"\[\d+\]", "").Split('.')[^1]) is { } unfit ? $"{said} — {unfit}" : null;
         if (!typeof(Loqui.ILoquiObject).IsAssignableFrom(field) || Translated(field)) return null;
         // A text, the fields as a file writes them: set as `"LevelMult: 1"`, an NPC's level was written as that text, and the
         // build after it refused it (eval round 109's npc+detailed #4). A text in braces is read as the fields before this.
