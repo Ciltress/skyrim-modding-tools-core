@@ -21,6 +21,10 @@ The loop in `skyrim-modding-basics` — look up, get the text, edit, build, depl
   on the addon its `Armature` lists too. A new record that points at another new one — the armor at
   its addon, a recipe at its item, an enchanted weapon at its enchantment — names it by its editor ID;
   one build gives both their FormIDs and writes the link. New meshes and textures go into `assets/`.
+- **A key** is a `Key` record (`KEYM`, in `Keys/`), from a vanilla one like `AngasMillAeriHouseKey`. What it opens is
+  no item: a chest is a Container (`CONT`, in `Containers/`) — never a recipe (`COBJ`) or a misc item — and its lock
+  is the reference's that places it in a cell, `Lock:` with `Level:` and `Key:` below it. Both are in the
+  `skyrim-modding-world` skill: read it.
 - **Done** when the item is built with every keyword its kind needs (REFERENCE, *Keywords carry the
   gameplay*) and a route brings it to the player (REFERENCE, *How an item reaches the player*).
 - **A keyword the game checks** — a weapon that counts as silver, an item a merchant buys — is one line in its

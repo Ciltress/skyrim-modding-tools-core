@@ -40,6 +40,46 @@ internal static class FlagLines
     /// </summary>
     public static List<(string File, string Change)> OutOfFlags(string pluginDir) => EachFile(pluginDir, Lifted);
 
+    /// <summary>
+    /// `None` among Flags whose kind has no flag of that name — or the Flags written `None` — taken out: no flag is the list
+    /// without it. Refused "Flags has None — it takes one of …", eval round 146's storymanager #3 was then told by editRecord to
+    /// keep None in the list, and answered unbuilt.
+    /// </summary>
+    public static List<(string File, string Change)> NoneOutOfFlags(string pluginDir) => EachFile(pluginDir, NoneOut);
+
+    private static (string Text, string Change)? NoneOut(string text, Type type)
+    {
+        if (MisplacedFields.Root(text) is not { } root) return null;
+        var lines = text.Split('\n').ToList();
+        static bool IsNone(string? name) => string.Equals(name?.Trim().Trim('"', '\''), "None", StringComparison.OrdinalIgnoreCase);
+        foreach (var (mapping, owner, path) in Mappings(root, type))
+            foreach (var (keyNode, value) in mapping.Children)
+            {
+                if (keyNode is not YamlScalarNode { Value: { } key } || owner.GetProperties(Public).FirstOrDefault(p => p.Name == key) is not { } property
+                    || !IsFlags(property.PropertyType)
+                    || Enum.GetNames(Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType).Contains("None", StringComparer.OrdinalIgnoreCase))
+                    continue;
+                var label = path is null ? key : $"{path}.{key}";
+                var keyRow = (int)keyNode.Start.Line - 1;
+                var keyColumn = (int)keyNode.Start.Column - 1;
+                switch (value)
+                {
+                    case YamlSequenceNode { Style: not SequenceStyle.Flow } items when items.Children.OfType<YamlScalarNode>().FirstOrDefault(i => IsNone(i.Value)) is { } none:
+                        lines.RemoveAt((int)none.Start.Line - 1);
+                        if (items.Children.Count == 1) lines[keyRow] = $"{new string(' ', keyColumn)}{key}: []";
+                        return (string.Join('\n', lines), $"took None out of {label}: {label} have no flag None — no flag is the list without it");
+                    case YamlSequenceNode { Style: SequenceStyle.Flow } flow when flow.Start.Line == keyNode.Start.Line && flow.End.Line == keyNode.Start.Line
+                            && flow.Children.OfType<YamlScalarNode>().Any(i => IsNone(i.Value)):
+                        lines[keyRow] = $"{new string(' ', keyColumn)}{key}: [{string.Join(", ", flow.Children.OfType<YamlScalarNode>().Where(i => !IsNone(i.Value)).Select(i => i.Value))}]";
+                        return (string.Join('\n', lines), $"took None out of {label}: {label} have no flag None — no flag is the list without it");
+                    case YamlScalarNode { Value: var said } when IsNone(said) && value.Start.Line == keyNode.Start.Line:
+                        lines[keyRow] = $"{new string(' ', keyColumn)}{key}: []";
+                        return (string.Join('\n', lines), $"wrote {label} as [], no flag: {label} have no flag None");
+                }
+            }
+        return null;
+    }
+
     private static List<(string File, string Change)> EachFile(string pluginDir, Func<string, Type, (string Text, string Change)?> next)
     {
         var changes = new List<(string File, string Change)>();

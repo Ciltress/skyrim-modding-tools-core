@@ -1047,6 +1047,10 @@ public static class RecordLinks
                 if (type == typeof(QuestStage.Flag) && Enum.GetNames<Quest.Flag>().Contains(name, StringComparer.OrdinalIgnoreCase))
                     return $"{name} is the quest's own flag, among the Flags at the margin of the quest's file — keep it there, and delete it " +
                         $"here; a stage's Flags take {string.Join(", ", names)}";
+                // A quest alias's flag on an NPC: the alias written as a record of its own (eval round 146's scene+detailed #3).
+                if (type != typeof(QuestAlias.Flag) && Enum.GetNames<QuestAlias.Flag>().Contains(name, StringComparer.Ordinal))
+                    return $"{name} is a quest alias's flag: an alias is an item of its quest's `Aliases:` list, its Flags there — delete it here; " +
+                        $"these Flags take {string.Join(", ", names.Take(16))}{(names.Length > 16 ? ", …" : "")}";
                 return names.FirstOrDefault(n => n.Equals(name, StringComparison.OrdinalIgnoreCase)) is { } spelled
                     ? $"it is spelled {spelled}"
                     : Listed(type, name, key) is var listed && listed.Length > 0

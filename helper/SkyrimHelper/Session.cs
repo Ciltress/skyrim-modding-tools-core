@@ -588,7 +588,9 @@ public sealed partial class Session : IDisposable
         // A record named twice — the model's ["012EB7:Skyrim.esm", "IronSword"] — is copied once, not reported in the project as well.
         foreach (var formKey in requested.Select(raw => Resolve(raw)).Distinct())
         {
-            if (ProjectFileFor(projectDir, formKey) is { } existing)
+            // A cell's, a worldspace's or a topic's copy is its folder's RecordData.yaml, never a file named for it.
+            var folderRecord = Contexts(formKey).FirstOrDefault()?.Record is ICellGetter or IWorldspaceGetter or IDialogTopicGetter;
+            if (ProjectFileFor(projectDir, formKey, folderRecord) is { } existing)
             {
                 var kept = new JsonObject { ["formId"] = FormKeyText(formKey), ["file"] = existing };
                 // A merge asked for a record copied before: the other plugins' lost changes written into that copy, its own changes
@@ -702,12 +704,18 @@ public sealed partial class Session : IDisposable
             Index, project, Contexts, own);
     }
 
-    private static string? ProjectFileFor(string projectDir, FormKey formKey)
+    private static string? ProjectFileFor(string projectDir, FormKey formKey, bool folderRecord = false)
     {
-        if (!Directory.Exists(projectDir)) return null;
+        // A folder record's file named for it — `Cells/8/1/EmbershardMine01 - 0B6BE6_Skyrim.esm/EmbershardMine01 - 0B6BE6_Skyrim.esm.yaml`,
+        // written by hand — is no copy either: its copy, the folder's RecordData.yaml, is brought in where it is not there yet.
+        if (!Directory.Exists(projectDir) || folderRecord) return null;
         var suffix = $"{formKey.ID:X6}_{formKey.ModKey.FileName}.yaml";
+        // Only a file the build reads, in a group's folder: the model's own `1/EmbershardMine01 - 0B6BE6_Skyrim.esm.yaml`, which
+        // the build refuses, was answered as the copy "in the project already", nothing was copied, and editRecord found no file
+        // for the cell (eval round 146's encounterzone #1).
         return Directory.EnumerateFiles(projectDir, "*.yaml", SearchOption.AllDirectories)
-            .FirstOrDefault(f => Path.GetFileName(f).EndsWith(suffix, StringComparison.OrdinalIgnoreCase)) is { } hit
+            .FirstOrDefault(f => Path.GetFileName(f).EndsWith(suffix, StringComparison.OrdinalIgnoreCase)
+                && RecordFiles.InGroupFolder(Path.GetRelativePath(projectDir, f))) is { } hit
             ? Path.GetRelativePath(projectDir, hit).Replace('\\', '/')
             : null;
     }
@@ -766,6 +774,7 @@ public sealed partial class Session : IDisposable
         // A part's field written among its Flags, and a flag written as a field, before the moves read the part's fields.
         corrected.AddRange(FlagLines.OutOfFlags(dir));
         corrected.AddRange(FlagLines.IntoFlags(dir));
+        corrected.AddRange(FlagLines.NoneOutOfFlags(dir));
         // A weapon's field at the margin takes the place of its part's, where that one is the weapon's it was written after.
         corrected.AddRange(MisplacedFields.Move(dir, (type, text, part, key, kept, written) =>
             KeptFromSource.CopiedFrom(Cache, Index, type, text, part, key, kept, written)));

@@ -462,6 +462,20 @@ export function moveRecordFile(projectsDir: string, paths: ProjectPaths, from: s
         throw new ProjectError(`'${to}' is not in ${paths.plugin}: give where the file goes as its path there, like "Weapons/FlameBlade.yaml".`);
     }
     const parts = inPlugin.split(path.sep);
+    // A folder sent as where the file goes — the cell's own, `Cells/0/6/WhiterunBreezehome - 0165A8_Skyrim.esm` — is the file
+    // into it, a reference into the cell's Temporary/; one in it already is no move. Answered "like …_Skyrim.yaml", a name made
+    // from the folder's, eval round 146's key #1 ran out of turns.
+    if (fs.existsSync(target) && fs.statSync(target).isDirectory()) {
+        const inside = path.relative(target, source);
+        if (!inside.startsWith('..') && !path.isAbsolute(inside)) {
+            throw new ProjectError(`${from.trim()} is in ${to.trim()} already, as ${path.relative(paths.plugin, source).split(path.sep).join('/')}: ` +
+                'nothing to move — build again.');
+        }
+        const reference = /^(cells|worldspaces)$/i.test(parts[0]) && fs.existsSync(path.join(target, 'RecordData.yaml'))
+            && /^MutagenObjectType:[ \t]*Placed/m.test(fs.readFileSync(source, 'utf8'));
+        return moveRecordFile(projectsDir, paths, path.relative(paths.plugin, source),
+            path.join(inPlugin, reference ? 'Temporary' : '', path.basename(source)));
+    }
     const recordData = path.basename(target).toLowerCase() === 'recorddata.yaml';
     // A RecordData.yaml is a record's own file only in a record's folder — a dialogue topic's, a cell's, a worldspace's — and
     // the build's refusal of a topic written as DialogTopics/<topic>/<topic>.yaml names the move to it: refused here, eval
@@ -469,9 +483,12 @@ export function moveRecordFile(projectsDir: string, paths: ProjectPaths, from: s
     const folderRecord = recordData && (/^dialogtopics$/i.test(parts[0]) ? parts.length === 3 : /^(cells|worldspaces)$/i.test(parts[0]) && parts.length >= 3);
     if (!/\.yaml$/i.test(target) || (recordData && !folderRecord)) {
         const editorId = /^EditorID:[ \t]*(\S+)/m.exec(fs.readFileSync(source, 'utf8'))?.[1];
+        // A copy's folder name, `… - 0165A8_Skyrim.esm`, is a folder: the file goes into it under its own name.
         const like = recordData && editorId
             ? [...parts.slice(0, -1), `${editorId}.yaml`].join('/')
-            : `${parts.join('/').replace(/\.[^./]*$/, '')}.yaml`;
+            : /\.(esm|esp|esl)$/i.test(parts[parts.length - 1])
+                ? [...parts, path.basename(source)].join('/')
+                : `${parts.join('/').replace(/\.[^./]*$/, '')}.yaml`;
         throw new ProjectError(`'${to}': a record file is named for its record and ends in .yaml — the build reads no other — ` +
             `like "${like}".`);
     }

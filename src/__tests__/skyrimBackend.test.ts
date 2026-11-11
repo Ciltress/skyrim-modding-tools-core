@@ -721,6 +721,29 @@ describe('the Skyrim backend', () => {
         expect(fs.existsSync(path.join(plugin, 'DialogTopics', 'InnChatterHuldaTopic', 'InnChatterHuldaTopic.yaml'))).toBe(false);
     });
 
+    it('moves a file into a folder sent as where it goes, a reference into its cell\'s Temporary/, and calls one there already no move', async () => {
+        // Sent the cell's folder as `to`, moveRecord answered "like …_Skyrim.yaml", a name made from the folder's: eval round 146's
+        // key #1 ran out of turns.
+        const { backend, fixture } = makeBackend();
+        await backend.newProject({ project: 'CellarKey' });
+        const plugin = path.join(fixture.projects, 'CellarKey', 'plugin');
+        const cell = 'Cells/0/6/WhiterunBreezehome - 0165A8_Skyrim.esm';
+        write(path.join(plugin, ...cell.split('/'), 'RecordData.yaml'), 'EditorID: WhiterunBreezehome\n');
+        write(path.join(plugin, ...cell.split('/'), 'Temporary', 'InChest.yaml'), 'MutagenObjectType: PlacedObject\nEditorID: InChest\n');
+        write(path.join(plugin, 'Temporary', 'ChestRef.yaml'), 'MutagenObjectType: PlacedObject\nEditorID: ChestRef\n');
+        write(path.join(plugin, 'Keys', 'CellarKey.yaml'), 'EditorID: CellarKey\n');
+        write(path.join(plugin, 'Misc', 'CellarKey2.yaml'), 'EditorID: CellarKey2\n');
+
+        await backend.moveRecord({ project: 'CellarKey', from: 'Temporary/ChestRef.yaml', to: cell });
+        expect(fs.existsSync(path.join(plugin, ...cell.split('/'), 'Temporary', 'ChestRef.yaml'))).toBe(true);
+        await expect(backend.moveRecord({ project: 'CellarKey', from: `${cell}/Temporary/InChest.yaml`, to: cell }))
+            .rejects.toThrow(/already, as .*Temporary\/InChest\.yaml: nothing to move — build again/);
+        await backend.moveRecord({ project: 'CellarKey', from: 'Misc/CellarKey2.yaml', to: 'Keys' });
+        expect(fs.existsSync(path.join(plugin, 'Keys', 'CellarKey2.yaml'))).toBe(true);
+        await expect(backend.moveRecord({ project: 'CellarKey', from: 'Keys/CellarKey.yaml', to: 'Cells/0/6/Whiterun - 0165A8_Skyrim.esm' }))
+            .rejects.toThrow(/like "Cells\/0\/6\/Whiterun - 0165A8_Skyrim\.esm\/CellarKey\.yaml"/);
+    });
+
     it('takes a path the plugin folder has no file at from the projects folder, and names the files outside it when none is there', async () => {
         // The model gave moveRecord the path it had written from the projects folder — the same as `to`, or with plugin/ before
         // it — and was refused 11 times in 3 runs, told only "No file" (eval round 67).

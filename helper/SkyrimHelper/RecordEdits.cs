@@ -33,7 +33,14 @@ public static class RecordEdits
             throw new HelperException("badRequest", "Nothing to change: give `set`, a list of fields by path with their values — " +
                 "[{\"path\": \"BasicStats.Damage\", \"value\": 12}, {\"path\": \"Name\", \"value\": \"Flame Blade\"}] — or `remove`, " +
                 "paths of fields to delete — [\"Critical\"].");
-        var (file, relative, type) = Find(pluginDir, record, out var found);
+        (string File, string Relative, Type Type) hit;
+        string? found;
+        try { hit = Find(pluginDir, record, out found); }
+        catch (HelperException missing) when (missing.Code == "notFound" && index is not null && NotInProject(pluginDir, record, index) is { } game)
+        {
+            throw new HelperException("badRequest", game);
+        }
+        var (file, relative, type) = hit;
         if (LevelBounds.BothCalls(pluginDir, relative, type.Name, set, remove) is { } both) throw new HelperException("badRequest", both);
         var written = File.ReadAllText(file);
         var text = written.Replace("\r\n", "\n");
@@ -303,6 +310,45 @@ public static class RecordEdits
         throw new HelperException("notFound", $"No record file '{record}' in the project — its record files: " +
             (flat.Count == 0 ? "none yet; write one first" : string.Join(", ", flat.Take(20).Select(f => f.Relative)) + (flat.Count > 20 ? ", …" : "")) +
             ". Give the file as its path in the plugin folder, like Weapons/FlameBlade.yaml, or the record's EditorID.");
+    }
+
+    /// <summary>
+    /// A record the call names that the project has no file of, but the load order has — by its editor ID, its FormID, a file
+    /// or copy named for it, or, sent a bare name, the in-game name of up to three records: editRecord changes the project's
+    /// files alone, so the answer is the call that copies it in. Told "No record file … write one first" for the game's
+    /// records — EmbershardMine01, WhiterunBanneredMare, a bandit's template — eval round 146's runs sent such calls 24 times
+    /// in 14 runs, and encounterzone #1 wrote the mine's cell by hand into folders the build refuses.
+    /// </summary>
+    private static string? NotInProject(string pluginDir, string record, RecordIndex index)
+    {
+        var wanted = record.Replace('\\', '/').Trim().TrimEnd('/');
+        var last = wanted.Split('/')[^1];
+        var name = Regex.Replace(last, @"\.ya?ml$", "", RegexOptions.IgnoreCase);
+        if (name.IndexOf(" - ", StringComparison.Ordinal) is var cut and > 0) name = name[..cut];
+        var entries = new List<RecordIndex.Entry>();
+        if (FormKey.TryFactory(wanted, out var key) && index.ByFormKey.TryGetValue(key, out var byKey)) entries.Add(byKey);
+        else if (name.Length > 0 && index.ByEditorId.TryGetValue(name, out var id) && index.ByFormKey.TryGetValue(id, out var byId)) entries.Add(byId);
+        else if (!wanted.Contains('/') && !Regex.IsMatch(wanted, @"\.ya?ml$", RegexOptions.IgnoreCase) && wanted.Length > 2)
+            entries.AddRange(index.ByFormKey.Values.Where(e => string.Equals(e.Name, wanted, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(e => e.FormKey.ModKey.FileName.ToString().Length).Take(3));
+        if (entries.Count == 0) return null;
+        var project = ToolCalls.ProjectOf(pluginDir);
+        string Shown(RecordIndex.Entry e) => $"{e.EditorId ?? Session.FormKeyText(e.FormKey)} ({RecordFiles.Article(e.Type)} of {e.FormKey.ModKey.FileName}, " +
+            $"{Session.FormKeyText(e.FormKey)})";
+        // A copy already in the project under another name — its EditorID changed since — is the file to name.
+        var files = RecordFiles.FlatRecords(pluginDir).Concat(RecordFiles.NestedRecords(pluginDir)).ToList();
+        foreach (var entry in entries)
+            if (files.FirstOrDefault(f => RecordFiles.Identity(File.ReadAllText(f.File)).FormKey == entry.FormKey) is var copy && copy.File is not null)
+                return $"No record file '{record}' in the project: its copy of {Shown(entry)} is {copy.Relative} — name that file, " +
+                    $"{ToolCalls.Edit(project, copy.Relative, "")[..^1]}, \"set\": …}}.";
+        var first = entries[0];
+        var named = entries.Count == 1 ? $"'{record}' is {Shown(first)}, a record of the load order the project has no copy of" :
+            $"'{record}' is the in-game name of {string.Join(", ", entries.Select(Shown))}, records of the load order the project has no copy of";
+        return $"No record file '{record}' in the project: {named}, and editRecord changes the project's files alone. To change " +
+            $"{(entries.Count == 1 ? "it" : $"one — {first.EditorId ?? Session.FormKeyText(first.FormKey)} here —")} wherever the game uses it, one call copies it into the " +
+            $"project — addPatch {{\"project\": {ToolCalls.Quoted(project)}, \"records\": [\"{Session.FormKeyText(first.FormKey)}\"]}} — " +
+            "then send this edit to the file its answer names. For a record of the mod's own made from it, write a new file with an " +
+            "EditorID of its own instead. Nothing was changed.";
     }
 
     private static List<Step> Parse(string path)
@@ -824,7 +870,10 @@ public static class RecordEdits
         var names = Regex.Split(said.Trim().TrimStart('[').TrimEnd(']'), @"\\n|\r?\n|,")
             .Select(n => n.Trim().TrimStart('-').Trim().Trim('"', '\'')).Where(n => n.Length > 0).ToList();
         var held = At(text, steps) is YamlSequenceNode list ? list.Children.OfType<YamlScalarNode>().Select(s => s.Value ?? "").ToList() : [];
-        if (names.Count == 1 && held.Count > 0 && !held.SequenceEqual(names))
+        // A list sent in its brackets, `"[AllowRepeatedStages]"`, is the list whole: taken for one item "among its items already",
+        // eval round 146's storymanager #3 could not set its quest's Flags without the None in them.
+        var whole = said.Trim() is ['[', .., ']'];
+        if (names.Count == 1 && held.Count > 0 && !held.SequenceEqual(names) && !whole)
             throw new HelperException("badRequest", held.Contains(names[0])
                 ? $"{label}: a list, set whole, and {names[0]} is among its items already: {Json(held)}. Nothing was written."
                 : $"{label}: a list, set whole — to add {names[0]}, set it to {Json([.. held, names[0]])}. Nothing was written.");
@@ -951,6 +1000,14 @@ public static class RecordEdits
         {
             var step = steps[i];
             var last = i == steps.Count - 1;
+            // A part of fields written as one value — a reference's `Lock: CellarKey` — set whole as the mapping it is, with what that
+            // value meant among its fields: told "set Lock whole", eval round 146's key #1 had been sent `Lock.Level` by the build.
+            if (node is YamlScalarNode one && i > 0 && types[i - 1] is var part && IsPart(part) && Property(part, step.Key) is not null)
+            {
+                throw new HelperException("badRequest", $"{path}: {Upto(steps, i)} is written as one value, `{one.Value}`, and takes fields of its " +
+                    $"own — {string.Join(", ", Fields(part).Take(6))} — set it whole as a mapping, {{\"path\": \"{Upto(steps, i)}\", \"value\": " +
+                    $"{{\"{step.Key}\": {value?.ToJsonString() ?? "null"}, …}}}}, with what `{one.Value}` was under its field's name. Nothing was written.");
+            }
             if (node is not YamlMappingNode mapping)
                 throw new HelperException("badRequest", $"{path}: {Upto(steps, i)} is written as one value, not as fields — set {Upto(steps, i)} whole. Nothing was written.");
             var key = mapping.Children.Keys.OfType<YamlScalarNode>().FirstOrDefault(k => k.Value == step.Key);

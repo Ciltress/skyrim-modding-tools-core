@@ -85,6 +85,10 @@ public static class RecordFiles
     /// </summary>
     internal static string? GroupFolderOf(string typeName) => GroupCalled(typeName);
 
+    /// <summary>Whether a file of the plugin folder, by its path there, is in a group's folder — where the build reads records.</summary>
+    internal static bool InGroupFolder(string relative) =>
+        relative.Replace('\\', '/').Split('/') is [var first, _, ..] && Groups.ContainsKey(first);
+
     private static string? GroupCalled(string folder)
     {
         string[] words = [folder, folder.EndsWith("es", StringComparison.OrdinalIgnoreCase) ? folder[..^2] : folder, folder.TrimEnd('s', 'S')];
@@ -861,7 +865,16 @@ public static class RecordFiles
             : null;
         var example = ExampleName(type.Name) is { } vanilla ? $" (readRecord {{\"record\": \"{vanilla}\"}})" : "";
         var holds = owner.Count == 0 && bare.Contains("Items") ? HoldsItems(type, text, pluginDir, relative) : null;
-        var deleted = holds is not null
+        // A quest alias written as a record file of its own — `Npcs/HuldaAlias.yaml` with an alias's UniqueActor and flags — is an
+        // item of its quest's Aliases list: told "a Npc has no field UniqueActor (delete it …)", eval round 146's scene+detailed #1
+        // and #3 ran out of turns on such files.
+        var quest = type != typeof(Quest) && bare.Any(AliasFields.Contains)
+            ? FlatRecords(pluginDir).Where(f => f.Type == typeof(Quest)).Select(f => f.Relative).FirstOrDefault() ?? "" : null;
+        var deleted = quest is not null
+            ? $"{(bare.Count == 1 ? "it is" : "they are")} a quest alias's: an alias is no record of its own but an item of its quest's " +
+              $"`Aliases:` list, in the quest's file{(quest.Length > 0 ? $", {quest}" : "")} — `- ID: 0`, `Name: …`, `UniqueActor: <the NPC's editor ID>`, " +
+              $"its Flags below them — write it there, and delete this file: {ToolCalls.Delete(pluginDir, relative)}"
+            : holds is not null
             ? $"{holds}; if {Article(type.Name)} was meant, delete {them}: one call deletes {them} and builds again: " +
                 ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, "", string.Join(", ", bare.Select(ToolCalls.Quoted)), build: true)
             : owner is [var (folder, of)]
@@ -880,6 +893,13 @@ public static class RecordFiles
         return string.Join(", ", named.Append(bare.Count == 0 ? "" : $"{string.Join(", ", bare)} ({deleted})")
             .Where(s => s.Length > 0));
     }
+
+    /// <summary>Fields only a quest's alias has: written in a record file of their own, they are an alias written as a record.</summary>
+    private static readonly HashSet<string> AliasFields = new(StringComparer.Ordinal)
+    {
+        "UniqueActor", "ForcedReference", "FindMatchingRefFromEvent", "FindMatchingRefNearAlias", "CreateReferenceToObject",
+        "ExternalAliasReference"
+    };
 
     /// <summary>Fields a lock was written with on what it locks, or on its key.</summary>
     private static readonly Regex LockField = new(@"^(Lock|Locks|Locked|LockLevel|LockKey|LockData|LockedBy|KeyLevel|Lockpicking)$", RegexOptions.IgnoreCase);
@@ -900,8 +920,13 @@ public static class RecordFiles
         var said = "a lock is the placed reference's, not " + (type == typeof(Key) ? "its key's" : $"{Article(type.Name)}'s") +
             ": the reference of the chest or door, in its cell's Temporary/ folder, has `Lock:` and below it, two spaces in, `Level:` — " +
             "Novice, Apprentice, Adept, Expert, Master, or RequiresKey — and `Key:`, the key that opens it" +
-            (type == typeof(Key) ? $" — {editorId ?? "this key"}" : "");
-        if (placed is [var reference])
+            (type == typeof(Key) ? $" — {editorId ?? "this key"}" : "") +
+            // A chest written as a recipe or a misc item, which locks nothing: all four failed key runs of eval round 146 did.
+            (type != typeof(Key) && type != typeof(Container) && type != typeof(Door)
+                ? $"; and a chest is a Container, its file in Containers/, a door a Door in Doors/ — not {Article(type.Name)}" : "");
+        if (placed is [var locked] && Regex.IsMatch(File.ReadAllText(Path.Combine(pluginDir, locked)), @"^Lock:", RegexOptions.Multiline))
+            said += $"; {locked}, the reference placing it, has its lock already — delete it here";
+        else if (placed is [var reference])
         {
             var set = $"{{\"path\": \"Lock.Level\", \"value\": \"{level ?? "<its level, as Expert>"}\"}}" +
                 (opener is not null ? $", {{\"path\": \"Lock.Key\", \"value\": {ToolCalls.Quoted(opener)}}}" : "");
@@ -961,6 +986,40 @@ public static class RecordFiles
                 ? $"deleted its {string.Join(", ", keys)}: a lock is the placed reference's, and {reference.Relative}, the reference placing it, has its own"
                 : $"moved its lock onto {reference.Relative}, the reference placing it — a lock is the placed reference's, not {Article(type.Name)}'s: " +
                   $"`Lock:` with `Level: {level}`" + (opener is null ? "" : $" and `Key: {opener}`")));
+        }
+        // A reference's lock written as one value — `Lock: CellarKey`, with `Level: RequiresKey` beside it at the margin — made the
+        // `Lock:` block it is: the build named `Lock.Level` for it, and editRecord refused that very call (eval round 146's key #1).
+        foreach (var (file, relative, type) in CellRecords(pluginDir).Where(c => c.Type is not null && typeof(IPlaced).IsAssignableFrom(c.Type)))
+        {
+            var text = File.ReadAllText(file).Replace("\r\n", "\n").TrimEnd('\n') + "\n";
+            var one = Regex.Match(text, @"^Lock:[ \t]*(?<value>[^\s#\[{][^#\n]*?)[ \t]*(?:#[^\n]*)?\n", RegexOptions.Multiline);
+            if (!one.Success || one.Groups["value"].Value is "~" or "null" or "''" or "\"\"") continue;
+            var value = one.Groups["value"].Value.Trim('\'', '"');
+            string? level = Enum.TryParse<LockLevel>(value, true, out var asLevel) && !int.TryParse(value, out _) ? asLevel.ToString() : null;
+            var opener = level is null ? value : null;
+            const string Mark = "\u0000Lock\n"; // where the block goes, kept in place while margin lines go
+            var rest = text.Remove(one.Index, one.Length).Insert(one.Index, Mark);
+            var taken = new List<string>();
+            foreach (var margin in new[] { "LockLevel", "Level", "LockKey", "Key" }.Where(k => !FieldsOf(type!).Contains(k)))
+            {
+                var line = Regex.Match(rest, $@"^{margin}:[ \t]*(?<value>[^\s#]+)[^\n]*\n", RegexOptions.Multiline);
+                if (!line.Success) continue;
+                var written = line.Groups["value"].Value.Trim('\'', '"');
+                if (margin.EndsWith("Level", StringComparison.Ordinal))
+                {
+                    if (level is not null || !Enum.TryParse<LockLevel>(written, true, out var marginLevel) || int.TryParse(written, out _)) continue;
+                    level = marginLevel.ToString();
+                }
+                else if (opener is null) opener = written;
+                else continue;
+                rest = rest.Remove(line.Index, line.Length);
+                taken.Add(margin);
+            }
+            MisplacedFields.Save(file, rest.Replace(Mark, "Lock:\n" + (level is null ? "" : $"  Level: {level}\n") + (opener is null ? "" : $"  Key: {opener}\n")));
+            changes.Add((relative, $"wrote its lock, `Lock: {one.Groups["value"].Value}`" + (taken.Count > 0 ? $" and {string.Join(", ", taken)} beside it" : "") +
+                ", as the `Lock:` block it is: below it, two spaces in, " + (level is null ? "" : $"`Level: {level}`") +
+                (level is not null && opener is not null ? " and " : "") + (opener is null ? "" : $"`Key: {opener}`") +
+                (level is null ? " — with no `Level:` the lock is a Novice one; Lock.Level sets another" : "")));
         }
         // A key written with a lock — `Lock: CellarChest`, the chest it opens — where a reference's lock of the project names
         // that key already: the key holds nothing of it (eval round 145's key #2, refused for it to its last turn).
@@ -1368,6 +1427,16 @@ public static class RecordFiles
                 {
                     leftOut.Add((relative, copy));
                     records--;
+                    continue;
+                }
+                // A quest's alias written as a file of its own, in `Aliases/`: moved into Npcs/ as the group-folder refusal said, eval
+                // round 146's scene+detailed #3 ran out of turns on it there.
+                if (TopLevelKey.Matches(File.ReadAllText(file)).Select(m => m.Groups[1].Value).Any(AliasFields.Contains))
+                {
+                    var quest = FlatRecords(pluginDir).Where(f => f.Type == typeof(Quest)).Select(f => f.Relative).FirstOrDefault();
+                    problems.Add($"{relative}: an alias is no record of its own but an item of its quest's `Aliases:` list, in the quest's file" +
+                        (quest is not null ? $", {quest}" : "") + " — `- ID: 0`, `Name: …`, `UniqueActor: <the NPC's editor ID>`, its Flags below them — " +
+                        $"write it there, and delete this file: {ToolCalls.Delete(pluginDir, relative)}");
                     continue;
                 }
                 var spelled = Groups.Keys.FirstOrDefault(g => g.Equals(parts[0], StringComparison.OrdinalIgnoreCase));
@@ -2461,9 +2530,38 @@ public static class RecordFiles
             quoted = BytesWritten(File.ReadAllLines(path), type);
         else if (path.Length > 0 && File.Exists(path) && Regex.Match(message, @"^(\w+) was null\.?$") is { Success: true } nulled)
             quoted = EmptyWritten(File.ReadAllLines(path), nulled.Groups[1].Value);
+        else if (path.Length > 0 && File.Exists(path) && Regex.Match(message, @"Type String not expected length: (\d+) != 4") is { Success: true } code)
+            quoted = CodeWritten(File.ReadAllLines(path), int.Parse(code.Groups[1].Value));
         return new HelperException("badRecord",
             $"{where} cannot be read as a record: {message}{quoted} Write it the way readRecord shows a record of its " +
             "type — the same field names, nesting and value formats.");
+    }
+
+    /// <summary>
+    /// The lines that write a four-letter code — a quest's `Event: CLOC` — with a value of the length the reader's "Type String
+    /// not expected length: 18 != 4" names, which names no line: eval round 146's storymanager #2 wrote the node's editor ID,
+    /// `Event: DA09ChangeLocation`, and was so refused eight builds running. Empty where no line has such a value.
+    /// </summary>
+    /// <summary>The fields of the game's records and their parts that hold a four-letter code — a quest's Event, an alias's FromEvent.</summary>
+    private static readonly Lazy<HashSet<string>> CodeFields = new(() => typeof(Quest).Assembly.GetTypes()
+        .Where(t => t.Namespace == typeof(Quest).Namespace && t.IsClass)
+        .SelectMany(t => t.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        .Where(p => (Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType) == typeof(RecordType))
+        .Select(p => p.Name).ToHashSet(StringComparer.Ordinal));
+
+    private static string CodeWritten(string[] lines, int length)
+    {
+        var found = lines.Select((line, at) => (At: at, Match: Regex.Match(line.TrimEnd('\r'), @"^[ \t]*(?:-[ \t]+)?(?<key>[A-Za-z]\w*):[ \t]*(?<value>[^\s#'""]+)[ \t]*(?:#.*)?$")))
+            .Where(l => l.Match.Success && l.Match.Groups["value"].Value.Length == length && CodeFields.Value.Contains(l.Match.Groups["key"].Value))
+            .Take(3).ToList();
+        if (found.Count == 0) return "";
+        var said = string.Join(", ", found.Select(l => $"line {l.At + 1}, `{lines[l.At].Trim()}`"));
+        var quest = found.Any(l => l.Match.Groups["key"].Value is "Event" or "FromEvent");
+        return $" Written with {length} letters where a four-letter code goes: {said} — a field like {found[0].Match.Groups["key"].Value} takes the code " +
+            "readRecord shows, four letters" + (quest
+                ? ": a quest's `Event:` is its story manager event's code — CLOC for a change of location — never a node's or a quest's " +
+                  "editor ID; the node names its quests itself"
+                : "") + ".";
     }
 
     /// <summary>
