@@ -453,8 +453,14 @@ export function moveRecordFile(projectsDir: string, paths: ProjectPaths, from: s
     if (!fs.existsSync(source)) {
         const name = path.basename(from.trim().replace(/\\/g, '/')).toLowerCase();
         const named = [...recordFiles(paths.plugin), ...strayRecordFiles(paths)].filter(file => path.basename(file).toLowerCase() === name);
-        // Not the file already where it is to go: that move is done, and its refusal names the project's files.
-        if (named.length === 1 && named[0] !== target) source = named[0];
+        // Not the file already where it is to go: that move is done — said so, no file named "not there". Sent its own path with
+        // the project before it, eval round 147's key+detailed #1 was told "No file at …" for the file at `to` already.
+        const slashed = (p: string) => p.trim().replace(/\\/g, '/').replace(/^\/+/, '').toLowerCase();
+        const same = fs.existsSync(target) && slashed(from).endsWith('/' + slashed(to));
+        if (named.length === 1 && named[0] !== target && !same) source = named[0];
+        else if (same) {
+            throw new ProjectError(`${path.relative(paths.plugin, target).split(path.sep).join('/')} is where the file is already: nothing to move — build again.`);
+        }
     }
     existingFile(projectsDir, source, from, paths, 'moved');
     const inPlugin = path.relative(paths.plugin, target);

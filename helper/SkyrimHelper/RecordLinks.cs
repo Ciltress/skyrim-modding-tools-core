@@ -906,7 +906,11 @@ public static class RecordLinks
             else if (propertyType != typeof(string) && !typeof(System.Collections.IEnumerable).IsAssignableFrom(propertyType))
             {
                 if (value is YamlMappingNode nested) Walk(nested, propertyType, field, link, problem, type, record, deleting);
-                else if (value is YamlSequenceNode) problem($"{field} takes fields of its own, indented below it — not a list");
+                // Three numbers — a position, a rotation — are one line, as readRecord shows them: told "takes fields of its own",
+                // eval round 147's key+detailed #3 wrote X, Y and Z below its Position until its turns ran out.
+                else if (value is YamlSequenceNode) problem(propertyType.Namespace == "Noggog" && propertyType.Name.StartsWith("P3", StringComparison.Ordinal)
+                    ? $"{field} is its three numbers on its own line, as readRecord shows it — `{key[(key.LastIndexOf('.') + 1)..]}: 300, 50, 64` — not a list"
+                    : $"{field} takes fields of its own, indented below it — not a list");
                 // A part of the record, not a file path or a struct written as one value, as Model's File and a bound's corner are.
                 else if (value is YamlScalarNode { Value: { Length: > 0 } one } && one is not ("~" or "null" or "Null" or "NULL")
                     && typeof(Loqui.ILoquiObject).IsAssignableFrom(propertyType))

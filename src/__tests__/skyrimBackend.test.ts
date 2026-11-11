@@ -740,6 +740,9 @@ describe('the Skyrim backend', () => {
             .rejects.toThrow(/already, as .*Temporary\/InChest\.yaml: nothing to move — build again/);
         await backend.moveRecord({ project: 'CellarKey', from: 'Misc/CellarKey2.yaml', to: 'Keys' });
         expect(fs.existsSync(path.join(plugin, 'Keys', 'CellarKey2.yaml'))).toBe(true);
+        // Its own path sent with the project before it, for the file at `to` already (eval round 147's key+detailed #1).
+        await expect(backend.moveRecord({ project: 'CellarKey', from: 'CellarKey/plugin/Keys/CellarKey2.yaml', to: 'Keys/CellarKey2.yaml' }))
+            .rejects.toThrow(/Keys\/CellarKey2\.yaml is where the file is already: nothing to move — build again/);
         await expect(backend.moveRecord({ project: 'CellarKey', from: 'Keys/CellarKey.yaml', to: 'Cells/0/6/Whiterun - 0165A8_Skyrim.esm' }))
             .rejects.toThrow(/like "Cells\/0\/6\/Whiterun - 0165A8_Skyrim\.esm\/CellarKey\.yaml"/);
     });

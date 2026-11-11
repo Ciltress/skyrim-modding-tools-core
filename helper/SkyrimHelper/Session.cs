@@ -793,6 +793,7 @@ public sealed partial class Session : IDisposable
         // An NPC placed as a PlacedObject is a PlacedNpc, before the kind is put first.
         corrected.AddRange(RecordFiles.NpcsPlacedAsObjects(dir, Index));
         // A lock written on a chest or a door the project places once, onto the reference placing it.
+        corrected.AddRange(RecordFiles.PlacementLines(dir));
         corrected.AddRange(RecordFiles.LocksOntoReferences(dir));
         // A quest alias's name written as a record's name is, as the one line of text it is.
         corrected.AddRange(RecordFiles.AliasNamesAsText(dir));

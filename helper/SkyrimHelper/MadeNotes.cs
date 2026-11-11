@@ -472,7 +472,7 @@ internal static class MadeNotes
     public static List<string> Unused(ISkyrimModGetter mod, ILinkCache lookup, RecordIndex index, string pluginDir)
     {
         var made = mod.EnumerateMajorRecords().Where(r => r.FormKey.ModKey == mod.ModKey
-            && r is INpcGetter or ILeveledItemGetter or ILeveledNpcGetter or ILeveledSpellGetter).ToList();
+            && r is INpcGetter or ILeveledItemGetter or ILeveledNpcGetter or ILeveledSpellGetter or IContainerGetter).ToList();
         if (made.Count == 0) return [];
         var named = new HashSet<Mutagen.Bethesda.Plugins.FormKey>();
         foreach (var record in mod.EnumerateMajorRecords())
@@ -494,6 +494,17 @@ internal static class MadeNotes
                     $"for {id} somewhere, an inn or a house, a PlacedNpc file in that cell's Temporary/ folder places {id}{cell}: readRecord of the " +
                     $"cell answers `newReference`, the path and the lines to write, with `MutagenObjectType: PlacedNpc` first and `Base: {id}`. " +
                     "Where the NPC record alone was asked for, nothing to change, and this warning stays");
+                continue;
+            }
+            // A chest of the mod's own placed nowhere: eval round 147's key #3 built one, its lock and key with it, and answered.
+            if (record is IContainerGetter chest)
+            {
+                var cell = cells is [var only] ? $" — the project's cell {only.EditorID ?? Session.FormKeyText(only.FormKey)} is one" : "";
+                notes.Add($"{file}: {id}{(chest.Name?.String is { Length: > 0 } name ? $" \"{name}\"" : "")}, a new Container, is placed in no cell, and " +
+                    $"nothing in the plugin names {id}, so the game never shows it. Where the user asked for it somewhere, a house or a room, a " +
+                    $"PlacedObject file in that cell's Temporary/ folder places it{cell}: readRecord of the cell answers `newReference`, the path " +
+                    $"and the lines to write, with `Base: {id}` — and its lock, where it has one, is that reference's `Lock:`, `Level:` and `Key:` " +
+                    "below it. Where the container record alone was asked for, nothing to change, and this warning stays");
                 continue;
             }
             var type = RecordIndex.TypeName(record);

@@ -902,7 +902,8 @@ public static class RecordFiles
     };
 
     /// <summary>Fields a lock was written with on what it locks, or on its key.</summary>
-    private static readonly Regex LockField = new(@"^(Lock|Locks|Locked|LockLevel|LockKey|LockData|LockedBy|KeyLevel|Lockpicking)$", RegexOptions.IgnoreCase);
+    // `Key` too: a chest written with the key that opens it (eval round 147's key #3, told only "delete it").
+    private static readonly Regex LockField = new(@"^(Lock|Locks|Locked|LockLevel|LockKey|LockData|LockedBy|KeyLevel|Lockpicking|Key|RequiredKey)$", RegexOptions.IgnoreCase);
 
     /// <summary>
     /// A lock written on a base record — a chest, a door, its key, a recipe — where the game has it on the placed reference: the
@@ -946,6 +947,10 @@ public static class RecordFiles
         var opener = Regex.Match(block, @"^[ \t]*(?:Lock)?Key:[ \t]*([^\s#]+)", RegexOptions.Multiline | RegexOptions.IgnoreCase) is { Success: true } k ? k.Groups[1].Value
             : Regex.Match(text, @"^LockKey:[ \t]*([^\s#]+)", RegexOptions.Multiline) is { Success: true } topKey ? topKey.Groups[1].Value : null;
         if (level is not null && !Enum.TryParse<LockLevel>(level, true, out _)) level = null;
+        // `Key: CellarKey` written as one value: the key that opens it.
+        if (opener is null && key.EndsWith("Key", StringComparison.OrdinalIgnoreCase)
+            && Regex.Match(text, $@"^{Regex.Escape(key)}:[ \t]*([^\s#'""]+)", RegexOptions.Multiline) is { Success: true } alone)
+            opener = alone.Groups[1].Value;
         return (level, opener);
     }
 
@@ -977,15 +982,19 @@ public static class RecordFiles
             var (level, opener) = keys.Select(k => LockOf(text, k)).FirstOrDefault(l => l.Level is not null);
             var referenceText = File.ReadAllText(reference.File).Replace("\r\n", "\n");
             var ownLock = Regex.IsMatch(referenceText, @"^Lock:", RegexOptions.Multiline);
-            if (level is null && !ownLock) continue;
+            // A key alone is a lock too — `Key: CellarKey` on the chest (eval round 147's key #3): with no Level, a Novice one.
+            opener ??= keys.Where(k => k.EndsWith("Key", StringComparison.OrdinalIgnoreCase))
+                .Select(k => Regex.Match(text, $@"^{Regex.Escape(k)}:[ \t]*([^\s#'""]+)", RegexOptions.Multiline)).FirstOrDefault(m => m.Success)?.Groups[1].Value;
+            if (level is null && opener is null && !ownLock) continue;
             var kept = keys.Aggregate(text, (rest, k) => Regex.Replace(rest, $@"^{Regex.Escape(k)}:.*\n(?:[ \t]+.*\n|[ \t]*\n)*", "", RegexOptions.Multiline));
             if (!ownLock)
-                MisplacedFields.Save(reference.File, referenceText.TrimEnd('\n') + $"\nLock:\n  Level: {level}\n" + (opener is null ? "" : $"  Key: {opener}\n"));
+                MisplacedFields.Save(reference.File, referenceText.TrimEnd('\n') + "\nLock:\n" + (level is null ? "" : $"  Level: {level}\n") + (opener is null ? "" : $"  Key: {opener}\n"));
             MisplacedFields.Save(file, kept);
             changes.Add((relative, ownLock
                 ? $"deleted its {string.Join(", ", keys)}: a lock is the placed reference's, and {reference.Relative}, the reference placing it, has its own"
                 : $"moved its lock onto {reference.Relative}, the reference placing it — a lock is the placed reference's, not {Article(type.Name)}'s: " +
-                  $"`Lock:` with `Level: {level}`" + (opener is null ? "" : $" and `Key: {opener}`")));
+                  "`Lock:` with " + string.Join(" and ", new[] { level is null ? null : $"`Level: {level}`", opener is null ? null : $"`Key: {opener}`" }.OfType<string>()) +
+                  (level is null ? " — with no `Level:` it is a Novice lock; Lock.Level sets another" : "")));
         }
         // A reference's lock written as one value — `Lock: CellarKey`, with `Level: RequiresKey` beside it at the margin — made the
         // `Lock:` block it is: the build named `Lock.Level` for it, and editRecord refused that very call (eval round 146's key #1).
@@ -1036,6 +1045,53 @@ public static class RecordFiles
                 continue;
             MisplacedFields.Save(file, keys.Aggregate(text, (rest, k) => Regex.Replace(rest, $@"^{Regex.Escape(k)}:.*\n(?:[ \t]+.*\n|[ \t]*\n)*", "", RegexOptions.Multiline)));
             changes.Add((relative, $"deleted its {string.Join(", ", keys)}: a key holds no lock — the lock of {locked}, the placed reference, names this key as what opens it"));
+        }
+        return changes;
+    }
+
+    /// <summary>
+    /// A placed reference's position and rotation written otherwise than as readRecord shows them — as a list, `Position: [300,
+    /// 50, 64]`; as X, Y and Z lines below it; at the margin with no `Placement:` above them — and a lock's key under another
+    /// name, `RequiredKey:`, written as the lines they are. Refused "takes fields of its own" and "Lock has no field
+    /// RequiredKey", eval round 147's key+detailed #3 rewrote its chest's reference until its turns ran out; round 146's key #1
+    /// wrote its Position and Rotation at the margin.
+    /// </summary>
+    public static List<(string File, string Change)> PlacementLines(string pluginDir)
+    {
+        const string Number = @"-?\d+(?:\.\d+)?";
+        var changes = new List<(string File, string Change)>();
+        foreach (var (file, relative, _) in CellRecords(pluginDir).Where(c => c.Type is not null && typeof(IPlaced).IsAssignableFrom(c.Type)))
+        {
+            var text = File.ReadAllText(file).Replace("\r\n", "\n").TrimEnd('\n') + "\n";
+            var made = new List<string>();
+            string Line(Match m) => $"{m.Groups["lead"].Value}{m.Groups["key"].Value}: {m.Groups["x"].Value}, {m.Groups["y"].Value}, {m.Groups["z"].Value}\n";
+            var after = Regex.Replace(text, $@"^(?<lead>[ \t]*)(?<key>Position|Rotation):[ \t]*\[[ \t]*(?<x>{Number})[ \t]*,[ \t]*(?<y>{Number})[ \t]*,[ \t]*(?<z>{Number})[ \t]*\][ \t]*\n",
+                m => { made.Add($"{m.Groups["key"].Value} as one line"); return Line(m); }, RegexOptions.Multiline);
+            after = Regex.Replace(after, $@"^(?<lead>[ \t]*)(?<key>Position|Rotation):[ \t]*\n(?<in>[ \t]+)X:[ \t]*(?<x>{Number})[ \t]*\n\k<in>Y:[ \t]*(?<y>{Number})[ \t]*\n\k<in>Z:[ \t]*(?<z>{Number})[ \t]*\n",
+                m => m.Groups["in"].Value.Length > m.Groups["lead"].Value.Length ? Done(m) : m.Value, RegexOptions.Multiline);
+            string Done(Match m) { made.Add($"{m.Groups["key"].Value}'s X, Y and Z as one line"); return Line(m); }
+            // `Position: 300` with `Y: 50` and `Z: 64` below it, at its own indentation (eval round 147's key+detailed #3).
+            after = Regex.Replace(after, $@"^(?<lead>[ \t]*)(?<key>Position|Rotation):[ \t]*(?<x>{Number})[ \t]*\n\k<lead>Y:[ \t]*(?<y>{Number})[ \t]*\n\k<lead>Z:[ \t]*(?<z>{Number})[ \t]*\n",
+                m => { made.Add($"{m.Groups["key"].Value} with the Y and Z below it as one line"); return Line(m); }, RegexOptions.Multiline);
+            // At the margin — where readRecord shows them two spaces in below `Placement:`: into that block, or one written for them.
+            var margin = Regex.Matches(after, $@"^(?<key>Position|Rotation):[ \t]*{Number}[ \t]*,[ \t]*{Number}[ \t]*,[ \t]*{Number}[ \t]*\n", RegexOptions.Multiline)
+                .Where(m => !Regex.IsMatch(Regex.Match(after, @"^Placement:[ \t]*\n(?:[ \t]+.*\n)*", RegexOptions.Multiline).Value,
+                    $@"^[ \t]+{m.Groups["key"].Value}:", RegexOptions.Multiline)).ToList();
+            if (margin.Count > 0)
+            {
+                var lines = string.Concat(margin.Select(m => "  " + m.Value));
+                var first = margin[0].Index;
+                foreach (var m in Enumerable.Reverse(margin)) after = after.Remove(m.Index, m.Length);
+                var place = Regex.Match(after, @"^Placement:[ \t]*\n(?:[ \t]+.*\n)*", RegexOptions.Multiline);
+                after = place.Success ? after.Insert(place.Index + place.Length, lines) : after.Insert(Math.Min(first, after.Length), "Placement:\n" + lines);
+                made.Add($"{string.Join(" and ", margin.Select(m => m.Groups["key"].Value))} below `Placement:`");
+            }
+            after = Regex.Replace(after, @"^(?<head>Lock:[ \t]*\n(?:[ \t]+.*\n)*?[ \t]+)(?<key>RequiredKey|RequiresKey|LockKey|KeyRequired|OpenedBy|Opener|KeyItem):",
+                m => { made.Add($"the lock's {m.Groups["key"].Value} as its Key"); return m.Groups["head"].Value + "Key:"; }, RegexOptions.Multiline);
+            if (after == text) continue;
+            MisplacedFields.Save(file, after);
+            changes.Add((relative, $"wrote {string.Join(", ", made)}, as readRecord shows a placed reference: `Placement:`, and below it, two " +
+                "spaces in, `Position: x, y, z` and `Rotation: x, y, z`; a lock's `Level:` and `Key:` below `Lock:`"));
         }
         return changes;
     }

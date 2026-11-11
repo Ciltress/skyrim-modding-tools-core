@@ -1358,8 +1358,18 @@ public static class RecordEdits
     /// </summary>
     private static string? Linked(string text, List<Step> steps, int below, Type link, Context context)
     {
-        if (RecordLinks.LinkTarget(link) is not { } target || At(text, steps.Take(below).ToList()) is not YamlScalarNode { Value: { Length: > 0 } held })
-            return null;
+        if (RecordLinks.LinkTarget(link) is not { } target) return null;
+        // A link the file sets to nothing — an exterior cell with no EncounterZone — the new record of its kind it can be set to:
+        // told only "set EncounterZone itself", eval round 147's encounterzone #2 set it to a mapping of the zone's fields.
+        if (At(text, steps.Take(below).ToList()) is not YamlScalarNode { Value: { Length: > 0 } held } || held is "~" or "null" or "Null")
+        {
+            var (none, empty) = (Upto(steps, below), RecordLinks.Kind(target));
+            var named = string.Join('.', steps.Skip(below).Select(s => s.Index is { } n ? $"{s.Key}[{n}]" : s.Key));
+            return $"here it names none — {named} is a field of the {empty} record it links to: write a new {empty} of its own, its file in " +
+                $"{RecordFiles.GroupFolderOf(empty) ?? $"{empty}s"}/, made from one the game has (findRecords {{\"types\": [\"{empty}\"]}}, then readRecord) " +
+                $"with {named} set, and set {none} to its EditorID, " +
+                ToolCalls.Edit(ToolCalls.ProjectOf(context.PluginDir), context.Relative, $"{{\"path\": \"{none}\", \"value\": \"<the new {empty}'s EditorID>\"}}") + ".";
+        }
         var where = Upto(steps, below);
         var rest = string.Join('.', steps.Skip(below).Select(s => s.Index is { } n ? $"{s.Key}[{n}]" : s.Key));
         var kind = RecordLinks.Kind(target);
