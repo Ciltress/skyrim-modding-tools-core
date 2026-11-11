@@ -461,9 +461,19 @@ export function moveRecordFile(projectsDir: string, paths: ProjectPaths, from: s
     if (!to.trim() || !inPlugin || inPlugin.startsWith('..') || path.isAbsolute(inPlugin)) {
         throw new ProjectError(`'${to}' is not in ${paths.plugin}: give where the file goes as its path there, like "Weapons/FlameBlade.yaml".`);
     }
-    if (!/\.yaml$/i.test(target) || path.basename(target).toLowerCase() === 'recorddata.yaml') {
+    const parts = inPlugin.split(path.sep);
+    const recordData = path.basename(target).toLowerCase() === 'recorddata.yaml';
+    // A RecordData.yaml is a record's own file only in a record's folder — a dialogue topic's, a cell's, a worldspace's — and
+    // the build's refusal of a topic written as DialogTopics/<topic>/<topic>.yaml names the move to it: refused here, eval
+    // round 145's scene #1 sent that move four times, told each time to name the file like the path it had sent.
+    const folderRecord = recordData && (/^dialogtopics$/i.test(parts[0]) ? parts.length === 3 : /^(cells|worldspaces)$/i.test(parts[0]) && parts.length >= 3);
+    if (!/\.yaml$/i.test(target) || (recordData && !folderRecord)) {
+        const editorId = /^EditorID:[ \t]*(\S+)/m.exec(fs.readFileSync(source, 'utf8'))?.[1];
+        const like = recordData && editorId
+            ? [...parts.slice(0, -1), `${editorId}.yaml`].join('/')
+            : `${parts.join('/').replace(/\.[^./]*$/, '')}.yaml`;
         throw new ProjectError(`'${to}': a record file is named for its record and ends in .yaml — the build reads no other — ` +
-            `like "${inPlugin.split(path.sep).join('/').replace(/\.[^./]*$/, '')}.yaml".`);
+            `like "${like}".`);
     }
     // Another letter case of the same name is a rename; the same path is already there.
     if (source === target) throw new ProjectError(`${source} is already there: nothing to move.`);

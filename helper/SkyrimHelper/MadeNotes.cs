@@ -463,6 +463,84 @@ internal static class MadeNotes
             .ToList();
     }
 
+    /// <summary>
+    /// A new NPC or leveled list of the project's that nothing in the plugin names — no reference places the NPC, no list,
+    /// alias, outfit, container or script property holds either — so the game never shows or uses it. Four of eval round 145's
+    /// follower and package runs built a new NPC placed in no cell and answered her in the inn; leveled-spell #3 made its copy of
+    /// LSpellBandit01FireFrostShock a new list nothing uses, and the game's list stayed as it was.
+    /// </summary>
+    public static List<string> Unused(ISkyrimModGetter mod, ILinkCache lookup, RecordIndex index, string pluginDir)
+    {
+        var made = mod.EnumerateMajorRecords().Where(r => r.FormKey.ModKey == mod.ModKey
+            && r is INpcGetter or ILeveledItemGetter or ILeveledNpcGetter or ILeveledSpellGetter).ToList();
+        if (made.Count == 0) return [];
+        var named = new HashSet<Mutagen.Bethesda.Plugins.FormKey>();
+        foreach (var record in mod.EnumerateMajorRecords())
+            foreach (var link in record.EnumerateFormLinks())
+                if (link.FormKey != record.FormKey) named.Add(link.FormKey);
+        var files = EffectCasting.Files(pluginDir);
+        var project = ToolCalls.ProjectOf(pluginDir);
+        var cells = mod.EnumerateMajorRecords().OfType<ICellGetter>().ToList();
+        var notes = new List<string>();
+        foreach (var record in made.Where(r => !named.Contains(r.FormKey)))
+        {
+            var id = record.EditorID ?? Session.FormKeyText(record.FormKey);
+            var file = files.GetValueOrDefault(record.FormKey) ?? id;
+            if (record is INpcGetter npc)
+            {
+                var cell = cells is [var only] ? $" — the project's cell {only.EditorID ?? Session.FormKeyText(only.FormKey)} is one" : "";
+                notes.Add($"{file}: {id}{(npc.Name?.String is { Length: > 0 } name ? $" \"{name}\"" : "")}, a new NPC, is placed in no cell, and nothing in " +
+                    $"the plugin names {id} — no leveled list, quest alias or script property — so the game never shows {id}. Where the user asked " +
+                    $"for {id} somewhere, an inn or a house, a PlacedNpc file in that cell's Temporary/ folder places {id}{cell}: readRecord of the " +
+                    $"cell answers `newReference`, the path and the lines to write, with `MutagenObjectType: PlacedNpc` first and `Base: {id}`. " +
+                    "Where the NPC record alone was asked for, nothing to change, and this warning stays");
+                continue;
+            }
+            var type = RecordIndex.TypeName(record);
+            var origin = GameListLike(record, lookup, index, mod.ModKey);
+            notes.Add($"{file}: {id}, a new {type}, is named by nothing in the plugin — no NPC, outfit, container or other list holds it — so " +
+                "the game never uses it. " + (origin is { } game
+                    ? $"It holds what the game's {game.EditorId} ({Session.FormKeyText(game.FormKey)}) holds: where that list was to change, this " +
+                      "file is to be its copy again, the change written into it — one call makes it that copy and builds: " +
+                      ToolCalls.Edit(project, file, $"{{\"path\": \"FormKey\", \"value\": {ToolCalls.Quoted(Session.FormKeyText(game.FormKey))}}}" +
+                          (game.EditorId is { } gameId ? $", {{\"path\": \"EditorID\", \"value\": {ToolCalls.Quoted(gameId)}}}" : ""), build: true) +
+                      ". "
+                    : "Where a list of the game's was to change, copy that one with addPatch and change the copy; where this list is to be used, " +
+                      "link it from what holds it. ") +
+                "Where the user asked for this list alone, nothing to change, and this warning stays");
+        }
+        return notes;
+    }
+
+    /// <summary>
+    /// The load order's list of the same type whose entries a new list holds all of — its copy made a new record — or null:
+    /// two entries or more, the new list holding at most three more.
+    /// </summary>
+    private static RecordIndex.Entry? GameListLike(IMajorRecordGetter list, ILinkCache lookup, RecordIndex index, Mutagen.Bethesda.Plugins.ModKey own)
+    {
+        var held = EntriesOf(list);
+        if (held.Count < 2) return null;
+        var type = RecordIndex.TypeName(list);
+        RecordIndex.Entry? best = null;
+        var bestCount = 0;
+        foreach (var entry in index.ByFormKey.Values.Where(e => e.Type == type && e.FormKey.ModKey != own))
+        {
+            if (!lookup.TryResolve(entry.FormKey, list.Registration.GetterType, out var game)) continue;
+            var theirs = EntriesOf(game);
+            if (theirs.Count < 2 || held.Count > theirs.Count + 3 || !theirs.All(held.Contains)) continue;
+            if (theirs.Count > bestCount) (best, bestCount) = (entry, theirs.Count);
+        }
+        return best;
+    }
+
+    private static HashSet<Mutagen.Bethesda.Plugins.FormKey> EntriesOf(IMajorRecordGetter list) => list switch
+    {
+        ILeveledItemGetter items => items.Entries?.Select(e => e.Data?.Reference.FormKey).OfType<Mutagen.Bethesda.Plugins.FormKey>().ToHashSet() ?? [],
+        ILeveledNpcGetter npcs => npcs.Entries?.Select(e => e.Data?.Reference.FormKey).OfType<Mutagen.Bethesda.Plugins.FormKey>().ToHashSet() ?? [],
+        ILeveledSpellGetter spells => spells.Entries?.Select(e => e.Data?.Reference.FormKey).OfType<Mutagen.Bethesda.Plugins.FormKey>().ToHashSet() ?? [],
+        _ => []
+    };
+
     /// <summary>The kinds of record a player carries, and so a recipe's material may be.</summary>
     private static readonly HashSet<string> CarriedKinds = new(["Ingestible", "Ingredient", "MiscItem", "Weapon", "Armor", "Ammunition", "Book",
         "SoulGem", "Key", "Scroll"], StringComparer.Ordinal);

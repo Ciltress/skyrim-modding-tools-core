@@ -783,6 +783,10 @@ public sealed partial class Session : IDisposable
         corrected.AddRange(RecordFiles.LevelForBounds(dir));
         // An NPC placed as a PlacedObject is a PlacedNpc, before the kind is put first.
         corrected.AddRange(RecordFiles.NpcsPlacedAsObjects(dir, Index));
+        // A lock written on a chest or a door the project places once, onto the reference placing it.
+        corrected.AddRange(RecordFiles.LocksOntoReferences(dir));
+        // A quest alias's name written as a record's name is, as the one line of text it is.
+        corrected.AddRange(RecordFiles.AliasNamesAsText(dir));
         // And a part's kind as its first field, once each field is in its part: the reader takes the part by it.
         corrected.AddRange(MisplacedFields.KindFirst(dir));
         // A spell's or enchantment's lines from its effects, read where each is: its cast, and an effect's flags in the spell's.
@@ -924,6 +928,7 @@ public sealed partial class Session : IDisposable
             .Concat(MadeNotes.CopiedNames(mod, Index, dir)).Concat(MadeNotes.RecipePerks(mod, lookup, dir)).Concat(MadeNotes.PlayerCopy(mod, dir))
             .Concat(MadeNotes.NpcItems(mod, lookup, dir)).Concat(MadeNotes.ListEntries(mod, lookup, dir)).Concat(MadeNotes.KeywordsReplaced(mod, lookup, dir)).Concat(MadeNotes.Words(mod, dir))
             .Concat(MadeNotes.Unplayable(mod, dir)).Concat(MadeNotes.LightWorldspace(mod, dir)).Concat(MadeNotes.NotScrolls(mod, dir))
+            .Concat(MadeNotes.Unused(mod, lookup, Index, dir))
             .Concat(CellContents.PlacedNotes(mod, Contexts, Index, dir)).Concat(DialogContents.Notes(mod, lookup, Index, dir)).Concat(DialogContents.StoryNotes(mod, lookup, dir)).Concat(GameSettings.Notes(mod, Index, dir))
             .Concat(NavmeshNotes.Stale(mod, lookup, dir))
             .Select(n => (JsonNode)n).ToArray();

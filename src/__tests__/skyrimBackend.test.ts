@@ -701,8 +701,24 @@ describe('the Skyrim backend', () => {
         await expect(backend.moveRecord({ project: 'MavenNote', from: 'Notes/MavenWarning.yaml', to: 'Books/MavenWarning.txt' })).rejects.toThrow(/ends in \.yaml/);
         await expect(backend.moveRecord({ project: 'MavenNote', from: 'RecordData.yaml', to: 'Books/Header.yaml' })).rejects.toThrow(/header/);
         await expect(backend.moveRecord({ project: 'MavenNote', from: 'Notes/MavenWarning.yaml', to: 'RecordData.yaml' })).rejects.toThrow(/ends in \.yaml/);
+        await expect(backend.moveRecord({ project: 'MavenNote', from: 'Notes/MavenWarning.yaml', to: 'Books/RecordData.yaml' }))
+            .rejects.toThrow(/like "Books\/MavenWarning\.yaml"/);
         expect(fs.existsSync(path.join(plugin, 'Notes', 'MavenWarning.yaml'))).toBe(true);
         expect(fs.existsSync(outside)).toBe(true);
+    });
+
+    it('moves a dialogue topic written under its own name to the RecordData.yaml of its folder', async () => {
+        // The build's refusal of DialogTopics/<topic>/<topic>.yaml names this move; moveRecord refused the name, and eval round
+        // 145's scene #1 sent the move four times.
+        const { backend, fixture } = makeBackend();
+        await backend.newProject({ project: 'InnChatter' });
+        const plugin = path.join(fixture.projects, 'InnChatter', 'plugin');
+        write(path.join(plugin, 'DialogTopics', 'InnChatterHuldaTopic', 'InnChatterHuldaTopic.yaml'), 'EditorID: InnChatterHuldaTopic\n');
+
+        await backend.moveRecord({ project: 'InnChatter', from: 'DialogTopics/InnChatterHuldaTopic/InnChatterHuldaTopic.yaml',
+            to: 'DialogTopics/InnChatterHuldaTopic/RecordData.yaml' });
+        expect(fs.existsSync(path.join(plugin, 'DialogTopics', 'InnChatterHuldaTopic', 'RecordData.yaml'))).toBe(true);
+        expect(fs.existsSync(path.join(plugin, 'DialogTopics', 'InnChatterHuldaTopic', 'InnChatterHuldaTopic.yaml'))).toBe(false);
     });
 
     it('takes a path the plugin folder has no file at from the projects folder, and names the files outside it when none is there', async () => {

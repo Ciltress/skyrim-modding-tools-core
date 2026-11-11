@@ -17,9 +17,43 @@ internal static class ToolCalls
     public static string Quoted(string text) => $"\"{text.Replace("\\", "\\\\").Replace("\"", "\\\"")}\"";
 
     /// <summary>moveRecord: a record file of the plugin folder to another place in it.</summary>
-    public static string Move(string pluginDir, string from, string to) =>
+    /// A file already where it is to go makes the move a refusal: written there by hand beside the misplaced one, it was named
+    /// by the build's move again and again — eval round 145's scene #1 until its turns ran out, key #1 once — so the call is
+    /// then the one that deletes the copy, where both hold one record, or the move to a name of its own beside the other.
+    public static string Move(string pluginDir, string from, string to)
+    {
+        string Full(string file) => Path.GetFullPath(Path.Combine(pluginDir, file));
+        var (source, target) = (Full(from), Full(to));
+        if (!File.Exists(target) || string.Equals(source, target, StringComparison.OrdinalIgnoreCase)) return MoveCall(pluginDir, from, to);
+        var shown = to.Replace('\\', '/');
+        var id = EditorIdOf(source);
+        if (id is not null && string.Equals(id, EditorIdOf(target), StringComparison.OrdinalIgnoreCase))
+            return $"{shown} holds {id} already, so this file is a second copy of it — one call deletes it: {Delete(pluginDir, from)}";
+        var folder = Path.GetDirectoryName(shown)?.Replace('\\', '/') ?? "";
+        // A folder record's RecordData.yaml takes one record: another goes in a folder of its own, named for it.
+        var inFolder = Path.GetFileName(target).Equals("RecordData.yaml", StringComparison.OrdinalIgnoreCase) && id is not null;
+        string Free(string suffix) => inFolder
+            ? $"{Path.GetDirectoryName(folder)?.Replace('\\', '/')}/{id}{suffix}/RecordData.yaml"
+            : $"{folder}/{id ?? Path.GetFileNameWithoutExtension(source)}{suffix}.yaml";
+        var free = Free("");
+        if (string.Equals(Full(free.TrimStart('/')), target, StringComparison.OrdinalIgnoreCase)) free = Free("2");
+        return $"{shown} holds another record already, {EditorIdOf(target) ?? "a file of its own"} — this one goes under a name of its own: " +
+            MoveCall(pluginDir, from, free.TrimStart('/'));
+    }
+
+    private static string MoveCall(string pluginDir, string from, string to) =>
         $"moveRecord {{\"project\": {Quoted(ProjectOf(pluginDir))}, \"from\": {Quoted(from.Replace('\\', '/'))}, " +
         $"\"to\": {Quoted(to.Replace('\\', '/'))}}}";
+
+    private static string? EditorIdOf(string file)
+    {
+        try
+        {
+            var match = System.Text.RegularExpressions.Regex.Match(File.ReadAllText(file), @"^EditorID:[ \t]*(\S+)", System.Text.RegularExpressions.RegexOptions.Multiline);
+            return match.Success ? match.Groups[1].Value.Trim('\'', '"') : null;
+        }
+        catch (IOException) { return null; }
+    }
 
     /// <summary>deleteRecord: a record file of the plugin folder; with `build`, the build after it in the same call.</summary>
     public static string Delete(string pluginDir, string record, bool build = false) =>

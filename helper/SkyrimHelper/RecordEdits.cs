@@ -1325,9 +1325,16 @@ public static class RecordEdits
             : index.ByEditorId.TryGetValue(held, out var byName) ? index.ByFormKey.GetValueOrDefault(byName) : null;
         if (entry is null) return null;
         var id = entry.EditorId ?? Session.FormKeyText(entry.FormKey);
+        // The two ways said with what each changes: told "copy that record … or write a new one", eval round 145's
+        // encounterzone+detailed #3, asked for a zone of the cell's own, copied the game's EmbershardMineZone — a change of it
+        // wherever the game uses it.
+        var folder = RecordFiles.GroupFolderOf(kind) ?? $"{kind}s";
         return $"here {id} ({Session.FormKeyText(entry.FormKey)}), {RecordFiles.Article(kind)} of {entry.FormKey.ModKey.FileName}: {there}. " +
-            $"To change it, copy that record into the project, addPatch {{\"project\": {ToolCalls.Quoted(project)}, \"records\": [{ToolCalls.Quoted(id)}]}}, " +
-            $"or write a new {kind} from it, and set it there — {where} then names the new one; or set {where} itself to another {kind}.";
+            $"For this record alone, write a new {kind} of its own — its file in {folder}/, made from {id} (readRecord {{\"record\": {ToolCalls.Quoted(id)}}}) " +
+            $"with {field ?? rest} set — and set {where} to it, " +
+            ToolCalls.Edit(project, context.Relative, $"{{\"path\": \"{where}\", \"value\": \"<the new {kind}'s EditorID>\"}}") +
+            $"; to change {id} itself, wherever the game uses it, copy it into the project, addPatch {{\"project\": {ToolCalls.Quoted(project)}, " +
+            $"\"records\": [{ToolCalls.Quoted(id)}]}}, and set {field ?? rest} in the copy; or set {where} itself to another {kind}.";
     }
 
     /// <summary>A path as a record type has it, its label; null where the type has no such field.</summary>

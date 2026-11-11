@@ -83,6 +83,8 @@ public static class RecordFiles
     /// The group folder another word names — its record type's own name, or the game's word for it, one
     /// or many: Enchantments is ObjectEffects, Notes is Books, Weapon is Weapons. Null for none.
     /// </summary>
+    internal static string? GroupFolderOf(string typeName) => GroupCalled(typeName);
+
     private static string? GroupCalled(string folder)
     {
         string[] words = [folder, folder.EndsWith("es", StringComparison.OrdinalIgnoreCase) ? folder[..^2] : folder, folder.TrimEnd('s', 'S')];
@@ -891,19 +893,10 @@ public static class RecordFiles
     private static string? LockHint(Type type, string key, string text, string pluginDir)
     {
         if (!LockField.IsMatch(key) || typeof(IPlaced).IsAssignableFrom(type)) return null;
-        var block = BlockOf(text, key);
-        var level = Regex.Match(block, @"^[ \t]*(?:Lock)?Level:[ \t]*(\w+)", RegexOptions.Multiline | RegexOptions.IgnoreCase) is { Success: true } l ? l.Groups[1].Value
-            : Regex.Match(text, @"^LockLevel:[ \t]*(\w+)", RegexOptions.Multiline) is { Success: true } top ? top.Groups[1].Value : null;
-        var opener = Regex.Match(block, @"^[ \t]*(?:Lock)?Key:[ \t]*([^\s#]+)", RegexOptions.Multiline | RegexOptions.IgnoreCase) is { Success: true } k ? k.Groups[1].Value
-            : Regex.Match(text, @"^LockKey:[ \t]*([^\s#]+)", RegexOptions.Multiline) is { Success: true } topKey ? topKey.Groups[1].Value : null;
-        if (level is not null && !Enum.TryParse<LockLevel>(level, true, out _)) level = null;
-        var (formKey, editorId) = Identity(text);
+        var (level, opener) = LockOf(text, key);
+        var editorId = Identity(text).EditorId;
         // The project's references placing this record: a key places nothing, and a chest's references name it as their Base.
-        var placed = type == typeof(Key) ? [] : CellRecords(pluginDir).Where(c => c.Type is not null && typeof(IPlaced).IsAssignableFrom(c.Type))
-            .Where(c => Regex.Match(File.ReadAllText(c.File), @"^Base:[ \t]*([^\s#]+)", RegexOptions.Multiline) is { Success: true } b
-                && (b.Groups[1].Value.Equals(editorId, StringComparison.OrdinalIgnoreCase)
-                    || formKey is { } own && b.Groups[1].Value.Equals(Session.FormKeyText(own), StringComparison.OrdinalIgnoreCase)))
-            .Select(c => c.Relative).ToList();
+        var placed = type == typeof(Key) ? [] : Placing(pluginDir, text).Select(c => c.Relative).ToList();
         var said = "a lock is the placed reference's, not " + (type == typeof(Key) ? "its key's" : $"{Article(type.Name)}'s") +
             ": the reference of the chest or door, in its cell's Temporary/ folder, has `Lock:` and below it, two spaces in, `Level:` — " +
             "Novice, Apprentice, Adept, Expert, Master, or RequiresKey — and `Key:`, the key that opens it" +
@@ -917,6 +910,75 @@ public static class RecordFiles
         }
         else said += "; write it there, and delete it here";
         return said;
+    }
+
+    /// <summary>The level and the key a lock was written with under `key`, or as top-level LockLevel and LockKey; a level no lock has is none.</summary>
+    private static (string? Level, string? Opener) LockOf(string text, string key)
+    {
+        var block = BlockOf(text, key);
+        var level = Regex.Match(block, @"^[ \t]*(?:Lock)?Level:[ \t]*(\w+)", RegexOptions.Multiline | RegexOptions.IgnoreCase) is { Success: true } l ? l.Groups[1].Value
+            : Regex.Match(text, @"^LockLevel:[ \t]*(\w+)", RegexOptions.Multiline) is { Success: true } top ? top.Groups[1].Value : null;
+        var opener = Regex.Match(block, @"^[ \t]*(?:Lock)?Key:[ \t]*([^\s#]+)", RegexOptions.Multiline | RegexOptions.IgnoreCase) is { Success: true } k ? k.Groups[1].Value
+            : Regex.Match(text, @"^LockKey:[ \t]*([^\s#]+)", RegexOptions.Multiline) is { Success: true } topKey ? topKey.Groups[1].Value : null;
+        if (level is not null && !Enum.TryParse<LockLevel>(level, true, out _)) level = null;
+        return (level, opener);
+    }
+
+    /// <summary>The project's references whose Base names the record of this text, by its editor ID or its FormKey.</summary>
+    private static List<(string File, string Relative)> Placing(string pluginDir, string text)
+    {
+        var (formKey, editorId) = Identity(text);
+        return CellRecords(pluginDir).Where(c => c.Type is not null && typeof(IPlaced).IsAssignableFrom(c.Type))
+            .Where(c => Regex.Match(File.ReadAllText(c.File), @"^Base:[ \t]*([^\s#]+)", RegexOptions.Multiline) is { Success: true } b
+                && (b.Groups[1].Value.Equals(editorId, StringComparison.OrdinalIgnoreCase)
+                    || formKey is { } own && b.Groups[1].Value.Equals(Session.FormKeyText(own), StringComparison.OrdinalIgnoreCase)))
+            .Select(c => (c.File, c.Relative)).ToList();
+    }
+
+    /// <summary>
+    /// A lock written on a chest or a door the project places in one reference, moved onto that reference: the game reads a
+    /// lock on the placed reference only. Told so, with the one editRecord call that writes it there, no run of eval round
+    /// 145's key task wrote it there and deleted it from the chest — 5 of 6 built a chest no lock held, or ran out of turns.
+    /// Only a lock with its level; where the reference has a lock of its own, the chest's is deleted.
+    /// </summary>
+    public static List<(string File, string Change)> LocksOntoReferences(string pluginDir)
+    {
+        var changes = new List<(string File, string Change)>();
+        foreach (var (file, relative, type) in FlatRecords(pluginDir).Where(f => f.Type == typeof(Container) || f.Type == typeof(Door)))
+        {
+            var text = File.ReadAllText(file).Replace("\r\n", "\n").TrimEnd('\n') + "\n";
+            var keys = TopLevelKey.Matches(text).Select(m => m.Groups[1].Value).Where(k => LockField.IsMatch(k)).Distinct().ToList();
+            if (keys.Count == 0 || Placing(pluginDir, text) is not [var reference]) continue;
+            var (level, opener) = keys.Select(k => LockOf(text, k)).FirstOrDefault(l => l.Level is not null);
+            var referenceText = File.ReadAllText(reference.File).Replace("\r\n", "\n");
+            var ownLock = Regex.IsMatch(referenceText, @"^Lock:", RegexOptions.Multiline);
+            if (level is null && !ownLock) continue;
+            var kept = keys.Aggregate(text, (rest, k) => Regex.Replace(rest, $@"^{Regex.Escape(k)}:.*\n(?:[ \t]+.*\n|[ \t]*\n)*", "", RegexOptions.Multiline));
+            if (!ownLock)
+                MisplacedFields.Save(reference.File, referenceText.TrimEnd('\n') + $"\nLock:\n  Level: {level}\n" + (opener is null ? "" : $"  Key: {opener}\n"));
+            MisplacedFields.Save(file, kept);
+            changes.Add((relative, ownLock
+                ? $"deleted its {string.Join(", ", keys)}: a lock is the placed reference's, and {reference.Relative}, the reference placing it, has its own"
+                : $"moved its lock onto {reference.Relative}, the reference placing it — a lock is the placed reference's, not {Article(type.Name)}'s: " +
+                  $"`Lock:` with `Level: {level}`" + (opener is null ? "" : $" and `Key: {opener}`")));
+        }
+        // A key written with a lock — `Lock: CellarChest`, the chest it opens — where a reference's lock of the project names
+        // that key already: the key holds nothing of it (eval round 145's key #2, refused for it to its last turn).
+        var locks = CellRecords(pluginDir).Where(c => c.Type is not null && typeof(IPlaced).IsAssignableFrom(c.Type))
+            .Select(c => (c.Relative, Opener: Regex.Match(File.ReadAllText(c.File).Replace("\r\n", "\n"), @"^Lock:[ \t]*\n(?:[ \t]+.*\n)*?[ \t]+Key:[ \t]*([^\s#]+)", RegexOptions.Multiline)))
+            .Where(c => c.Opener.Success).Select(c => (c.Relative, Key: c.Opener.Groups[1].Value)).ToList();
+        foreach (var (file, relative, _) in FlatRecords(pluginDir).Where(f => f.Type == typeof(Key)))
+        {
+            var text = File.ReadAllText(file).Replace("\r\n", "\n").TrimEnd('\n') + "\n";
+            var keys = TopLevelKey.Matches(text).Select(m => m.Groups[1].Value).Where(k => LockField.IsMatch(k)).Distinct().ToList();
+            var (formKey, editorId) = Identity(text);
+            if (keys.Count == 0 || locks.FirstOrDefault(l => l.Key.Equals(editorId, StringComparison.OrdinalIgnoreCase)
+                    || formKey is { } own && l.Key.Equals(Session.FormKeyText(own), StringComparison.OrdinalIgnoreCase)) is not { Relative: { } locked })
+                continue;
+            MisplacedFields.Save(file, keys.Aggregate(text, (rest, k) => Regex.Replace(rest, $@"^{Regex.Escape(k)}:.*\n(?:[ \t]+.*\n|[ \t]*\n)*", "", RegexOptions.Multiline)));
+            changes.Add((relative, $"deleted its {string.Join(", ", keys)}: a key holds no lock — the lock of {locked}, the placed reference, names this key as what opens it"));
+        }
+        return changes;
     }
 
     /// <summary>
@@ -2392,7 +2454,8 @@ public static class RecordFiles
             var lines = File.ReadAllLines(path);
             var number = int.Parse(at.Groups[1].Value);
             if (number >= 1 && number <= lines.Length)
-                quoted = $" Line {number} is `{lines[number - 1].Trim()}`{Expected(message)}.";
+                quoted = $" Line {number} is `{lines[number - 1].Trim()}`{Expected(message)}" +
+                    (message.Contains("Expected 'MappingEnd'", StringComparison.Ordinal) ? Under(lines, number - 1) : "") + ".";
         }
         else if (path.Length > 0 && File.Exists(path) && message.Contains("hex string") && Groups.GetValueOrDefault(where.Split('/')[0]) is { } type)
             quoted = BytesWritten(File.ReadAllLines(path), type);
@@ -2768,6 +2831,58 @@ public static class RecordFiles
                     $"{digits} where they are whole bytes, two hex digits each; the game shows the model without them, and the " +
                     "Creation Kit writes them anew"));
             }
+        }
+        return changes;
+    }
+
+    /// <summary>
+    /// The field a line refused for its indentation is under, by its line, and — where what is below that field is a text's
+    /// TargetLanguage and Value — the one line it takes: told only "indented below a field that takes one value", eval round
+    /// 145's storymanager+detailed #1 wrote a quest alias's `Name:` with `TargetLanguage` and `Value` below it four builds running.
+    /// </summary>
+    private static string Under(string[] lines, int index)
+    {
+        static int KeyColumn(string line) => line.Length - line.TrimStart().TrimStart('-').TrimStart().Length;
+        var column = KeyColumn(lines[index]);
+        var parent = -1;
+        for (var i = index - 1; i >= 0 && parent < 0; i--)
+            if (lines[i].Trim().Length > 0 && KeyColumn(lines[i]) < column) parent = i;
+        if (parent < 0) return "";
+        var field = lines[parent].Trim().TrimStart('-').Trim();
+        var key = Regex.Match(field, @"^(\w+):").Groups[1].Value;
+        var below = lines.Skip(parent + 1).TakeWhile(l => l.Trim().Length == 0 || KeyColumn(l) > KeyColumn(lines[parent]))
+            .Where(l => l.Trim().Length > 0).Select(l => l.Trim()).ToList();
+        var value = below.Select(l => Regex.Match(l, @"^Value:[ \t]*(.+)$")).FirstOrDefault(m => m.Success)?.Groups[1].Value.Trim();
+        var text = key.Length > 0 && value is not null && below.All(l => Regex.IsMatch(l, @"^(TargetLanguage|Value):"));
+        return $" — it is under `{field}`, line {parent + 1}" +
+            (text ? $", which takes its text on its own line: `{key}: {value}`, with no TargetLanguage or Value below it" : "");
+    }
+
+    /// <summary>
+    /// A quest alias's name written as a record's name is — `Name:`, `TargetLanguage` and `Value` below it — made the one line
+    /// it is: an alias's Name is a plain text, and the reader refuses the other (eval round 145's storymanager+detailed #1,
+    /// four builds).
+    /// </summary>
+    public static List<(string File, string Change)> AliasNamesAsText(string pluginDir)
+    {
+        var changes = new List<(string File, string Change)>();
+        var named = new Regex(@"^(?<lead>[ \t]*-[ \t]+|[ \t]+)Name:[ \t]*\n(?<inner>[ \t]+)(?:TargetLanguage:[ \t]*\S+[ \t]*\n\k<inner>Value:[ \t]*(?<value>[^\n]+)|Value:[ \t]*(?<value>[^\n]+)\n\k<inner>TargetLanguage:[ \t]*\S+[ \t]*)(?=\n|$)(?!\n\k<inner>)",
+            RegexOptions.Multiline);
+        foreach (var (file, relative, type) in FlatRecords(pluginDir).Where(f => f.Type == typeof(Quest)))
+        {
+            var text = File.ReadAllText(file).Replace("\r\n", "\n");
+            var aliases = Regex.Match(text, @"^Aliases:[ \t]*\n(?:(?:[ \t]+.*|-.*|[ \t]*)(?:\n|$))*", RegexOptions.Multiline);
+            if (!aliases.Success) continue;
+            var fixedNames = new List<string>();
+            var block = named.Replace(aliases.Value, m =>
+            {
+                fixedNames.Add(m.Groups["value"].Value.Trim());
+                return $"{m.Groups["lead"].Value}Name: {m.Groups["value"].Value.Trim()}";
+            });
+            if (fixedNames.Count == 0) continue;
+            MisplacedFields.Save(file, text[..aliases.Index] + block + text[(aliases.Index + aliases.Length)..]);
+            changes.Add((relative, $"wrote each alias's Name as one line — {string.Join(", ", fixedNames.Select(n => $"`Name: {n}`"))} — " +
+                "where it was written with TargetLanguage and Value below it: an alias's name is a plain text"));
         }
         return changes;
     }
