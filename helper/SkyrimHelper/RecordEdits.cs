@@ -1056,7 +1056,7 @@ public static class RecordEdits
     }
 
     /// <summary>A YAML node as JSON: a plain scalar that reads as a number or true/false as one, any other as its text.</summary>
-    private static JsonNode? FromYaml(YamlNode node) => node switch
+    internal static JsonNode? FromYaml(YamlNode node) => node switch
     {
         YamlMappingNode mapping => new JsonObject(mapping.Children.Select(f => KeyValuePair.Create(((YamlScalarNode)f.Key).Value ?? "", FromYaml(f.Value)))),
         YamlSequenceNode list => new JsonArray(list.Children.Select(FromYaml).ToArray()),
@@ -1405,7 +1405,7 @@ public static class RecordEdits
     /// first line, and a level sent as {"LevelMult": 1, "MutagenObjectType": "PcLevelMult"}, written so, could not be read —
     /// "Object reference not set to an instance of an object" (eval round 109's npc+detailed #1).
     /// </summary>
-    private static List<string> Render(string key, JsonNode? value, int column)
+    internal static List<string> Render(string key, JsonNode? value, int column)
     {
         var pad = new string(' ', column);
         var head = key.Length > 0 ? $"{pad}{key}:" : $"{pad}:";

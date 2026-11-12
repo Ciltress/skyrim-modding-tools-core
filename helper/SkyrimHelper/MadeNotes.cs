@@ -473,7 +473,7 @@ internal static class MadeNotes
     {
         var made = mod.EnumerateMajorRecords().Where(r => r.FormKey.ModKey == mod.ModKey
             && r is INpcGetter or ILeveledItemGetter or ILeveledNpcGetter or ILeveledSpellGetter or IContainerGetter or IEncounterZoneGetter
-                or ILocationGetter or IActivatorGetter).ToList();
+                or ILocationGetter or IActivatorGetter or IRaceGetter).ToList();
         if (made.Count == 0) return [];
         var named = new HashSet<Mutagen.Bethesda.Plugins.FormKey>();
         foreach (var record in mod.EnumerateMajorRecords())
@@ -492,10 +492,20 @@ internal static class MadeNotes
                 var cell = cells is [var only] ? $" — the project's cell {only.EditorID ?? Session.FormKeyText(only.FormKey)} is one" : "";
                 notes.Add($"{file}: {id}{(npc.Name?.String is { Length: > 0 } name ? $" \"{name}\"" : "")}, a new NPC, is placed in no cell, and nothing in " +
                     $"the plugin names {id} — no leveled list, quest alias or script property — so the game never shows {id}. " +
-                    GameNpcNamed(npc, lookup, index, mod.ModKey, pluginDir, file) + $"Where the user asked " +
+                    GameNpcNamed(npc.Name?.String, lookup, index, mod.ModKey, pluginDir, file) + $"Where the user asked " +
                     $"for {id} somewhere, an inn or a house, a PlacedNpc file in that cell's Temporary/ folder places {id}{cell}: readRecord of the " +
                     $"cell answers `newReference`, the path and the lines to write, with `MutagenObjectType: PlacedNpc` first and `Base: {id}`. " +
                     "Where the NPC record alone was asked for, nothing to change, and this warning stays");
+                continue;
+            }
+            // A race of the mod's own no NPC has: asked for wolves in the wild that can also be ice wolves, eval round 152's
+            // leveled-npc #1 wrote an "Ice Wolf" race alone, a copy of WolfRace, and answered the ice wolves made.
+            if (record is IRaceGetter race)
+            {
+                notes.Add($"{file}: {id}{(race.Name?.String is { Length: > 0 } name ? $" \"{name}\"" : "")}, a new Race, is the race of no NPC of " +
+                    $"the plugin, so the game shows nothing of it: a creature or a person of a kind is an NPC with `Race: {id}`, placed in a cell " +
+                    "or brought by a leveled list. " + GameNpcNamed(race.Name?.String, lookup, index, mod.ModKey, pluginDir, file) +
+                    "Where the race record alone was asked for, nothing to change, and this warning stays");
                 continue;
             }
             // A chest of the mod's own placed nowhere: eval round 147's key #3 built one, its lock and key with it, and answered.
@@ -671,6 +681,87 @@ internal static class MadeNotes
         return notes;
     }
 
+    /// <summary>The hues a light's name says it has — a frost light's blue — by the words in it.</summary>
+    private static readonly (Regex Words, string[] Hues, string Said)[] NamedHues =
+    [
+        (new(@"(?i)blue|frost|ice|icy|cold|winter|snow|azure|cyan|teal|moon"), ["blue", "cyan", "purple", "white"], "cold, blue"),
+        (new(@"(?i)fire|flame|ember|torch|candle|warm|hearth|lava|sun"), ["red", "orange", "yellow", "white"], "warm, orange"),
+        (new(@"(?i)green|poison|venom|toxic|forest"), ["green", "cyan", "yellow"], "green"),
+        (new(@"(?i)\bred\b|(?<=[a-z])Red(?![a-z])|blood|crimson"), ["red", "orange", "pink"], "red"),
+        (new(@"(?i)purple|violet|shadow|void|arcane"), ["purple", "pink", "blue"], "purple")
+    ];
+
+    /// <summary>
+    /// A light of the project's whose name says one hue — a frost light — and whose color is another: written `'#0000CC3F'` for
+    /// blue, the alpha last, it builds green — the digits after # are read as 00, then red, green and blue. Eval rounds 151's light
+    /// #3 and 152's light+detailed #2 each built a green "frost light" so, `built` saying green, and answered it blue.
+    /// </summary>
+    public static List<string> LightColors(ISkyrimModGetter mod, string pluginDir)
+    {
+        var files = EffectCasting.Files(pluginDir);
+        var notes = new List<string>();
+        foreach (var light in mod.Lights.Where(l => files.ContainsKey(l.FormKey)))
+        {
+            var said = $"{light.EditorID} {light.Name?.String}";
+            if (NamedHues.FirstOrDefault(h => h.Words.IsMatch(said)) is not { Words: not null } named) continue;
+            var (r, g, b) = (light.Color.R, light.Color.G, light.Color.B);
+            var word = BuiltRecords.ColorWord(r, g, b);
+            if (named.Hues.Any(h => word.EndsWith(h, StringComparison.Ordinal)) || word is "black" or "gray") continue;
+            var file = files[light.FormKey];
+            var id = light.EditorID ?? Session.FormKeyText(light.FormKey);
+            var written = Regex.Match(File.ReadAllText(Path.Combine(pluginDir, file)), @"^Color:[ \t]*['""]?(#?[0-9A-Fa-f]{6,8})", RegexOptions.Multiline);
+            var (example, called) = named.Said == "cold, blue" ? ("#00A0C8FF", "a cold pale blue") : named.Said == "warm, orange" ? ("#00FFA040", "a warm orange")
+                : named.Said == "green" ? ("#0040FF40", "green") : named.Said == "red" ? ("#00FF2020", "red") : ("#00A040FF", "purple");
+            notes.Add($"{file}: {id} is named for a {named.Said} light, and its color is {word}: #{r:X2}{g:X2}{b:X2} (red, green, blue)" +
+                (written.Success ? $", written `{written.Groups[1].Value}`" : "") + ". A light's color is written `'#00RRGGBB'` — the two digits " +
+                $"after # unused, then red, green and blue — so the color it is named for is written like `'{example}'`, {called}; one call sets " +
+                "it and builds: " + ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), file, $"{{\"path\": \"Color\", \"value\": {ToolCalls.Quoted(example)}}}", build: true) +
+                ". Where the user asked for this color, nothing to change, and this warning stays");
+        }
+        return notes;
+    }
+
+    /// <summary>
+    /// The effects of the project's ingredient, potion, spell, enchantment or scroll written by FormID alone — no editor ID, no
+    /// comment naming one — each named with the call that writes it so. Written from memory, Fortify Destruction as 03EB25,
+    /// AlchFortifyConjuration, three rounds of ingredient+detailed runs (eval rounds 150–152) built the wrong effect, `built` naming it.
+    /// </summary>
+    public static List<string> EffectsByFormId(ISkyrimModGetter mod, RecordIndex index, string pluginDir)
+    {
+        var files = EffectCasting.Files(pluginDir);
+        var notes = new List<string>();
+        foreach (var record in mod.EnumerateMajorRecords().Where(r => r.FormKey.ModKey == mod.ModKey && files.ContainsKey(r.FormKey)))
+        {
+            IReadOnlyList<IEffectGetter>? effects = record switch
+            {
+                IIngredientGetter i => i.Effects, IIngestibleGetter p => p.Effects, ISpellGetter s => s.Effects, IObjectEffectGetter o => o.Effects,
+                IScrollGetter sc => sc.Effects, _ => null
+            };
+            if (effects is not { Count: > 0 }) continue;
+            var file = files[record.FormKey];
+            var lines = Regex.Matches(File.ReadAllText(Path.Combine(pluginDir, file)), @"^[ \t]*-?[ \t]*BaseEffect:[ \t]*(?<value>[^\r\n]*?)[ \t]*\r?$", RegexOptions.Multiline)
+                .Select(m => m.Groups["value"].Value).ToList();
+            if (lines.Count != effects.Count) continue;
+            var bare = new List<(int At, string Id)>();
+            for (var i = 0; i < effects.Count; i++)
+            {
+                if (!Regex.IsMatch(lines[i], @"^['""]?[0-9A-Fa-f]{1,8}:[^\s#'""]+['""]?$") || effects[i].BaseEffect.IsNull
+                    || !index.ByFormKey.TryGetValue(effects[i].BaseEffect.FormKey, out var entry) || entry.EditorId is null) continue;
+                bare.Add((i, entry.EditorId));
+            }
+            if (bare.Count == 0) continue;
+            var id = record.EditorID ?? Session.FormKeyText(record.FormKey);
+            var set = string.Join(", ", bare.Select(b => $"{{\"path\": \"Effects[{b.At}].BaseEffect\", \"value\": {ToolCalls.Quoted(b.Id)}}}"));
+            notes.Add($"{file}: {id}'s effects are written by FormID alone, which says nothing of what each is: " +
+                string.Join(", ", bare.Select(b => $"Effects[{b.At}] is {b.Id} ({lines[b.At].Trim('\'', '"')})")) +
+                ". Where each is the effect asked for, one call writes them by editor ID, as the build reads them, and builds: " +
+                ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), file, set, build: true) +
+                "; where one is not, write the editor ID of the one meant in its place — an ingredient's and a potion's are the game's " +
+                "Alch… effects, as AlchFortifyDestruction; findRecords with types [\"MGEF\"] finds one");
+        }
+        return notes;
+    }
+
     /// <summary>
     /// A copy of a game light that nothing in the plugin places: its change reaches every place the game has that light, and no
     /// room gets a light of the mod's own. Asked for a new light of the mod's own placed in Breezehome, eval rounds 150 and 151's
@@ -709,9 +800,9 @@ internal static class MadeNotes
     /// also be ice wolves, all 8 failed plain leveled-npc runs of eval rounds 144 and 149 wrote an "Ice Wolf" of their own,
     /// placed nowhere, where the game has EncWolfIce and its wolves come from LCharWolf.
     /// </summary>
-    private static string GameNpcNamed(INpcGetter npc, ILinkCache lookup, RecordIndex index, Mutagen.Bethesda.Plugins.ModKey own, string pluginDir, string file)
+    private static string GameNpcNamed(string? named, ILinkCache lookup, RecordIndex index, Mutagen.Bethesda.Plugins.ModKey own, string pluginDir, string file)
     {
-        if (npc.Name?.String is not { Length: > 0 } name) return "";
+        if (named is not { Length: > 0 } name) return "";
         var twins = index.ByFormKey.Values.Where(e => e.Type == "Npc" && e.FormKey.ModKey != own && e.EditorId is not null
             && string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase)).OrderBy(e => e.FormKey.ModKey.FileName == "Skyrim.esm" ? 0 : 1).ToList();
         // A unique one — Hulda, Lydia — is no NPC a leveled list brings, and a new NPC of a person's name is a person of the mod's own.

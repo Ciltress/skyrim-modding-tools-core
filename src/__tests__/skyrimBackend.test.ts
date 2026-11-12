@@ -966,6 +966,17 @@ describe('the Skyrim backend', () => {
         }
     });
 
+    // Told "No file at …\plugin\LeverScript.psc", eval round 152's activator #3 sent it twice more.
+    it('deletes a script of the project named by its file name alone', async () => {
+        const { backend, fixture } = makeBackend();
+        await newProjectWithRecord(backend, fixture.projects, 'GoldLever');
+        const script = path.join(fixture.projects, 'GoldLever', 'scripts', 'LeverScript.psc');
+        write(script, 'ScriptName LeverScript extends ObjectReference\n');
+        expect((await backend.deleteRecord({ project: 'GoldLever', record: 'LeverScript.psc' })).deleted).toBe(script);
+        expect(fs.existsSync(script)).toBe(false);
+        await expect(backend.deleteRecord({ project: 'GoldLever', record: 'LeverScript.psc' })).rejects.toThrow(/No file at .*nothing was deleted/);
+    });
+
     it('deletes a record file of the projects folder, and nothing outside it', async () => {
         const { backend, fixture } = makeBackend();
         await newProjectWithRecord(backend, fixture.projects, 'FlameBlade');

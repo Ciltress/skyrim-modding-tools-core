@@ -196,8 +196,22 @@ public static class RecordLinks
                         $"{o.Id}{(o.Name is { Length: > 0 } shown ? $" \"{shown}\"" : "")} ({Session.FormKeyText(o.Key)}){(o.Made ? ", the one it makes" : "")}: " +
                         ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, $"{{\"path\": \"{field}\", \"value\": {ToolCalls.Quoted(o.Id)}}}", build: true)));
             }
+            // The project's own file of a lever, a switch, a button written as another kind than an Activator: eval round 152's
+            // activator+detailed #1 wrote its lever in ObjectEffects/, was told "Base takes a PlaceableObject — write the editor ID of
+            // the one meant", and ran out of turns.
+            string? LeverFile(string editorId) => RecordFiles.FlatRecords(pluginDir)
+                .Where(f => f.Type != typeof(Mutagen.Bethesda.Skyrim.Activator))
+                .Select(f => (f.Relative, Text: File.ReadAllText(f.File)))
+                .Where(f => Regex.IsMatch(f.Text, $@"^EditorID:[ \t]*{Regex.Escape(editorId)}[ \t]*\r?$", RegexOptions.Multiline)
+                    && MadeNotes.UsedWhereItStands.IsMatch($"{editorId} {RecordFiles.NameOf(f.Text)}"))
+                .Select(f => f.Relative.Replace('\\', '/')).FirstOrDefault();
             string WrongType(string field, string wanted, string kind, string editorId, FormKey? key) =>
-                BaseAsEffect(field, wanted, kind, editorId) is { } baseText ? baseText
+                field == "Base" && LeverFile(editorId) is { } lever
+                    ? $" — {editorId} is written in {lever[..lever.LastIndexOf('/')]}/, and a lever, a switch, a button — a thing used where it " +
+                      "stands, that does something when pulled or pressed — is an Activator, in Activators/, as the game's NorLever01 has it " +
+                      $"(readRecord {{\"record\": \"NorLever01\"}}): one call moves its file there, {ToolCalls.Move(pluginDir, lever, $"Activators/{lever[(lever.LastIndexOf('/') + 1)..]}")}; " +
+                      "then write it with an Activator's fields and build again — this reference's Base stays as it is"
+                : BaseAsEffect(field, wanted, kind, editorId) is { } baseText ? baseText
                     : ItemInNpcList(wanted, kind, editorId) is { } npcListText ? npcListText
                     : RecipeAsItem(field, wanted, kind, editorId, key) is { } recipeText ? recipeText
                     : CasterAsEffect(field, wanted, editorId, key) is { } casterText ? casterText

@@ -917,7 +917,9 @@ export class ProjectsHandlers extends BaseHandler {
                         `${JSON.stringify(made.cellFile ?? made.cell)}, "set": [{"path": "Location", "value": ${JSON.stringify(value)}}], "build": true}`;
                     const where = made.location
                         ? ` It is in the location ${made.location.editorId}` + (made.location.made
-                            ? `${made.location.name ? ` "${made.location.name}"` : ''}, a new Location written beside it` +
+                            ? `${made.location.name ? ` "${made.location.name}"` : ''}` +
+                              (made.location.sentAs ? ` (sent as "${made.location.sentAs}": the game names a location as the place it is, ` +
+                                  `"Bleak Falls Barrow", never "… Location")` : '') + `, a new Location written beside it` +
                               `${made.location.file ? ` as ${made.location.file}` : ''}${made.location.parent ? `, in ${made.location.parent}` : ''}` +
                               (made.location.hold
                                   ? ` — ${made.location.hold} is a hold, the whole of its land, so the room is a place of its own in it, which ` +

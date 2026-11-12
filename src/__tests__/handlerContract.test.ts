@@ -470,6 +470,14 @@ describe("newCell's answer says where the room is", () => {
         expect(said).toContain(`deleteRecord {"project": "AshenCamp", "record": "${file}"}`);
     });
 
+    // Eval round 152's location #2 named its camp's location "Ashen Camp Location".
+    it('says a location name sent with "Location" after it was given without', async () => {
+        const { said } = await nextStep({ editorId: 'AshenCampLocation', made: true, name: 'Ashen Camp', sentAs: 'Ashen Camp Location',
+            parent: 'WhiterunHoldLocation' }, { name: 'Ashen Camp Location', parent: 'WhiterunHoldLocation' });
+        expect(said).toContain('It is in the location AshenCampLocation "Ashen Camp" (sent as "Ashen Camp Location": the game names a ' +
+            'location as the place it is, "Bleak Falls Barrow", never "… Location"), a new Location written beside it');
+    });
+
     it('takes a location of the room\'s own with no name, the room\'s given it by the helper', async () => {
         const { request } = await nextStep({ editorId: 'AshenCampLocation', made: true, name: 'Ashen Camp', parent: 'WhiterunHoldLocation' },
             { parent: 'WhiterunHoldLocation' });

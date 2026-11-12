@@ -947,14 +947,16 @@ public static class RecordFiles
         // A lever written as a MiscItem: the move into Activators/ for every field, the Activator's own read there. Answered field by
         // field — "Flags (move it in each item of Scripts…)", then "Data (it is a Weapon's…: move the file into Weapons/)" — eval
         // round 151's activator #1 moved its gold lever into Weapons/ and ran out of turns.
-        if (type == typeof(MiscItem) && LeverLike(text, relative, keys))
+        // So too one written as an enchantment, a spell, an item (round 152's activator+detailed #1, in ObjectEffects/).
+        if (LeverKinds.Contains(type.Name) && LeverLike(type, text, relative, keys))
         {
             var all = keys.ToList();
+            var leverFolder = relative.Contains('/') ? relative[..relative.IndexOf('/')] : "";
             return $"{string.Join(", ", all)} (a lever, a switch, a button — a thing used where it stands, that does something when pulled " +
-                "or pressed — is no MiscItem, a thing the player picks up and carries, but an Activator, in Activators/, as the game's " +
+                $"or pressed — is no {type.Name}{(type == typeof(MiscItem) ? ", a thing the player picks up and carries," : "")} but an Activator, in Activators/, as the game's " +
                 "NorLever01 has it (readRecord {\"record\": \"NorLever01\"}: its Model, its Name, its script by its VirtualMachineAdapter): " +
-                (relative.StartsWith("MiscItems/", StringComparison.OrdinalIgnoreCase)
-                    ? $"one call moves this file there, {ToolCalls.Move(pluginDir, relative, $"Activators/{relative["MiscItems/".Length..]}")}; then"
+                (leverFolder.Length > 0
+                    ? $"one call moves this file there, {ToolCalls.Move(pluginDir, relative, $"Activators/{relative[(leverFolder.Length + 1)..]}")}; then"
                     : "move this file there with moveRecord, then") +
                 " write it with an Activator's fields, as NorLever01's, and build again: the build names any field an Activator has not)";
         }
@@ -967,13 +969,17 @@ public static class RecordFiles
         var whole = TopLevelKey.Matches(text).Select(m => m.Groups[1].Value).Where(k => k != "MutagenObjectType").Distinct().ToList();
         if (Groups.Values.OfType<Type>().Distinct().Count(other => !other.IsAbstract && other != type && whole.All(FieldsOf(other).Contains)) == 1)
             hinted = hinted.Select(f => (f.Key, Hint: f.Hint?.StartsWith("its lines are") == true ? f.Hint : null)).ToList();
-        // A text where a number goes is deleted with the call that does it (TextHint).
-        string Removal(string key) => TextHint(type, key, text) is null ? ""
-            : "; one call deletes it and builds again: " + ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, "", ToolCalls.Quoted(key), build: true);
+        // A text where a number goes is deleted with the call that does it (TextHint); so is a field whose hint ends "delete it
+        // here": told only that, eval round 152's activator #2 wrote its lever's `Placed:` back four times and ran out of turns.
+        string Removal(IReadOnlyList<string> keys, string hint) =>
+            keys.Count == 1 && TextHint(type, keys[0], text) is not null || hint.EndsWith("delete it here", StringComparison.Ordinal)
+                ? $"; one call deletes {(keys.Count == 1 ? "it" : "them")} and builds again: " +
+                  ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, "", string.Join(", ", keys.Select(ToolCalls.Quoted)), build: true)
+                : "";
         var named = hinted.Where(f => f.Hint is not null).GroupBy(f => f.Hint!).Select(group => group.Count() == 1
-            ? $"{group.First().Key} ({group.Key}{Moved(text, group.Key, [group.First().Key])}{Removal(group.First().Key)})"
+            ? $"{group.First().Key} ({group.Key}{Moved(text, group.Key, [group.First().Key])}{Removal([group.First().Key], group.Key)})"
             : $"{string.Join(", ", group.Select(f => f.Key))} ({Regex.Replace(group.Key, @"^(move it|it is)\b", m => m.Groups[1].Value == "move it" ? "move them" : "they are")}" +
-                $"{Moved(text, group.Key, group.Select(f => f.Key).ToList())})");
+                $"{Moved(text, group.Key, group.Select(f => f.Key).ToList())}{Removal(group.Select(f => f.Key).ToList(), group.Key)})");
         var bare = hinted.Where(f => f.Hint is null).Select(f => f.Key).ToList();
         var them = bare.Count == 1 ? "it" : "them";
         // A file of one other record type's fields alone: an enchantment written in MagicEffects/, told to delete its
@@ -1026,9 +1032,12 @@ public static class RecordFiles
     /// an Activator's script or activation is written with (the MiscItem Synonyms), or a list of it names Activator. Not a script
     /// alone: a quest's misc item has one.
     /// </summary>
-    private static bool LeverLike(string text, string relative, IEnumerable<string> keys) =>
+    private static readonly HashSet<string> LeverKinds = new(["MiscItem", "ObjectEffect", "Spell", "MagicEffect", "Weapon", "Book", "Key", "Scroll",
+        "Ingestible", "Ingredient", "Armor"], StringComparer.Ordinal);
+
+    private static bool LeverLike(Type type, string text, string relative, IEnumerable<string> keys) =>
         MadeNotes.UsedWhereItStands.IsMatch($"{Identity(text).EditorId} {BlockOf(text, "Name")} {Path.GetFileNameWithoutExtension(relative)}")
-        || keys.Any(k => SynonymHint(typeof(MiscItem), k)?.Contains("NorLever01", StringComparison.Ordinal) == true)
+        || type == typeof(MiscItem) && keys.Any(k => SynonymHint(typeof(MiscItem), k)?.Contains("NorLever01", StringComparison.Ordinal) == true)
         || Regex.IsMatch(text, @"^[ \t]*-[ \t]*Activator[ \t]*\r?$", RegexOptions.Multiline);
 
     /// <summary>Fields only a quest's alias has: written in a record file of their own, they are an alias written as a record.</summary>
@@ -2215,7 +2224,7 @@ public static class RecordFiles
     /// How many lines the top-level field at <paramref name="at"/> has: its own, and those below it that are indented, listed
     /// at the margin or comments, as YAML reads them into it — blank lines between them too, but none after the last.
     /// </summary>
-    private static int BlockLength(List<string> lines, int at)
+    internal static int BlockLength(List<string> lines, int at)
     {
         var count = 1;
         for (var i = at + 1; i < lines.Count; i++)
@@ -2283,6 +2292,11 @@ public static class RecordFiles
                 .Where(other => nowhere.All(k => WhereIn(other, k) is not null) && own.Any(k => !FieldsOf(other).Contains(k)))
                 .OrderByDescending(other => nowhere.Count(FieldsOf(other).Contains)).FirstOrDefault();
             if (source is null) continue;
+            // Not a lever's model and script, written in another group: they are what the lever is, and the refusal moves its file into
+            // Activators/ — eval round 152's activator+detailed #1, written in ObjectEffects/, lost both before it was told so.
+            if (type != typeof(Mutagen.Bethesda.Skyrim.Activator)
+                && MadeNotes.UsedWhereItStands.IsMatch($"{Identity(text).EditorId} {NameOf(text)} {Path.GetFileNameWithoutExtension(relative)}"))
+                continue;
             // Each field's block: its line, and the lines below it that are indented, listed or blank.
             var kept = new List<string>();
             var dropping = false;

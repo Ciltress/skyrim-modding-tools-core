@@ -371,7 +371,8 @@ export interface NewCellResult {
      * `hold`: the hold named as the room's location, the parent of the one made, or the location itself where its name was taken.
      */
     location?: {
-        editorId: string; formId?: string | null; made: boolean; name?: string | null; parent?: string | null; hold?: string | null; file?: string | null;
+        editorId: string; formId?: string | null; made: boolean; name?: string | null; sentAs?: string | null; parent?: string | null; hold?: string | null;
+        file?: string | null;
     } | null;
     files: number;
     cellFile?: string | null;

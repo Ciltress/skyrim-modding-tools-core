@@ -510,7 +510,11 @@ export function moveRecordFile(projectsDir: string, paths: ProjectPaths, from: s
 }
 
 export function deleteRecordFile(projectsDir: string, paths: ProjectPaths, record: string): string {
-    const file = projectsFile(projectsDir, paths, record);
+    let file = projectsFile(projectsDir, paths, record);
+    // A script by its file name alone is the project's script of that name: told "No file at …\plugin\LeverScript.psc", eval round
+    // 152's activator #3 sent it twice more, its broken script left in the build until its turns ran out.
+    const script = path.join(paths.scripts, path.basename(record.trim().replace(/\\/g, '/')));
+    if (!fs.existsSync(file) && /\.psc$/i.test(record.trim()) && fs.existsSync(script)) file = script;
     existingFile(projectsDir, file, record, paths, 'deleted');
     fs.rmSync(file);
     return file;

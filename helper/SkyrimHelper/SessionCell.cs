@@ -248,6 +248,11 @@ public sealed partial class Session
             case JsonObject wanted:
                 // Its name the room's where none is given.
                 var shownName = wanted["name"]?.GetValue<string>()?.Trim() is { Length: > 0 } given ? ShownName(given, "location.name") : shownCell;
+                // The game names a location as the place it is — "Bleak Falls Barrow", "Whiterun Hold" — never "… Location": eval round
+                // 152's location #2 named its camp's "Ashen Camp Location", which the map would have shown so.
+                string? sentAs = null;
+                if (Regex.Match(shownName, @"^(?<place>.+?)\s+Location$", RegexOptions.IgnoreCase) is { Success: true } asPlace)
+                    (sentAs, shownName) = (shownName, asPlace.Groups["place"].Value);
                 FormKey? parent = null;
                 if (wanted["parent"]?.GetValue<string>()?.Trim() is { Length: > 0 } parentName)
                     parent = OfKind(parentName, "Location", "location.parent") ?? throw new HelperException("badRequest",
@@ -257,6 +262,7 @@ public sealed partial class Session
                         $"location.keywords: {keyword} is no Keyword of the load order — a place's kind is like LocTypeDwelling; findRecords with types [\"KYWD\"] finds one."))
                     .ToList() ?? [];
                 where = Made(shownName, parent, keywords);
+                if (sentAs is not null) where["sentAs"] = sentAs;
                 break;
         }
         if (where is null && cell.Location.FormKeyNullable is { } kept)
