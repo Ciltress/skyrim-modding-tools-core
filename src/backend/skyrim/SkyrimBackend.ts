@@ -329,7 +329,7 @@ export interface NewCellRequest {
     project: string;
     /** The new interior cell's editor ID; its doors are named after it, `<cell>Door` inside and `<cell>Entrance` outside. */
     cell: string;
-    /** Its in-game name, shown on the door's prompt. Defaults to the editor ID. */
+    /** Its in-game name, shown on the door's prompt. Defaults to the editor ID in words, AshenCamp "Ashen Camp". */
     name?: string;
     /** The load order's room it is made like, by editor ID: its lighting, sound, walls, floor, lights and furniture are copied. */
     like: string;
@@ -344,9 +344,10 @@ export interface NewCellRequest {
     };
     /**
      * The location the room is in: a Location's editor ID or FormID, the load order's or the project's, or a new Location of
-     * the room's own — its name, the location it lies in, its keywords. Defaults to the location of the door's cell.
+     * the room's own — its name (the room's by default), the location it lies in, its keywords. A hold named is the room's own
+     * location's parent. Defaults to the location of the door's cell.
      */
-    location?: string | { name: string; parent?: string; keywords?: string[] };
+    location?: string | { name?: string; parent?: string; keywords?: string[] };
 }
 
 /** A new interior cell of the project's own, made like a room of the load order (helper SessionCell.cs). */
@@ -365,8 +366,13 @@ export interface NewCellResult {
         roomDoor: { editorId: string; formId: string; at: string };
         arrival: string;
     } | null;
-    /** The location the room is in — `made` where newCell wrote it as a new Location — or null for none. */
-    location?: { editorId: string; formId?: string | null; made: boolean; parent?: string | null; hold?: boolean } | null;
+    /**
+     * The location the room is in — `made` where newCell wrote it as a new Location, with its name and file — or null for none.
+     * `hold`: the hold named as the room's location, the parent of the one made, or the location itself where its name was taken.
+     */
+    location?: {
+        editorId: string; formId?: string | null; made: boolean; name?: string | null; parent?: string | null; hold?: string | null; file?: string | null;
+    } | null;
     files: number;
     cellFile?: string | null;
 }

@@ -324,6 +324,15 @@ public static class RecordLinks
                             return;
                         }
                     }
+                    // The game's gold by another name: offered the coin purses closest to `GoldCoin`, eval round 151's activator+detailed
+                    // #1 wrote a gold coin of its own, a misc item worth 1.
+                    if (GoldWord.IsMatch(editorId) && index.ByEditorId.TryGetValue("Gold001", out var gold)
+                        && index.ByFormKey.TryGetValue(gold, out var goldEntry) && takes.IsAssignableFrom(goldEntry.GetterType))
+                    {
+                        problems.Add($"{relative}: {field} names {editorId}, and no record has that editor ID — the game's gold, the septims the " +
+                            $"player carries, is Gold001 ({gold.ID:X6}:{gold.ModKey.FileName}), a MiscItem: write `Gold001` in its place" + Unlinked(field, true));
+                        return;
+                    }
                     var near = Near(editorId, takes, own, index);
                     // A record of the project written without an EditorID line has no name a link can use (eval round 11).
                     var nameless = unnamed.Where(u => takes.IsAssignableFrom(u.Type)).Select(u => u.Relative).ToList();
@@ -1189,6 +1198,10 @@ public static class RecordLinks
     /// <summary>A comment after a value that names one record — `# NordRace`, as readRecord writes one — not words.</summary>
     // A word in brackets after the name is the model's own note on it: `# AlchFortifyDestruction (Assumed)` went past the check, and
     // eval round 149's ingredient+detailed #1 built Fortify Two-handed for Fortify Destruction.
+    /// <summary>An editor ID a model gave the game's gold, Gold001: Gold, GoldCoin, Septims, Coins…</summary>
+    private static readonly Regex GoldWord = new(@"^(?:Gold|Coins?|Septims?)(?:_?(?:Coins?|Septims?|Pieces?|Item|Misc|01))?$|^(?:Misc|Item)_?Gold$",
+        RegexOptions.IgnoreCase, TimeSpan.FromSeconds(5));
+
     private static readonly Regex CommentName = new(@"^[ \t]+#[ \t]*(?<id>[A-Za-z0-9_]+)[ \t]*(?:\([^()\n]*\)[ \t]*)?\r?$", RegexOptions.None, TimeSpan.FromSeconds(5));
 
     /// <summary>An editor ID as a model makes one up — `FireDamageEnchantment`, `1stPersonFlameBlade`: a capital inside the word, or a digit.</summary>

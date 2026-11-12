@@ -448,3 +448,31 @@ describe("addPatch's note says what each copy is", () => {
             `own first, moveRecord {"project": "FlameBlade", "from": "${file}", "to": "Weapons/FlameBlade.yaml"}, then send addPatch again.`);
     });
 });
+
+describe("newCell's answer says where the room is", () => {
+    async function nextStep(location: NonNullable<Awaited<ReturnType<InMemorySkyrimBackend['newCell']>>['location']>, sent: unknown) {
+        const backend = new InMemorySkyrimBackend();
+        const newCell = backend.newCell.bind(backend);
+        const spy = vi.spyOn(backend, 'newCell').mockImplementation(async request => ({ ...(await newCell(request)), location }));
+        const handler = createHandlers(backend, CORE_PRODUCT).find(h => h.getTools().some(t => t.name === 'newCell'))!;
+        const result = await handler.handle('newCell', { project: 'AshenCamp', cell: 'AshenCamp', like: 'WhiterunBreezehome', location: sent });
+        return { said: (JSON.parse(result.content[0].text) as { nextStep: string }).nextStep, request: spy.mock.calls[0][0] };
+    }
+
+    // Told the hold was no place of the room's own, eval round 151's location #3 built its room in the hold and answered it so.
+    it('names a location newCell made in the hold named, with the calls that put the room in the hold itself', async () => {
+        const file = 'Locations/AshenCampLocation - 0008FF_Sample.esp.yaml';
+        const { said } = await nextStep({ editorId: 'AshenCampLocation', formId: '0008FF:Sample.esp', made: true, name: 'Ashen Camp',
+            parent: 'WhiterunHoldLocation', hold: 'WhiterunHoldLocation', file }, 'WhiterunHoldLocation');
+        expect(said).toContain(`It is in the location AshenCampLocation "Ashen Camp", a new Location written beside it as ${file}, in ` +
+            'WhiterunHoldLocation — WhiterunHoldLocation is a hold, the whole of its land, so the room is a place of its own in it');
+        expect(said).toContain('"set": [{"path": "Location", "value": "WhiterunHoldLocation"}], "build": true}');
+        expect(said).toContain(`deleteRecord {"project": "AshenCamp", "record": "${file}"}`);
+    });
+
+    it('takes a location of the room\'s own with no name, the room\'s given it by the helper', async () => {
+        const { request } = await nextStep({ editorId: 'AshenCampLocation', made: true, name: 'Ashen Camp', parent: 'WhiterunHoldLocation' },
+            { parent: 'WhiterunHoldLocation' });
+        expect(request.location).toEqual({ parent: 'WhiterunHoldLocation' });
+    });
+});

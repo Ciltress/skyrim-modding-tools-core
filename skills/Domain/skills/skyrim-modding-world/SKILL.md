@@ -143,7 +143,8 @@ the player comes from.
 3. `newCell {"project": "BreezehomeCellar", "cell": "BreezehomeCellar", "name": "Breezehome Cellar", "like":
    "MorthalAlvasHouseCellar", "door": {"in": "WhiterunBreezehome", "at": [x, y, z]}}` — its answer names the doors and
    where the player arrives, and `coc BreezehomeCellar` goes there too. The room takes the location of the door's cell;
-   a room the game knows as a place of its own — a camp, a cave — takes `"location": {"name": …, "parent": …}`.
+   a room the game knows as a place of its own — a camp, a cave — takes `"location": {"name": "Ashen Camp", "parent":
+   "WhiterunHoldLocation"}`, its name in words as the map shows it; a hold named alone gets the room such a place in it.
 4. `generateNavmesh` the new cell, then the door's cell — its door is new to its navmesh (next section) — and build.
 
 What stands in the room then changes as in any cell: its references are files in its folder's `Temporary/`, and its own

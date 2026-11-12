@@ -46,6 +46,24 @@ export interface PapyrusSource {
 /** The events every script has, which no script declares: Papyrus sends them itself. */
 const BUILT_IN_EVENTS = ['oninit', 'onbeginstate', 'onendstate'];
 
+/** The whole first line of events a script on a placed thing most often has, to write where a name of no event was meant as one. */
+const EVENT_SIGNATURES: Record<string, string> = {
+    onactivate: 'OnActivate(ObjectReference akActionRef)',
+    oninit: 'OnInit()',
+    onequipped: 'OnEquipped(Actor akActor)',
+    onunequipped: 'OnUnequipped(Actor akActor)',
+    oncontainerchanged: 'OnContainerChanged(ObjectReference akNewContainer, ObjectReference akOldContainer)',
+    ontriggerenter: 'OnTriggerEnter(ObjectReference akActionRef)',
+    ontriggerleave: 'OnTriggerLeave(ObjectReference akActionRef)',
+    onread: 'OnRead()',
+    ondeath: 'OnDeath(Actor akKiller)',
+    oncellattach: 'OnCellAttach()',
+    onload: 'OnLoad()',
+    oneffectstart: 'OnEffectStart(Actor akTarget, Actor akCaster)',
+    oneffectfinish: 'OnEffectFinish(Actor akTarget, Actor akCaster)',
+    onhit: 'OnHit(ObjectReference akAggressor, Form akSource, Projectile akProjectile, bool abPowerAttack, bool abSneakAttack, bool abBashAttack, bool abHitBlocked)'
+};
+
 /** Property types the game gives a value without a fill: 0, false, "". */
 const VALUE_TYPES = new Set(['int', 'float', 'bool', 'string']);
 
@@ -249,14 +267,20 @@ export function scriptWarnings(records: readonly ScriptedRecord[], context: Scri
                         const key = event.toLowerCase();
                         if (declared.has(key) || named.has(key) || own.calls.includes(key)) continue;
                         const offered = [...declared].map(e => ({ e, d: distance(e, key) })).sort((a, b) => a.d - b.d)[0];
+                        // Or the declared event whose verb the name holds, a word put in front of it: OnObjectActivate is OnActivate
+                        // — eval round 151's activator+detailed #3 was told only which scripts declare events, and answered it unfixed.
+                        const holding = [...declared].filter(e => e.length > 4 && key.endsWith(e.slice(2)) && key !== e).sort((a, b) => b.length - a.length)[0];
                         const meant = /init/i.test(event) ? 'OnInit'
-                            : offered && offered.d <= Math.max(2, Math.floor(key.length / 4))
-                                ? [...chain.flatMap(c => c.source!.events), ...['OnInit', 'OnBeginState', 'OnEndState']].find(e => e.toLowerCase() === offered.e)
+                            : offered && offered.d <= Math.max(2, Math.floor(key.length / 4)) || holding
+                                ? [...chain.flatMap(c => c.source!.events), ...['OnInit', 'OnBeginState', 'OnEndState']]
+                                    .find(e => e.toLowerCase() === (offered && offered.d <= Math.max(2, Math.floor(key.length / 4)) ? offered.e : holding))
                                 : undefined;
+                        const signature = meant ? EVENT_SIGNATURES[meant.toLowerCase()] : undefined;
                         warnings.push(`${scriptFile(script.name)}: Event ${event} is no event the game sends a script that extends ${own.extends} — ` +
                             `neither ${chain.map(c => c.name).join(' nor ')} declares it — so it never runs, and what it does never happens. ` +
                             (meant === 'OnInit' && base === 'Quest'
                                 ? 'A quest\'s script begins in OnInit, which runs when the quest starts: write `Event OnInit()` in its place, and build again.'
+                                : meant && signature ? `Where ${meant} was meant, write \`Event ${signature}\` in its place, and build again.`
                                 : meant ? `Where ${meant} was meant, write \`Event ${meant}(\` with its parameters in its place, and build again.`
                                     : `The events it can have are those ${chain.map(c => c.name).join(' and ')} declare, and OnInit.`));
                     }

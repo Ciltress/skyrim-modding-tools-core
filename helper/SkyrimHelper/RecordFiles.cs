@@ -529,11 +529,12 @@ public static class RecordFiles
             "script attached by `VirtualMachineAdapter:` — move this file there with moveRecord and write it with an Activator's fields; " +
             "delete it here"),
         // The cell a thing stands in, written into the thing's own record: told "a Light has no field placed — delete it", eval round
-        // 149's light+detailed #3 deleted it and answered its light placed in Breezehome, placed nowhere.
+        // 149's light+detailed #3 deleted it and answered its light placed in Breezehome, placed nowhere; round 151's sent `In` with editRecord.
         (["Light", "Container", "Activator", "TalkingActivator", "Furniture", "Static", "MoveableStatic", "Door", "Flora", "Tree", "MiscItem",
             "Weapon", "Armor", "Book", "Ingredient", "Ingestible", "Key", "SoulGem", "Ammunition", "Scroll", "Npc", "IdleMarker", "Hazard"],
             ["Placed", "PlacedIn", "PlacedAt", "Placement", "Placements", "Cell", "Cells", "InCell", "ParentCell", "PlacedCell", "Position",
-                "Rotation", "Where", "PlacedReference", "PlacedReferences", "References", "Refs"], null, PlacedThere)
+                "Rotation", "Where", "PlacedReference", "PlacedReferences", "References", "Refs", "In", "InRoom", "Room", "Rooms", "PlaceIn",
+                "Location", "Locations"], null, PlacedThere)
     ];
 
     /// <summary>Where a thing placed in a cell is written: in a reference's file of that cell, not in the thing's record.</summary>
@@ -773,6 +774,9 @@ public static class RecordFiles
                 .Any(kind => kind.GetProperties(Public).Any(p => p.Name.Equals(key, StringComparison.OrdinalIgnoreCase)
                     && (Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType) is var t && t != typeof(byte[]) && !t.Name.Contains("MemorySlice")))).ToList();
             if (fields is { Count: > 0 }) hits = hits.Where(h => Fits(h.Part, key, fields)).ToList();
+            // Not a part's flags or kind that takes none of the values written: a misc item's `Flags: [Misc, Activator]` was "move it in
+            // each item of Scripts, under VirtualMachineAdapter", a script's Flags, and eval round 151's activator runs wrote it there.
+            if (values is { Count: > 0 }) hits = hits.Where(h => !Named(h.Part, key) || Takes(h.Part, key, values)).ToList();
             if (hits.Count > 1 && values is { Count: > 0 } && hits.Where(h => Takes(h.Part, key, values)).ToList() is [var fits]) return fits.Path;
             if (hits.Count > 0) return hits.OrderBy(h => h.Listed).First().Path;
             level = next;
@@ -809,6 +813,15 @@ public static class RecordFiles
         var indent = below[0].Length - below[0].TrimStart().Length;
         return below.Where(line => line.Length - line.TrimStart().Length == indent)
             .Select(line => Regex.Match(line, @"^[ \t]+([A-Za-z_]\w*)[ \t]*:")).Where(m => m.Success).Select(m => m.Groups[1].Value).Distinct().ToList();
+    }
+
+    /// <summary>Whether a part's field is one of names, flags or a kind — an enum, or a list of one.</summary>
+    private static bool Named(Type part, string key)
+    {
+        if (part.GetProperties(BindingFlags.Public | BindingFlags.Instance).FirstOrDefault(p => p.Name == key) is not { } property) return false;
+        var type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+        if (type.IsGenericType && typeof(System.Collections.IEnumerable).IsAssignableFrom(type)) type = type.GetGenericArguments()[0];
+        return type.IsEnum;
     }
 
     /// <summary>Whether a part's field of names takes each of the values: a flag or a kind its enum has.</summary>
@@ -931,6 +944,20 @@ public static class RecordFiles
     private static string Unknown(Type type, HashSet<string> known, IEnumerable<string> keys, string text, string pluginDir, string relative,
         IEnumerable<(string Relative, string Text)> others)
     {
+        // A lever written as a MiscItem: the move into Activators/ for every field, the Activator's own read there. Answered field by
+        // field — "Flags (move it in each item of Scripts…)", then "Data (it is a Weapon's…: move the file into Weapons/)" — eval
+        // round 151's activator #1 moved its gold lever into Weapons/ and ran out of turns.
+        if (type == typeof(MiscItem) && LeverLike(text, relative, keys))
+        {
+            var all = keys.ToList();
+            return $"{string.Join(", ", all)} (a lever, a switch, a button — a thing used where it stands, that does something when pulled " +
+                "or pressed — is no MiscItem, a thing the player picks up and carries, but an Activator, in Activators/, as the game's " +
+                "NorLever01 has it (readRecord {\"record\": \"NorLever01\"}: its Model, its Name, its script by its VirtualMachineAdapter): " +
+                (relative.StartsWith("MiscItems/", StringComparison.OrdinalIgnoreCase)
+                    ? $"one call moves this file there, {ToolCalls.Move(pluginDir, relative, $"Activators/{relative["MiscItems/".Length..]}")}; then"
+                    : "move this file there with moveRecord, then") +
+                " write it with an Activator's fields, as NorLever01's, and build again: the build names any field an Activator has not)";
+        }
         // A block of the record's own fields: an armor's Value, Weight and ArmorRating written under a weapon's BasicStats, told
         // only to delete it, built as 0, 0 and 0 (refusal probes of 2026-10-31, A05) — written at the margin with one call.
         var hinted = keys.Select(key => (Key: key, Hint: Lifted(type, known, key, text, pluginDir, relative)
@@ -993,6 +1020,16 @@ public static class RecordFiles
         return string.Join(", ", named.Append(bare.Count == 0 ? "" : $"{string.Join(", ", bare)} ({deleted})")
             .Where(s => s.Length > 0));
     }
+
+    /// <summary>
+    /// Whether a MiscItem's file is a lever's: its editor ID, name or file name says lever, switch, button…, a field it has is one
+    /// an Activator's script or activation is written with (the MiscItem Synonyms), or a list of it names Activator. Not a script
+    /// alone: a quest's misc item has one.
+    /// </summary>
+    private static bool LeverLike(string text, string relative, IEnumerable<string> keys) =>
+        MadeNotes.UsedWhereItStands.IsMatch($"{Identity(text).EditorId} {BlockOf(text, "Name")} {Path.GetFileNameWithoutExtension(relative)}")
+        || keys.Any(k => SynonymHint(typeof(MiscItem), k)?.Contains("NorLever01", StringComparison.Ordinal) == true)
+        || Regex.IsMatch(text, @"^[ \t]*-[ \t]*Activator[ \t]*\r?$", RegexOptions.Multiline);
 
     /// <summary>Fields only a quest's alias has: written in a record file of their own, they are an alias written as a record.</summary>
     private static readonly HashSet<string> AliasFields = new(StringComparer.Ordinal)

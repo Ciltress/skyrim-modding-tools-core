@@ -35,15 +35,19 @@ public sealed partial class Session
         if (!Regex.IsMatch(editorId, "^[A-Za-z][A-Za-z0-9_]{0,55}$"))
             throw new HelperException("badRequest", $"'{editorId}' is no editor ID: letters, digits and _, starting with a letter, at most 56 (its doors add 'Entrance').");
         var door = p["door"] as JsonObject;
+        // The names the game shows — the room's on its door, its location's on the map — in words, never an editor ID's spelling:
+        // eval round 151's location #2 named its room's location "AshenCampLocation", and the map would have shown that.
+        var shownCell = p["name"]?.GetValue<string>()?.Trim() is { Length: > 0 } shownGiven ? ShownName(shownGiven, "name") : Words(editorId);
         var names = new List<string> { editorId };
         if (door is not null) names.AddRange([editorId + "Door", editorId + "Entrance"]);
         if (p["location"] is JsonObject) names.Add(editorId + "Location");
+        bool ProjectNames(string name) => Directory.Exists(projectDir) && Directory.EnumerateFiles(projectDir, "*.yaml", SearchOption.AllDirectories)
+            .Any(f => Regex.IsMatch(File.ReadAllText(f), $@"^[ \t]*EditorID:[ \t]*{Regex.Escape(name)}[ \t]*\r?$", RegexOptions.Multiline | RegexOptions.IgnoreCase));
         foreach (var name in names)
         {
             if (Index.ByEditorId.TryGetValue(name, out var taken))
                 throw new HelperException("badRequest", $"The load order has a record named {name} already ({FormKeyText(taken)}): name the cell otherwise.");
-            if (Directory.Exists(projectDir) && Directory.EnumerateFiles(projectDir, "*.yaml", SearchOption.AllDirectories)
-                .Any(f => Regex.IsMatch(File.ReadAllText(f), $@"^[ \t]*EditorID:[ \t]*{Regex.Escape(name)}[ \t]*\r?$", RegexOptions.Multiline | RegexOptions.IgnoreCase)))
+            if (ProjectNames(name))
                 // The room's own location's name, taken by a Location the project has: told "name the cell otherwise", eval round
                 // 150's location+detailed #1 had written that location itself, and only had to name it.
                 throw new HelperException("badRequest", name == editorId + "Location"
@@ -82,7 +86,7 @@ public sealed partial class Session
         var cell = new Cell(Next(), release)
         {
             EditorID = editorId,
-            Name = p["name"]?.GetValue<string>()?.Trim() is { Length: > 0 } shown ? shown : editorId,
+            Name = shownCell,
             Flags = like.Flags,
             Lighting = like.Lighting?.DeepCopy(),
             WaterHeight = like.WaterHeight
@@ -190,17 +194,44 @@ public sealed partial class Session
                 : throw new HelperException("badRequest", $"{field}: {wanted} is {(Index.ByFormKey.TryGetValue(key, out var other) ? RecordFiles.Article(other.Type) : "no record")}, " +
                     $"not {RecordFiles.Article(kind)} — findRecords with types [\"{(kind == "Location" ? "LCTN" : "KYWD")}\"] finds one.");
         }
+        // A Location of the room's own, its parent the place it lies in, and the room in it.
+        JsonObject Made(string shown, FormKey? parent, IReadOnlyList<FormKey> kinds)
+        {
+            var made = new Location(Next(), release) { EditorID = editorId + "Location", Name = shown };
+            if (parent is { } lies) made.ParentLocation.SetTo(lies);
+            if (kinds.Count > 0)
+            {
+                made.Keywords = new ExtendedList<IFormLinkGetter<IKeywordGetter>>();
+                foreach (var kind in kinds) made.Keywords.Add(new FormLink<IKeywordGetter>(kind));
+            }
+            temp.Locations.Add(made);
+            cell.Location.SetTo(made.FormKey);
+            return new JsonObject
+            {
+                ["editorId"] = made.EditorID, ["formId"] = FormKeyText(made.FormKey), ["made"] = true, ["name"] = shown,
+                ["parent"] = parent is { } p2 ? Index.ByFormKey[p2].EditorId ?? FormKeyText(p2) : null
+            };
+        }
         switch (p["location"])
         {
             case JsonValue named when named.TryGetValue<string>(out var locationName) && locationName.Trim() is { Length: > 0 } wanted:
                 if (OfKind(wanted, "Location", "location") is { } gameLocation)
                 {
-                    cell.Location.SetTo(gameLocation);
+                    var gameName = Index.ByFormKey[gameLocation].EditorId ?? wanted;
                     // A hold, the whole of its land, named where the room was to be a place of its own in it: 2 of eval round 150's 3
-                    // plain location runs sent WhiterunHoldLocation.
+                    // plain location runs sent WhiterunHoldLocation, and told that a place of the room's own is a Location whose
+                    // parent the hold is, round 151's location #3 answered its room a place in Whiterun Hold, in the hold itself.
+                    // So the room is a place of its own in the hold, its location newCell's, unless that name is taken.
                     var hold = Contexts(gameLocation).Select(c => c.Record).OfType<ILocationGetter>().FirstOrDefault()?.Keywords?
                         .Any(k => Index.ByFormKey.TryGetValue(k.FormKey, out var keyword) && keyword.EditorId == "LocTypeHold") == true;
-                    where = new JsonObject { ["editorId"] = Index.ByFormKey[gameLocation].EditorId ?? wanted, ["formId"] = FormKeyText(gameLocation), ["made"] = false, ["hold"] = hold };
+                    if (hold && !Index.ByEditorId.ContainsKey(editorId + "Location") && !ProjectNames(editorId + "Location"))
+                    {
+                        where = Made(shownCell, gameLocation, []);
+                        where["hold"] = gameName;
+                        break;
+                    }
+                    cell.Location.SetTo(gameLocation);
+                    where = new JsonObject { ["editorId"] = gameName, ["formId"] = FormKeyText(gameLocation), ["made"] = false, ["hold"] = hold ? gameName : null };
                     break;
                 }
                 var locations = Path.Combine(projectDir, "Locations");
@@ -215,28 +246,17 @@ public sealed partial class Session
                 where = new JsonObject { ["editorId"] = wanted, ["made"] = false };
                 break;
             case JsonObject wanted:
-                var shownName = wanted["name"]?.GetValue<string>()?.Trim() is { Length: > 0 } given ? given
-                    : throw new HelperException("badRequest", "location.name is the new location's in-game name, e.g. \"Ashen Camp\".");
-                var made = new Location(Next(), release) { EditorID = editorId + "Location", Name = shownName };
-                string? parentId = null;
+                // Its name the room's where none is given.
+                var shownName = wanted["name"]?.GetValue<string>()?.Trim() is { Length: > 0 } given ? ShownName(given, "location.name") : shownCell;
+                FormKey? parent = null;
                 if (wanted["parent"]?.GetValue<string>()?.Trim() is { Length: > 0 } parentName)
-                {
-                    var parent = OfKind(parentName, "Location", "location.parent") ?? throw new HelperException("badRequest",
+                    parent = OfKind(parentName, "Location", "location.parent") ?? throw new HelperException("badRequest",
                         $"location.parent: {parentName} is no Location of the load order — a hold's is like WhiterunHoldLocation; findRecords with types [\"LCTN\"] finds one.");
-                    made.ParentLocation.SetTo(parent);
-                    parentId = Index.ByFormKey[parent].EditorId ?? parentName;
-                }
-                var keywords = (wanted["keywords"] as JsonArray)?.Select(k => k?.GetValue<string>()?.Trim()).OfType<string>().Where(k => k.Length > 0).ToList() ?? [];
-                if (keywords.Count > 0)
-                {
-                    made.Keywords = new ExtendedList<IFormLinkGetter<IKeywordGetter>>();
-                    foreach (var keyword in keywords)
-                        made.Keywords.Add(new FormLink<IKeywordGetter>(OfKind(keyword, "Keyword", "location.keywords") ?? throw new HelperException("badRequest",
-                            $"location.keywords: {keyword} is no Keyword of the load order — a place's kind is like LocTypeDwelling; findRecords with types [\"KYWD\"] finds one.")));
-                }
-                temp.Locations.Add(made);
-                cell.Location.SetTo(made.FormKey);
-                where = new JsonObject { ["editorId"] = made.EditorID, ["formId"] = FormKeyText(made.FormKey), ["made"] = true, ["parent"] = parentId };
+                var keywords = (wanted["keywords"] as JsonArray)?.Select(k => k?.GetValue<string>()?.Trim()).OfType<string>().Where(k => k.Length > 0)
+                    .Select(keyword => OfKind(keyword, "Keyword", "location.keywords") ?? throw new HelperException("badRequest",
+                        $"location.keywords: {keyword} is no Keyword of the load order — a place's kind is like LocTypeDwelling; findRecords with types [\"KYWD\"] finds one."))
+                    .ToList() ?? [];
+                where = Made(shownName, parent, keywords);
                 break;
         }
         if (where is null && cell.Location.FormKeyNullable is { } kept)
@@ -257,6 +277,8 @@ public sealed partial class Session
             files.Add(path);
         }
         var cellFile = files.Select(f => f!.GetValue<string>()).FirstOrDefault(f => f.EndsWith($"/{editorId} - {cell.FormKey.ID:X6}_{pluginName.FileName}/RecordData.yaml", StringComparison.OrdinalIgnoreCase));
+        if (where?["made"]?.GetValue<bool>() == true)
+            where["file"] = files.Select(f => f!.GetValue<string>()).FirstOrDefault(f => f.StartsWith("Locations/", StringComparison.OrdinalIgnoreCase));
         return new JsonObject
         {
             ["cell"] = editorId,
@@ -269,6 +291,23 @@ public sealed partial class Session
             ["files"] = files.Count,
             ["cellFile"] = cellFile
         };
+    }
+
+    /// <summary>An editor ID in words, as the game shows a name: AshenCamp "Ashen Camp", Breezehome_Cellar "Breezehome Cellar".</summary>
+    internal static string Words(string editorId) =>
+        Regex.Replace(Regex.Replace(editorId, @"(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])|_+", " "), @"\s+", " ").Trim();
+
+    /// <summary>
+    /// A name the game shows, as given — refused where it is written as an editor ID, one word of capitals inside it or joined by
+    /// _: eval round 151's location #2 named its room's location AshenCampLocation, which the map would have shown so.
+    /// </summary>
+    private static string ShownName(string given, string field)
+    {
+        if (Regex.IsMatch(given, @"\s") || !Regex.IsMatch(given, @"[a-z][A-Z]|_")) return given;
+        var meant = Words(Regex.Replace(given, "Location$", ""));
+        throw new HelperException("badRequest", $"{field}: {given} is written as an editor ID, and {field} is the name the game shows — on the " +
+            $"door, on the map — in words, as the user said it: \"{meant}\". newCell gives the editor IDs itself: the room's is `cell`, its " +
+            "location's the room's with Location after it.");
     }
 
     /// <summary>A copy of the game's reference, kept to what stands there: no owner, lock, enable parent, links or door of the game's room.</summary>

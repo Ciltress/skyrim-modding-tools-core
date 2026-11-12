@@ -104,7 +104,10 @@ internal static class BuiltRecords
                 yield return Effects(ingredient.Effects, id);
                 break;
             case ILightGetter light:
-                yield return $"radius {light.Radius}, color #{light.Color.R:X2}{light.Color.G:X2}{light.Color.B:X2} (red, green, blue)";
+                // The color in words too: built as "#00CC3F (red, green, blue)", a light written `#0000CC3F` for blue — the alpha written
+                // last — was answered a cold blue light by eval round 151's light #3, green in game.
+                yield return $"radius {light.Radius}, color #{light.Color.R:X2}{light.Color.G:X2}{light.Color.B:X2} (red, green, blue): " +
+                    ColorWord(light.Color.R, light.Color.G, light.Color.B);
                 break;
             // A location's parent by name: written from memory, eval round 149's location+detailed #2 put its camp in 0130FF, not
             // the WhiterunHoldLocation it had read.
@@ -156,4 +159,21 @@ internal static class BuiltRecords
                 : "")));
 
     private static string Number(float value) => value.ToString("0.##", CultureInfo.InvariantCulture);
+
+    /// <summary>A color's hue in a word — white, red, orange, yellow, green, cyan, blue, purple, pink — pale or dark where it is.</summary>
+    internal static string ColorWord(byte r, byte g, byte b)
+    {
+        var (max, min) = (Math.Max(r, Math.Max(g, b)), Math.Min(r, Math.Min(g, b)));
+        if (max < 40) return "black";
+        var saturation = (max - min) / (double)max;
+        if (saturation < 0.15) return max > 200 ? "white" : "gray";
+        double hue = max == r ? 60 * ((g - b) / (double)(max - min)) : max == g ? 60 * (2 + (b - r) / (double)(max - min)) : 60 * (4 + (r - g) / (double)(max - min));
+        if (hue < 0) hue += 360;
+        var word = hue switch
+        {
+            < 15 => "red", < 40 => "orange", < 70 => "yellow", < 160 => "green", < 200 => "cyan", < 260 => "blue", < 290 => "purple",
+            < 340 => "pink", _ => "red"
+        };
+        return saturation < 0.4 ? $"pale {word}" : max < 110 ? $"dark {word}" : word;
+    }
 }

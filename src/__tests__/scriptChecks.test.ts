@@ -72,6 +72,18 @@ describe('scriptWarnings', () => {
         expect(warning).toContain('write `Event OnInit()` in its place');
     });
 
+    it('names the declared event whose verb a name holds, with its whole first line (round 151\'s activator+detailed #3)', () => {
+        fs.writeFileSync(path.join(vanilla, 'ObjectReference.psc'), 'Scriptname ObjectReference extends Form Hidden\n\n' +
+            'Event OnActivate(ObjectReference akActionRef)\nEndEvent\n');
+        const lever: ScriptedRecord = { file: 'Activators/StrangeLever.yaml', editorId: 'StrangeLever', type: 'Activator',
+            scripts: [{ name: 'StarterGoldScript', properties: [{ name: 'Gold001', kind: 'Object', filled: true }] }] };
+        const [warning, ...rest] = warn([lever], 'Scriptname StarterGoldScript extends ObjectReference\n\nMiscObject Property Gold001 Auto\n\n' +
+            'Event OnObjectActivate(ObjectReference akObject)\n    Game.GetPlayer().AddItem(Gold001, 100)\nEndEvent\n');
+        expect(rest).toEqual([]);
+        expect(warning).toContain('Event OnObjectActivate is no event the game sends a script that extends ObjectReference');
+        expect(warning).toContain('Where OnActivate was meant, write `Event OnActivate(ObjectReference akActionRef)` in its place');
+    });
+
     it('takes the events the parents declare, Papyrus\'s own, and one the script registers for by name', () => {
         const script = GOOD.replace('EndEvent\n', 'EndEvent\n\nEvent OnUpdate()\nEndEvent\n\nState Busy\n  Event OnBeginState()\n  EndEvent\nEndState\n\n' +
             'Event OnMyModEvent(string eventName, string strArg, float numArg, Form sender)\nEndEvent\n')
