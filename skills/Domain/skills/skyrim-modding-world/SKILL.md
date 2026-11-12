@@ -142,7 +142,8 @@ the player comes from.
    places the door the game pairs with the room's own.
 3. `newCell {"project": "BreezehomeCellar", "cell": "BreezehomeCellar", "name": "Breezehome Cellar", "like":
    "MorthalAlvasHouseCellar", "door": {"in": "WhiterunBreezehome", "at": [x, y, z]}}` — its answer names the doors and
-   where the player arrives, and `coc BreezehomeCellar` goes there too.
+   where the player arrives, and `coc BreezehomeCellar` goes there too. The room takes the location of the door's cell;
+   a room the game knows as a place of its own — a camp, a cave — takes `"location": {"name": …, "parent": …}`.
 4. `generateNavmesh` the new cell, then the door's cell — its door is new to its navmesh (next section) — and build.
 
 What stands in the room then changes as in any cell: its references are files in its folder's `Temporary/`, and its own
@@ -189,7 +190,7 @@ or none. Never write a worldspace, its cells or their landscape by hand: the hei
 
 | To give … | Record | Fields | Set on |
 |---|---|---|---|
-| a place the game knows (map, quests, "Cleared") | `Location` in `Locations/` | `Name`, `ParentLocation` (the hold's, `WhiterunHoldLocation`), `Keywords` of its kind (`LocTypeDwelling`, `LocTypeDungeon`) | a cell's `Location` — a new room's: newCell, then `editRecord` of its file |
+| a place the game knows (map, quests, "Cleared") | `Location` in `Locations/` | `Name`, `ParentLocation` (the hold's, `WhiterunHoldLocation`), `Keywords` of its kind (`LocTypeDwelling`, `LocTypeDungeon`) | a cell's `Location` — a new room's in the newCell call itself: `"location": {"name": "Ashen Camp", "parent": "WhiterunHoldLocation", "keywords": ["LocTypeDwelling"]}` writes the room's own, `"location": "WhiterunBreezehomeLocation"` names one |
 | the level of a cell's enemies and loot | `EncounterZone` in `EncounterZones/` | `MinLevel`, `MaxLevel` (0: none), `Location`, `Flags` (`NeverResets`) | a cell's `EncounterZone` — a game cell's through its copy (addPatch); or the zone a game cell has, copied with addPatch, which changes every cell that has it |
 | weather or sound over an area outdoors | `Region` in `Regions/` | `Worldspace`, `RegionAreas` (the area's points), its weather data naming `Weather` records with a chance | the exterior cells the area covers — each cell's copy names it in its `Regions`, as the game's cells name theirs |
 

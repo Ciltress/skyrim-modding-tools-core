@@ -342,6 +342,11 @@ export interface NewCellRequest {
         /** The door placed in `in`, a door record's editor ID. Defaults to the one the game pairs with the room's door. */
         base?: string;
     };
+    /**
+     * The location the room is in: a Location's editor ID or FormID, the load order's or the project's, or a new Location of
+     * the room's own — its name, the location it lies in, its keywords. Defaults to the location of the door's cell.
+     */
+    location?: string | { name: string; parent?: string; keywords?: string[] };
 }
 
 /** A new interior cell of the project's own, made like a room of the load order (helper SessionCell.cs). */
@@ -360,6 +365,8 @@ export interface NewCellResult {
         roomDoor: { editorId: string; formId: string; at: string };
         arrival: string;
     } | null;
+    /** The location the room is in — `made` where newCell wrote it as a new Location — or null for none. */
+    location?: { editorId: string; formId?: string | null; made: boolean; parent?: string | null } | null;
     files: number;
     cellFile?: string | null;
 }

@@ -57,6 +57,32 @@ function doorOf(value: unknown): { in: string; at: [number, number, number]; rot
 }
 
 /**
+ * newCell's `location`: a Location by editor ID or FormID, or a new one of the room's own — as an object or as its JSON text.
+ * Asked for a room the game knows as a location of its own, none of the 8 plain location runs of eval rounds 144 and 149 wrote
+ * a Location: newCell had nothing to say it with.
+ */
+function locationOf(value: unknown): string | { name: string; parent?: string; keywords?: string[] } | undefined {
+    if (value === undefined || value === null || value === '') return undefined;
+    let location: any = value;
+    if (typeof location === 'string' && location.trim().startsWith('{')) {
+        try { location = JSON.parse(location); } catch { location = undefined; }
+    }
+    if (typeof location === 'string') return location.trim();
+    if (typeof location !== 'object' || location === null || Array.isArray(location)) {
+        throw new ToolError(ToolErrorCode.InvalidParams, '\'location\' is a Location\'s editor ID, like "WhiterunBreezehomeLocation", or a ' +
+            'location of the room\'s own: {"name": "Ashen Camp", "parent": "WhiterunHoldLocation", "keywords": ["LocTypeDwelling"]}.');
+    }
+    const keywords = typeof location.keywords === 'string' ? location.keywords.split(/[\s,]+/).filter(Boolean)
+        : Array.isArray(location.keywords) ? location.keywords.filter((k: unknown): k is string => typeof k === 'string' && k.trim() !== '').map((k: string) => k.trim())
+        : undefined;
+    return {
+        name: requireString(location, 'name', 'The new location\'s in-game name, e.g. "Ashen Camp".'),
+        ...(optionalString(location, 'parent') ? { parent: optionalString(location, 'parent')! } : {}),
+        ...(keywords?.length ? { keywords } : {})
+    };
+}
+
+/**
  * The enchantment a copied record's text carries — its `ObjectEffect:` line, `049BB7:Skyrim.esm  # EnchWeaponFireDamage01` —
  * as its editor ID (from the comment) with its FormID, and the reference addPatch takes for it; null without one, or
  * without the text.
@@ -841,6 +867,13 @@ export class ProjectsHandlers extends BaseHandler {
                                     base: { type: 'string', description: 'The door placed there, a door record\'s editor ID. Defaults to the one the game pairs with the room\'s door.' }
                                 },
                                 required: ['in', 'at']
+                            },
+                            location: {
+                                description: 'The location the room is in, which the game knows it by — on the map, in quests, cleared or not: a ' +
+                                    'Location\'s editor ID, the game\'s like "WhiterunBreezehomeLocation" or the project\'s; or a location of the ' +
+                                    'room\'s own, written as a new Location: {"name": "Ashen Camp", "parent": "WhiterunHoldLocation", "keywords": ' +
+                                    '["LocTypeDwelling"]}, its parent the location it lies in, a hold\'s or a city\'s. Defaults to the location of ' +
+                                    'the door\'s cell.'
                             }
                         },
                         required: ['project', 'cell', 'like']
@@ -850,18 +883,24 @@ export class ProjectsHandlers extends BaseHandler {
                 run: async args => {
                     const project = requireString(args, 'project');
                     const door = doorOf(args?.door);
+                    const location = locationOf(args?.location);
                     const made = await asRequestError(this.backend.newCell({
                         project,
                         cell: requireString(args, 'cell', 'The new cell\'s editor ID, like "BreezehomeCellar".'),
                         name: optionalString(args, 'name'),
                         like: requireString(args, 'like', 'The game\'s room it is made like, by editor ID, e.g. "MorthalAlvasHouseCellar".'),
-                        ...(door ? { door } : {})
+                        ...(door ? { door } : {}),
+                        ...(location ? { location } : {})
                     }));
+                    const where = made.location
+                        ? ` It is in the location ${made.location.editorId}` + (made.location.made
+                            ? `, a new Location written beside it${made.location.parent ? `, in ${made.location.parent}` : ''}.` : '.')
+                        : ' It is in no location.';
                     const navmesh = (cell: string) => `generateNavmesh {"project": ${JSON.stringify(project)}, "cell": ${JSON.stringify(cell)}}`;
                     const kinds = Object.entries(made.byKind).map(([kind, count]) => `${count} ${kind}`).join(', ');
                     return {
                         ...made,
-                        nextStep: `${made.cell} is written into the project, made like ${made.like}: ${made.references} references (${kinds}).` +
+                        nextStep: `${made.cell} is written into the project, made like ${made.like}: ${made.references} references (${kinds}).${where}` +
                             (made.doors
                                 ? ` Its door ${made.doors.roomDoor.editorId} and ${made.doors.entrance.editorId} at ${made.doors.entrance.at} in ` +
                                   `${made.doors.in} lead to each other. Next: ${navmesh(made.cell)}, then ${navmesh(made.doors.in)} — the door ` +

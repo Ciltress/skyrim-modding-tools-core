@@ -398,7 +398,10 @@ public static class RecordEdits
         var steps = sent.ToList();
         while (FirstUnknown(record, steps) is var (at, above, holder) && at >= 0)
         {
-            if (at == 0 && RecordFiles.PartFor(record, steps[0].Key, "") is { } part && Property(record, part) is not null)
+            // Not onto a part's bytes: an activator's Data, sent with a made-up value, was set as Model.Data, the hashes of its model's
+            // textures, and built (eval round 149's activator #3).
+            if (at == 0 && RecordFiles.PartFor(record, steps[0].Key, "") is { } part && Property(record, part) is { } partField
+                && !Bytes(Property(Nullable.GetUnderlyingType(partField.PropertyType) ?? partField.PropertyType, steps[0].Key)?.PropertyType))
                 steps.Insert(0, new Step(part, null));
             else if (at > 0 && steps[at - 1].Index is not null && holder is not null
                      && Regex.Match(RecordFiles.HintFor(holder, steps[at].Key), @"^ \(move it under (?<part>\w+)\)$") is { Success: true } under
@@ -413,6 +416,10 @@ public static class RecordEdits
         }
         return steps;
     }
+
+    /// <summary>Whether a field's type holds bytes — a model's texture hashes, a record's raw data — which no edit sends.</summary>
+    private static bool Bytes(Type? type) =>
+        type is not null && (Nullable.GetUnderlyingType(type) ?? type) is var t && (t == typeof(byte[]) || t.Name.Contains("MemorySlice"));
 
     /// <summary>
     /// The first step of a path whose part has no field for it, the part holding the step before it, and the part that lacks
@@ -607,6 +614,17 @@ public static class RecordEdits
             value = parsed;
             label += unescaped ? " (fields, sent as a text with its quotes escaped, `\\\"`, read as quotes)" : " (fields, sent as a text)";
         }
+        // A part's fields sent as the lines a file writes them in — a leveled list's entry as "Data: {Level: 1, Reference: IceWolf,
+        // Count: 1}", a script as "Scripts:\n  - Name: …" — are those fields, where each is the part's: refused with the mapping to
+        // send, eval round 149's leveled-npc #3 sent the entry's Data alone next, and activator+detailed #3 the mapping with its
+        // closing brackets inside a text, three times.
+        else if (value is JsonValue linesSent && linesSent.TryGetValue<string>(out var linesSaid) && !linesSaid.TrimStart().StartsWith('{')
+                 && (Nullable.GetUnderlyingType(types[^1]) ?? types[^1]) is var partType && typeof(Loqui.ILoquiObject).IsAssignableFrom(partType)
+                 && !Translated(partType) && MappingOf(linesSaid, partType) is { } mapped)
+        {
+            value = JsonNode.Parse(mapped);
+            label += " (fields, sent as the lines a file writes)";
+        }
         // A text takes words: sent the number 150 for Name.Value, meaning the sword's price, the tool wrote `Name: 150` over the
         // whole Name, the build refused it, and the model answered that a weapon has no field for its price (eval round 80's
         // sword+detailed #2).
@@ -661,8 +679,8 @@ public static class RecordEdits
         // sword #2).
         if (RecordLinks.LinkTarget(Items(types[^1]) ?? types[^1]) is not null && Uncommented(value) is { } bare)
         {
+            label += Overran(value) ? " (sent with the call's closing quote and brackets inside its text, left out)" : " (sent with a `# comment` after the link, left out)";
             value = bare;
-            label += " (sent with a `# comment` after the link, left out)";
         }
         // A list of names sent as a text: "- AutoCalcStats\n- Unique\n- Female", its line ends written `\n`, was set as one
         // text, which the build refused, then "AutoCalcStats\nUnique\nFemale", and the model answered as built (eval round 61's
@@ -705,8 +723,9 @@ public static class RecordEdits
         // eval round 128, leveled+detailed #1).
         if (UncommentedLinks(value, types[^1]) is { } bareParts)
         {
+            label += Overran(value) ? " (a link sent with the call's closing quote and brackets inside its text, left out)"
+                : " (each link sent with a `# comment` after it, left out)";
             value = bareParts;
-            label += " (each link sent with a `# comment` after it, left out)";
         }
         // A value the field cannot hold, refused before it is written: "twelve" for a damage, 12 for BasicStats, null — each was
         // written, and the build after it refused the file the tool had made (refusal probes of 2026-10-31, E06, E20, E23).
@@ -735,12 +754,28 @@ public static class RecordEdits
     private static readonly Regex Commented = new(@"^[ \t]*(?<link>[^\s#'""]+)[ \t]+#.*$");
 
     /// <summary>
+    /// A link with the end of the call's JSON inside its text — `Gold001"}]}]}}]`, the closing quote and brackets written twice: eval
+    /// round 149's activator+detailed #3 sent its script's property so three times, each refused by the build as no FormID.
+    /// </summary>
+    private static readonly Regex Overrun = new(@"^[ \t]*(?<link>[^\s#'""\[\]{}]+)""[ \t]*[\]}][\]}""\s]*$");
+
+    /// <summary>Whether a value sent holds a link with the end of the call's JSON inside its text (<see cref="Overrun"/>).</summary>
+    private static bool Overran(JsonNode? value) => value switch
+    {
+        JsonValue one => one.TryGetValue<string>(out var said) && Overrun.IsMatch(said),
+        JsonArray items => items.Any(Overran),
+        JsonObject fields => fields.Any(f => Overran(f.Value)),
+        _ => false
+    };
+
+    /// <summary>
     /// A link, or a list of links, sent with a `# comment` after each, as the links alone — a list sent as a text, line by line;
     /// null where no comment is.
     /// </summary>
     private static JsonNode? Uncommented(JsonNode? value)
     {
-        string? Bare(string said) => Commented.Match(said) is { Success: true } m ? m.Groups["link"].Value : null;
+        string? Bare(string said) => Commented.Match(said) is { Success: true } m ? m.Groups["link"].Value
+            : Overrun.Match(said) is { Success: true } o ? o.Groups["link"].Value : null;
         switch (value)
         {
             case JsonValue one when one.TryGetValue<string>(out var said):
@@ -803,8 +838,10 @@ public static class RecordEdits
                 case JsonArray items when Items(at) is { IsEnum: false } item:
                     return new JsonArray(items.Select(i => Walk(i, item)).ToArray());
                 case JsonObject fields:
+                    // A part of several kinds by the kind it names — a script's property, a ScriptObjectProperty, whose Object is a link.
+                    var kind = fields["MutagenObjectType"] is JsonValue named && RecordFiles.KindOf(at, named.ToString()) is { } of ? of : at;
                     return new JsonObject(fields.Select(f => KeyValuePair.Create(f.Key,
-                        f.Key != "MutagenObjectType" && Property(at, f.Key)?.PropertyType is { } field ? Walk(f.Value, field) : f.Value?.DeepClone())));
+                        f.Key != "MutagenObjectType" && Property(kind, f.Key)?.PropertyType is { } field ? Walk(f.Value, Nullable.GetUnderlyingType(field) ?? field) : f.Value?.DeepClone())));
                 case JsonValue one when RecordLinks.LinkTarget(at) is not null && Uncommented(one) is { } bare:
                     changed = true;
                     return bare;
@@ -1137,6 +1174,21 @@ public static class RecordEdits
                     var lines = Render("", entry, dash).Skip(1).ToList();
                     lines[0] = new string(' ', dash) + "- " + lines[0].TrimStart();
                     changes.Add($"added {path}: {Shown(entry)}, after the {n} item{(n == 1 ? "" : "s")} {step.Key} had");
+                    var all = text.Split('\n').ToList();
+                    all.InsertRange(LastLine(text, after) + 1, lines);
+                    return string.Join('\n', all);
+                }
+                // The item after the last, sent field by field — `Entries[3].Data` with an entry's Data — added as that item. Told
+                // "[3] is none — set Entries whole", eval round 149's leveled-npc #3 wrote its list whole, three wolves in it.
+                if (!last && child is YamlSequenceNode { Style: not YamlDotNet.Core.Events.SequenceStyle.Flow, Children.Count: > 0 } beyond
+                    && n == beyond.Children.Count && beyond.Children.All(c => c is YamlMappingNode) && steps.Skip(i + 1).All(s => s.Index is null)
+                    && Nest(steps.Skip(i).ToList(), types.Skip(i).ToList(), value) is JsonObject made)
+                {
+                    var after = beyond.Children[^1];
+                    var dash = DashColumn(text, after);
+                    var lines = Render("", made, dash).Skip(1).ToList();
+                    lines[0] = new string(' ', dash) + "- " + lines[0].TrimStart();
+                    changes.Add($"added {Upto(steps, i + 1)}: {Shown(made)}, after the {n} item{(n == 1 ? "" : "s")} {step.Key} had");
                     var all = text.Split('\n').ToList();
                     all.InsertRange(LastLine(text, after) + 1, lines);
                     return string.Join('\n', all);

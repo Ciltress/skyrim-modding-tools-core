@@ -472,7 +472,8 @@ internal static class MadeNotes
     public static List<string> Unused(ISkyrimModGetter mod, ILinkCache lookup, RecordIndex index, string pluginDir)
     {
         var made = mod.EnumerateMajorRecords().Where(r => r.FormKey.ModKey == mod.ModKey
-            && r is INpcGetter or ILeveledItemGetter or ILeveledNpcGetter or ILeveledSpellGetter or IContainerGetter or IEncounterZoneGetter).ToList();
+            && r is INpcGetter or ILeveledItemGetter or ILeveledNpcGetter or ILeveledSpellGetter or IContainerGetter or IEncounterZoneGetter
+                or ILocationGetter).ToList();
         if (made.Count == 0) return [];
         var named = new HashSet<Mutagen.Bethesda.Plugins.FormKey>();
         foreach (var record in mod.EnumerateMajorRecords())
@@ -490,7 +491,8 @@ internal static class MadeNotes
             {
                 var cell = cells is [var only] ? $" — the project's cell {only.EditorID ?? Session.FormKeyText(only.FormKey)} is one" : "";
                 notes.Add($"{file}: {id}{(npc.Name?.String is { Length: > 0 } name ? $" \"{name}\"" : "")}, a new NPC, is placed in no cell, and nothing in " +
-                    $"the plugin names {id} — no leveled list, quest alias or script property — so the game never shows {id}. Where the user asked " +
+                    $"the plugin names {id} — no leveled list, quest alias or script property — so the game never shows {id}. " +
+                    GameNpcNamed(npc, lookup, index, mod.ModKey, pluginDir, file) + $"Where the user asked " +
                     $"for {id} somewhere, an inn or a house, a PlacedNpc file in that cell's Temporary/ folder places {id}{cell}: readRecord of the " +
                     $"cell answers `newReference`, the path and the lines to write, with `MutagenObjectType: PlacedNpc` first and `Base: {id}`. " +
                     "Where the NPC record alone was asked for, nothing to change, and this warning stays");
@@ -522,6 +524,22 @@ internal static class MadeNotes
                     "zone record alone was asked for, nothing to change, and this warning stays");
                 continue;
             }
+            // A location of the mod's own no cell is in: 6 of the 10 location+detailed runs of eval rounds 144 and 149 wrote the location
+            // and the room beside it, set no cell's Location to it, and answered the room in its location.
+            if (record is ILocationGetter location)
+            {
+                var cellFiles = RecordFiles.CellRecords(pluginDir).Where(c => c.Type == typeof(Cell)).Select(c => c.Relative).ToList();
+                var cellCall = cellFiles is [var cellFile]
+                    ? $" — the project's cell {cellFile[..cellFile.LastIndexOf('/')].Split('/')[^1].Split(" - ")[0]} is one, and one call sets it " +
+                      "and builds: " + ToolCalls.Edit(project, cellFile, $"{{\"path\": \"Location\", \"value\": {ToolCalls.Quoted(id)}}}", build: true)
+                    : "";
+                notes.Add($"{file}: {id}{(location.Name?.String is { Length: > 0 } name ? $" \"{name}\"" : "")}, a new Location, is the location of " +
+                    "no cell of the plugin and is named by nothing in it, so no place of the game is in it: a cell is in a location by its own " +
+                    $"`Location:` line, and the location names no cell. Where the user asked for a place in it — a room, a house, a camp — set " +
+                    $"that cell's Location to {id}{cellCall}. Where the location record alone was asked for, nothing to change, and this " +
+                    "warning stays");
+                continue;
+            }
             var type = RecordIndex.TypeName(record);
             var origin = GameListLike(record, lookup, index, mod.ModKey);
             notes.Add($"{file}: {id}, a new {type}, is named by nothing in the plugin — no NPC, outfit, container or other list holds it — so " +
@@ -536,6 +554,49 @@ internal static class MadeNotes
                 "Where the user asked for this list alone, nothing to change, and this warning stays");
         }
         return notes;
+    }
+
+    /// <summary>
+    /// For a new NPC placed nowhere: the load order's NPC of the same in-game name, and the game's leveled lists of NPCs of its
+    /// race, with the calls that put it in one — or "" where the game has none of that name. Asked for wolves in the wild that can
+    /// also be ice wolves, all 8 failed plain leveled-npc runs of eval rounds 144 and 149 wrote an "Ice Wolf" of their own,
+    /// placed nowhere, where the game has EncWolfIce and its wolves come from LCharWolf.
+    /// </summary>
+    private static string GameNpcNamed(INpcGetter npc, ILinkCache lookup, RecordIndex index, Mutagen.Bethesda.Plugins.ModKey own, string pluginDir, string file)
+    {
+        if (npc.Name?.String is not { Length: > 0 } name) return "";
+        var twins = index.ByFormKey.Values.Where(e => e.Type == "Npc" && e.FormKey.ModKey != own && e.EditorId is not null
+            && string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase)).OrderBy(e => e.FormKey.ModKey.FileName == "Skyrim.esm" ? 0 : 1).ToList();
+        // A unique one — Hulda, Lydia — is no NPC a leveled list brings, and a new NPC of a person's name is a person of the mod's own.
+        if (twins.Count is 0 or > 3 || !lookup.TryResolve<INpcGetter>(twins[0].FormKey, out var twin)
+            || twin.Configuration.Flags.HasFlag(NpcConfiguration.Flag.Unique)) return "";
+        var race = twin.Race.FormKey;
+        var raceId = index.ByFormKey.TryGetValue(race, out var raceEntry) ? raceEntry.EditorId : null;
+        // The game's lists of NPCs of that race alone, the twin not among them, most entries first.
+        var lists = new List<(RecordIndex.Entry Entry, int Count)>();
+        foreach (var entry in index.ByFormKey.Values.Where(e => e.Type == "LeveledNpc" && e.FormKey.ModKey != own && e.EditorId is not null))
+        {
+            if (!lookup.TryResolve<ILeveledNpcGetter>(entry.FormKey, out var list) || list.Entries is not { Count: > 0 } entries) continue;
+            var held = entries.Select(e => e.Data?.Reference.FormKey).OfType<Mutagen.Bethesda.Plugins.FormKey>().ToList();
+            if (held.Contains(twin.FormKey)) continue;
+            var npcs = held.Select(k => lookup.TryResolve<INpcGetter>(k, out var n) ? n : null).ToList();
+            if (npcs.Any(n => n is null || n.Race.FormKey != race)) continue;
+            lists.Add((entry, entries.Count));
+        }
+        var shown = lists.OrderByDescending(l => l.Count).ThenBy(l => l.Entry.EditorId, StringComparer.Ordinal).Take(3).ToList();
+        if (shown.Count == 0) return "";
+        var twinId = twins[0].EditorId!;
+        var project = ToolCalls.ProjectOf(pluginDir);
+        var said = $"The game has an NPC of that name already: {string.Join(", ", twins.Select(t => $"{t.EditorId} ({Session.FormKeyText(t.FormKey)})"))}" +
+            $"{(raceId is null ? "" : $", {RecordFiles.Article(raceId)}")}. Where the user asked for the game's {name} to turn up — among those a " +
+            $"leveled list brings, as the game's animals and enemies come from one — that list is to hold {twinId}, not a new NPC: ";
+        var first = shown[0].Entry;
+        var copy = $"LeveledNpcs/{first.EditorId} - {Session.FormKeyText(first.FormKey).Replace(':', '_')}.yaml";
+        return said + $"the game's lists of {raceId ?? "its race's"} NPCs are {string.Join(", ", shown.Select(l => $"{l.Entry.EditorId} ({Session.FormKeyText(l.Entry.FormKey)}, {l.Count} {(l.Count == 1 ? "entry" : "entries")})"))}. " +
+            $"For {first.EditorId}: addPatch {{\"project\": {ToolCalls.Quoted(project)}, \"records\": [\"{Session.FormKeyText(first.FormKey)}\"]}}, then one call adds " +
+            $"{twinId} after its {shown[0].Count} entries and builds: " +
+            ToolCalls.Edit(project, copy, $"{{\"path\": \"Entries[{shown[0].Count}]\", \"value\": {{\"Data\": {{\"Level\": 1, \"Reference\": {ToolCalls.Quoted(twinId)}, \"Count\": 1}}}}}}", build: true) +
+            $"; and this file is left over: {ToolCalls.Delete(pluginDir, file)}. ";
     }
 
     /// <summary>

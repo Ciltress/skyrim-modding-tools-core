@@ -45,6 +45,45 @@ describe('papyrusHints', () => {
             'which it extends (LocationAlias.psc of the game\'s sources)']);
     });
 
+    // Eval round 149's activator runs: 20 builds on lines like these, told only the compiler's words.
+    it('says what to write for a line written unlike Papyrus', () => {
+        const { scripts, vanilla } = folders();
+        const file = path.join(scripts, 'GoldLeverScript.psc');
+        fs.writeFileSync(file, 'ScriptName GoldLeverScript extends ObjectReference\n\nMiscObjectProperty Gold001 Auto\nMessage Welcome Auto\n' +
+            'Event OnActivate(ObjectReference akActionRef)\n    If akActionRef != None Then\n        Player.AddItem(Gold001, 100)\n' +
+            '        Game.GetPlayer().AddItem(000F00:Skyrim.esm, 100)\n    EndIf\n    # gold given\n    Game.GetPlayer().AddItem(Gold, Amount)\nEndEvent\n');
+        const hints = papyrusHints([
+            `${file}(3,31): mismatched input '\\n' expecting STATE`,
+            `${file}(4,21): required (...)+ loop did not match anything at input 'Auto'`,
+            `${file}(6,29): required (...)+ loop did not match anything at input 'Then'`,
+            `${file}(7,8): variable Player is undefined`,
+            `${file}(8,34): no viable alternative at character ':'`,
+            `${file}(10,4): no viable alternative at character '#'`,
+            `${file}(11,30): variable Gold is undefined`
+        ], scripts, vanilla);
+        expect(hints[0]).toBe('line 3 of GoldLeverScript.psc, `MiscObjectProperty Gold001 Auto`: a property is declared with its type and the word ' +
+            'Property apart — `MiscObject Property Gold001 Auto`');
+        expect(hints[1]).toBe('line 4 of GoldLeverScript.psc, `Message Welcome Auto`: a property is declared with the word Property between its type ' +
+            'and its name — `Message Property Welcome Auto`');
+        expect(hints[2]).toBe('line 6 of GoldLeverScript.psc, `If akActionRef != None Then`: Papyrus writes no `Then` — `If akActionRef != None` ' +
+            'alone on its line, its block ended by `EndIf`');
+        expect(hints[3]).toMatch(/^line 7 .*: Papyrus has no Player — the player is `Game.GetPlayer\(\)`, an Actor/);
+        expect(hints[4]).toMatch(/^line 8 .*: a script names no record by its FormID — a record a script uses is a property, declared at its top — `MiscObject Property Gold001 Auto`/);
+        expect(hints[5]).toBe('line 10 of GoldLeverScript.psc, `# gold given`: a Papyrus comment starts with `;` — `#` and `//` are none');
+        expect(hints[6]).toMatch(/^line 11 .*: Gold is declared nowhere in the script — a record a script uses is a property.*; a number of its own is a variable, `Int Gold = 100`$/);
+        expect(hints).toHaveLength(7);
+    });
+
+    it('names the script file left over beside the one named as its ScriptName', () => {
+        const { scripts, vanilla } = folders();
+        fs.writeFileSync(path.join(scripts, 'LeverScript.psc'), 'ScriptName GoldLeverScript extends ObjectReference\n');
+        fs.writeFileSync(path.join(scripts, 'GoldLeverScript.psc'), 'ScriptName GoldLeverScript extends ObjectReference\n');
+        const [hint] = papyrusHints([`${path.join(scripts, 'LeverScript.psc')}(0,0): filename does not match script name: goldleverscript.`], scripts, vanilla);
+        expect(hint).toBe('LeverScript.psc declares `ScriptName GoldLeverScript`, as GoldLeverScript.psc does, and a script\'s file is named as its ' +
+            `ScriptName: GoldLeverScript.psc holds that script, and LeverScript.psc is left over — deleteRecord {"project": ` +
+            `${JSON.stringify(path.basename(path.dirname(scripts)))}, "record": ${JSON.stringify(path.join(scripts, 'LeverScript.psc').split(path.sep).join('/'))}}`);
+    });
+
     it('adds nothing for an error the sources do not explain', () => {
         const { scripts, vanilla } = folders();
         expect(papyrusHints(['C:\\p\\scripts\\X.psc(1,0): mismatched input', 'Compilation failed'], scripts, vanilla)).toEqual([]);

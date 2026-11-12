@@ -35,7 +35,9 @@ public sealed partial class Session
         if (!Regex.IsMatch(editorId, "^[A-Za-z][A-Za-z0-9_]{0,55}$"))
             throw new HelperException("badRequest", $"'{editorId}' is no editor ID: letters, digits and _, starting with a letter, at most 56 (its doors add 'Entrance').");
         var door = p["door"] as JsonObject;
-        var names = door is null ? new[] { editorId } : [editorId, editorId + "Door", editorId + "Entrance"];
+        var names = new List<string> { editorId };
+        if (door is not null) names.AddRange([editorId + "Door", editorId + "Entrance"]);
+        if (p["location"] is JsonObject) names.Add(editorId + "Location");
         foreach (var name in names)
         {
             if (Index.ByEditorId.TryGetValue(name, out var taken))
@@ -169,6 +171,68 @@ public sealed partial class Session
             };
         }
 
+        // The location the room is in, which the game knows it by: one named, or one of its own written beside it — over the door's
+        // cell's. Asked for a room the game knows as a location of its own, none of the 8 plain location runs of eval rounds 144 and
+        // 149 wrote a Location, and 6 of the 10 detailed ones wrote one and set no cell's Location to it.
+        JsonObject? where = null;
+        string? byEditorId = null; // a Location of the project's not built yet, written into the cell's file by its editor ID
+        FormKey? OfKind(string wanted, string kind, string field)
+        {
+            FormKey key;
+            try { key = Resolve(wanted); }
+            catch (HelperException) { return null; }
+            return Index.ByFormKey.TryGetValue(key, out var entry) && entry.Type == kind ? key
+                : throw new HelperException("badRequest", $"{field}: {wanted} is {(Index.ByFormKey.TryGetValue(key, out var other) ? RecordFiles.Article(other.Type) : "no record")}, " +
+                    $"not {RecordFiles.Article(kind)} — findRecords with types [\"{(kind == "Location" ? "LCTN" : "KYWD")}\"] finds one.");
+        }
+        switch (p["location"])
+        {
+            case JsonValue named when named.TryGetValue<string>(out var locationName) && locationName.Trim() is { Length: > 0 } wanted:
+                if (OfKind(wanted, "Location", "location") is { } gameLocation)
+                {
+                    cell.Location.SetTo(gameLocation);
+                    where = new JsonObject { ["editorId"] = Index.ByFormKey[gameLocation].EditorId ?? wanted, ["formId"] = FormKeyText(gameLocation), ["made"] = false };
+                    break;
+                }
+                var locations = Path.Combine(projectDir, "Locations");
+                var own = Directory.Exists(locations) ? Directory.EnumerateFiles(locations, "*.yaml", SearchOption.AllDirectories).Select(File.ReadAllText)
+                    .FirstOrDefault(t => Regex.IsMatch(t, $@"^EditorID:[ \t]*{Regex.Escape(wanted)}[ \t]*\r?$", RegexOptions.Multiline | RegexOptions.IgnoreCase)) : null;
+                if (own is null)
+                    throw new HelperException("badRequest", $"location: {wanted} is no Location of the load order or the project — name one by its editor ID " +
+                        "(findRecords with types [\"LCTN\"]), or make the room's own: {\"name\": \"Ashen Camp\", \"parent\": \"WhiterunHoldLocation\"}.");
+                if (Regex.Match(own, @"^FormKey:[ \t]*(\S+)", RegexOptions.Multiline) is { Success: true } line && FormKey.TryFactory(line.Groups[1].Value, out var ownKey))
+                    cell.Location.SetTo(ownKey);
+                else byEditorId = wanted;
+                where = new JsonObject { ["editorId"] = wanted, ["made"] = false };
+                break;
+            case JsonObject wanted:
+                var shownName = wanted["name"]?.GetValue<string>()?.Trim() is { Length: > 0 } given ? given
+                    : throw new HelperException("badRequest", "location.name is the new location's in-game name, e.g. \"Ashen Camp\".");
+                var made = new Location(Next(), release) { EditorID = editorId + "Location", Name = shownName };
+                string? parentId = null;
+                if (wanted["parent"]?.GetValue<string>()?.Trim() is { Length: > 0 } parentName)
+                {
+                    var parent = OfKind(parentName, "Location", "location.parent") ?? throw new HelperException("badRequest",
+                        $"location.parent: {parentName} is no Location of the load order — a hold's is like WhiterunHoldLocation; findRecords with types [\"LCTN\"] finds one.");
+                    made.ParentLocation.SetTo(parent);
+                    parentId = Index.ByFormKey[parent].EditorId ?? parentName;
+                }
+                var keywords = (wanted["keywords"] as JsonArray)?.Select(k => k?.GetValue<string>()?.Trim()).OfType<string>().Where(k => k.Length > 0).ToList() ?? [];
+                if (keywords.Count > 0)
+                {
+                    made.Keywords = new ExtendedList<IFormLinkGetter<IKeywordGetter>>();
+                    foreach (var keyword in keywords)
+                        made.Keywords.Add(new FormLink<IKeywordGetter>(OfKind(keyword, "Keyword", "location.keywords") ?? throw new HelperException("badRequest",
+                            $"location.keywords: {keyword} is no Keyword of the load order — a place's kind is like LocTypeDwelling; findRecords with types [\"KYWD\"] finds one.")));
+                }
+                temp.Locations.Add(made);
+                cell.Location.SetTo(made.FormKey);
+                where = new JsonObject { ["editorId"] = made.EditorID, ["formId"] = FormKeyText(made.FormKey), ["made"] = true, ["parent"] = parentId };
+                break;
+        }
+        if (where is null && cell.Location.FormKeyNullable is { } kept)
+            where = new JsonObject { ["editorId"] = Index.ByFormKey.TryGetValue(kept, out var keptEntry) ? keptEntry.EditorId : null, ["formId"] = FormKeyText(kept), ["made"] = false };
+
         var rendered = await Render(temp, pluginName);
         var files = new JsonArray();
         foreach (var (path, text) in rendered)
@@ -177,7 +241,10 @@ public sealed partial class Session
             // The other cell's copy, brought in before by addPatch or a door made earlier: its file stays as the project has it.
             if (File.Exists(target)) continue;
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-            await File.WriteAllTextAsync(target, Annotated(text));
+            var written = Annotated(text);
+            if (byEditorId is not null && path.EndsWith($"/{editorId} - {cell.FormKey.ID:X6}_{pluginName.FileName}/RecordData.yaml", StringComparison.OrdinalIgnoreCase))
+                written = Regex.Replace(written, @"^(EditorID:[^\n]*\n)", $"$1Location: {byEditorId}\n", RegexOptions.Multiline);
+            await File.WriteAllTextAsync(target, written);
             files.Add(path);
         }
         var cellFile = files.Select(f => f!.GetValue<string>()).FirstOrDefault(f => f.EndsWith($"/{editorId} - {cell.FormKey.ID:X6}_{pluginName.FileName}/RecordData.yaml", StringComparison.OrdinalIgnoreCase));
@@ -189,6 +256,7 @@ public sealed partial class Session
             ["references"] = room.Count,
             ["byKind"] = new JsonObject(kinds.OrderByDescending(k => k.Value).Select(k => KeyValuePair.Create(k.Key, (JsonNode?)k.Value))),
             ["doors"] = doors,
+            ["location"] = where,
             ["files"] = files.Count,
             ["cellFile"] = cellFile
         };

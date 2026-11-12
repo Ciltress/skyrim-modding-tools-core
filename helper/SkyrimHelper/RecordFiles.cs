@@ -286,7 +286,8 @@ public static class RecordFiles
         "room of the mod's own, its folder, its walls, lights and door: " +
         $"newCell {{\"project\": {ToolCalls.Quoted(ToolCalls.ProjectOf(pluginDir))}, \"cell\": {ToolCalls.Quoted(cell)}, " +
         "\"like\": \"<a room of the game like it, e.g. MorthalAlvasHouseCellar>\", \"door\": {\"in\": \"<the cell its door stands in>\", " +
-        "\"at\": [x, y, z]}} — and change the new cell's fields, its Location too, with editRecord; what else stands in the room goes " +
+        "\"at\": [x, y, z]}} — its location in the same call, `\"location\"`: the game's by editor ID, or one of its own, {\"name\": …, " +
+        "\"parent\": \"WhiterunHoldLocation\"}; change the new cell's other fields with editRecord; what else stands in the room goes " +
         "into the Temporary/ folder of the cell newCell makes";
 
     /// <summary>
@@ -313,6 +314,15 @@ public static class RecordFiles
         if (parts[0] == "Cells" && IsCellFile(parts) && !FormKeyLine.Match(text).Success)
             return $"{relative}: a cell's file begins with its FormKey line, and a room of the mod's own is no file to write by hand. " +
                 NewCellCall(pluginDir, Identity(text).EditorId ?? parts[3].Split(" - ")[0], $"the files of {cellFolder}/");
+        // An outdoor cell's file in a worldspace the project has no copy of — a new room written by hand into Riverwood's block,
+        // `Worldspaces/Tamriel - 00003C_Skyrim.esm/0, -1/0, -2/AshenCampCell - 000000_Skyrim.esm/` — is read by no build: once its
+        // fields were fixed, the build answered success with the location alone, and eval round 149's location+detailed #2
+        // answered its room made.
+        if (IsCellFile(parts) && IsExterior(parts) && !File.Exists(Path.Combine(pluginDir, parts[0], parts[1], "RecordData.yaml")))
+            return $"{relative}: {parts[0]}/{parts[1]}/ holds no RecordData.yaml, and the build reads an outdoor cell only below the project's " +
+                "copy of its worldspace, so this cell is in no plugin it builds. An outdoor cell of the game's is copied with addPatch, which " +
+                "writes its worldspace's copy beside it. A room — a house, a cave, a camp — is an interior cell, of no worldspace: " +
+                NewCellCall(pluginDir, Identity(text).EditorId ?? parts[^2].Split(" - ")[0], $"the files of {cellFolder}/");
         // A reference in the folder of a cell the project has no copy of: the reader answered "RecordData.yaml cannot be read as
         // a record: Could not find file …", and the run never copied the cell (the mini-round after eval round 128,
         // world+detailed #1).
@@ -348,6 +358,23 @@ public static class RecordFiles
         var known = FieldsOf(type);
         var unknown = TopLevelKey.Matches(text).Select(m => m.Groups[1].Value).Where(key => !known.Contains(key)).Distinct().ToList();
         if (unknown.Count == 0) return null;
+        // A field of the cell's written under another name — its Location as ParentLocation — is the line to write in its place,
+        // the value kept: told "delete it", eval round 149's location+detailed #2 built its room in no location.
+        if (type == typeof(Cell) && unknown.Where(k => SynonymFor(type, k) is not null).ToList() is { Count: > 0 } renamed)
+        {
+            string Rewritten(string key)
+            {
+                var value = Regex.Match(text, $@"^{Regex.Escape(key)}:[ \t]*(?<value>[^\s#][^\n#]*?)[ \t]*(?:#.*)?$", RegexOptions.Multiline)
+                    .Groups["value"].Value.Trim('"', '\'');
+                var field = SynonymFor(type, key)!;
+                return $"{key} — {(value.Length > 0 ? $"write it as `{field}: {value}`" : $"it is {field}")}: {SynonymHint(type, key)}";
+            }
+            var others = unknown.Except(renamed).ToList();
+            return $"{relative}: a Cell has no field {string.Join("; and none ", renamed.Select(Rewritten))}" +
+                (others.Count == 0 ? "" : $"; and no field {string.Join(", ", others)} — delete {(others.Count == 1 ? "it" : "them")}. What is " +
+                    $"placed in a cell is no field of its file: each reference is a file of its own in {cellFolder}/Temporary/, as readRecord " +
+                    $"of the cell lists them — write {written}");
+        }
         var fields = unknown.Count == 1 ? unknown[0] : $"{string.Join(", ", unknown.Take(unknown.Count - 1))} and {unknown[^1]}";
         var them = unknown.Count == 1 ? "it" : "them";
         return type == typeof(Cell)
@@ -488,8 +515,27 @@ public static class RecordFiles
         (["Cell"], ["Placed", "References", "Refs", "Objects", "Items", "Containers", "Contents", "Chest", "Chests", "PlacedObjects"], null,
             "what is placed in a cell is no field of its file: each reference is a file of its own in the cell's Temporary/ folder, beside " +
             "its RecordData.yaml, written with your file tools — `MutagenObjectType: PlacedObject`, `EditorID:`, `Base:` and `Placement:` — " +
-            "as the skyrim-modding-world skill shows")
+            "as the skyrim-modding-world skill shows"),
+        // A cell's location written as a location's own field: told "a Cell has no field ParentLocation — delete it", eval round 149's
+        // location+detailed #2 deleted it and built its room in no location.
+        (["Cell"], ["ParentLocation", "ParentLocations", "LocationParent", "InLocation", "CellLocation", "Locations"], "Location",
+            "a cell's location is its Location line, naming a Location record; ParentLocation is a Location's own field, the location it lies in"),
+        // The cell a thing stands in, written into the thing's own record: told "a Light has no field placed — delete it", eval round
+        // 149's light+detailed #3 deleted it and answered its light placed in Breezehome, placed nowhere.
+        (["Light", "Container", "Activator", "TalkingActivator", "Furniture", "Static", "MoveableStatic", "Door", "Flora", "Tree", "MiscItem",
+            "Weapon", "Armor", "Book", "Ingredient", "Ingestible", "Key", "SoulGem", "Ammunition", "Scroll", "Npc", "IdleMarker", "Hazard"],
+            ["Placed", "PlacedIn", "PlacedAt", "Placement", "Placements", "Cell", "Cells", "InCell", "ParentCell", "PlacedCell", "Position",
+                "Rotation", "Where", "PlacedReference", "PlacedReferences", "References", "Refs"], null, PlacedThere)
     ];
+
+    /// <summary>Where a thing placed in a cell is written: in a reference's file of that cell, not in the thing's record.</summary>
+    internal const string PlacedThere = "a record stands in a cell as a reference placed there, a file of its own in that cell's Temporary/ " +
+        "folder beside its RecordData.yaml — readRecord of the cell, {\"record\": \"<the cell's editor ID>\"}, answers `newReference`, the path " +
+        "and the lines to write, with `Base:` naming this record, and the addPatch that copies the cell in first; delete it here";
+
+    /// <summary>The words of the Synonyms entry for another name of a field, or null.</summary>
+    internal static string? SynonymHint(Type type, string key) =>
+        Synonyms.FirstOrDefault(s => s.Types.Contains(type.Name) && s.Keys.Contains(key, StringComparer.OrdinalIgnoreCase)).Hint;
 
     /// <summary>A Projectile's own fields, which a model copied from one into an arrow it wrote as a Weapon.</summary>
     private static readonly HashSet<string> ProjectileFields = new(["Gravity", "Speed", "Range", "CollisionRadius", "FadeDuration",
@@ -610,7 +656,11 @@ public static class RecordFiles
             value is { Length: > 0 } && OneValue(type, field) ? $"write it as `{field}: {value}`" : otherwise;
         if (known.FirstOrDefault(k => k.Equals(key, StringComparison.OrdinalIgnoreCase)) is { } spelled) return Rename(spelled, $"it is spelled {spelled}");
         foreach (var (types, keys, field, hint) in Synonyms)
-            if (types.Contains(type.Name) && keys.Contains(key, StringComparer.OrdinalIgnoreCase)) return field is null ? hint : Rename(field, hint);
+            if (types.Contains(type.Name) && keys.Contains(key, StringComparer.OrdinalIgnoreCase))
+                return field is not null ? Rename(field, hint)
+                    // The cell the line named, in the readRecord call: `placed: WhiterunBreezehome`.
+                    : hint == PlacedThere && value is { Length: > 0 } cell && Regex.IsMatch(cell, @"^[A-Za-z][A-Za-z0-9_]*$")
+                        ? hint.Replace("<the cell's editor ID>", cell) : hint;
         if (FlagHint(type, key) is { } flag) return flag;
         if (known.FirstOrDefault(k => k.Equals(key + "s", StringComparison.OrdinalIgnoreCase) || k.Equals(key + "es", StringComparison.OrdinalIgnoreCase)
                 || key.EndsWith('s') && k.Equals(key[..^1], StringComparison.OrdinalIgnoreCase)) is { } number)
@@ -709,8 +759,11 @@ public static class RecordFiles
                 }
             // By name, not GetProperty: that throws where a class redeclares a property of its base. A part
             // of several kinds has the fields of each: Archetype's Type is MagicEffectArchetype's.
+            // Not a part's bytes: an activator's Data, "move it under Model", was set as Model.Data, its textures' hashes (eval round
+            // 149's activator #3).
             var hits = next.Where(n => KindsOf(n.Part)
-                .Any(kind => kind.GetProperties(Public).Any(p => p.Name.Equals(key, StringComparison.OrdinalIgnoreCase)))).ToList();
+                .Any(kind => kind.GetProperties(Public).Any(p => p.Name.Equals(key, StringComparison.OrdinalIgnoreCase)
+                    && (Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType) is var t && t != typeof(byte[]) && !t.Name.Contains("MemorySlice")))).ToList();
             if (fields is { Count: > 0 }) hits = hits.Where(h => Fits(h.Part, key, fields)).ToList();
             if (hits.Count > 1 && values is { Count: > 0 } && hits.Where(h => Takes(h.Part, key, values)).ToList() is [var fits]) return fits.Path;
             if (hits.Count > 0) return hits.OrderBy(h => h.Listed).First().Path;

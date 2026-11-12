@@ -83,6 +83,7 @@ export function declarationIn(source: string, name: string): string | null {
  */
 export function papyrusHints(problems: readonly string[], scriptsDir: string, vanilla: string): string[] {
     const hints = new Set<string>();
+    for (const hint of writingHints(problems, scriptsDir)) hints.add(hint);
     for (const problem of problems) {
         const mismatch = /parameter types of function (\w+) .*do not match the parent script (\w+)/i.exec(problem);
         if (mismatch) {
@@ -112,6 +113,83 @@ export function papyrusHints(problems: readonly string[], scriptsDir: string, va
         }
     }
     return [...hints];
+}
+
+/** How a record a script uses is declared and given to it, said where a script wrote one otherwise. */
+const PROPERTY_FILLED = 'a record a script uses is a property, declared at its top — `MiscObject Property Gold001 Auto`, the record\'s type ' +
+    'first (the game\'s gold, Gold001, is a MiscObject) — and given to it by the record the script is attached to, in its ' +
+    'VirtualMachineAdapter\'s Properties: `- MutagenObjectType: ScriptObjectProperty`, `Name: Gold001`, `Object: Gold001`';
+
+/**
+ * The compiler's words for what is written unlike Papyrus, said as what to write: the line each names, read from the project's
+ * source. Eval round 149's activator runs spent 20 builds on five such lines — `If x Then`, `MiscObjectProperty Gold001 Auto`,
+ * `Player.AddItem(…)`, a FormID in a call, a script whose file had another name — told only "required (...)+ loop did not match
+ * anything at input 'Then'", "mismatched input '\n' expecting STATE" or "variable Player is undefined"; eval round 144's message
+ * and storymanager runs wrote `#` comments and `Message WelcomeMessage Auto`.
+ */
+function writingHints(problems: readonly string[], scriptsDir: string): string[] {
+    const hints: string[] = [];
+    const project = path.basename(path.dirname(scriptsDir));
+    for (const problem of problems) {
+        const at = /^(.+?\.psc)\((\d+),\d+\):\s*(.*)$/i.exec(problem);
+        if (!at) continue;
+        const [, file, lineNumber, message] = at;
+        const script = path.isAbsolute(file) ? file : path.join(scriptsDir, path.basename(file));
+        const name = path.basename(script);
+        const source = fs.existsSync(script) ? fs.readFileSync(script, 'latin1') : '';
+        const line = (source.split(/\r?\n/)[Number(lineNumber) - 1] ?? '').trim();
+        const where = `line ${lineNumber} of ${name}, \`${line}\``;
+        const renamed = /filename does not match script name:\s*(\w+)/i.exec(message);
+        if (renamed) {
+            const declared = /^\s*Scriptname\s+(\w+)/im.exec(source)?.[1] ?? renamed[1];
+            const twin = fs.existsSync(scriptsDir) ? fs.readdirSync(scriptsDir).find(f => f.toLowerCase() === `${declared.toLowerCase()}.psc`) : undefined;
+            const remove = `deleteRecord {"project": ${JSON.stringify(project)}, "record": ${JSON.stringify(script.split(path.sep).join('/'))}}`;
+            hints.push(twin
+                ? `${name} declares \`ScriptName ${declared}\`, as ${twin} does, and a script's file is named as its ScriptName: ${twin} holds ` +
+                  `that script, and ${name} is left over — ${remove}`
+                : `${name} declares \`ScriptName ${declared}\`, and a script's file is named as its ScriptName: write it as ${declared}.psc, ` +
+                  `then delete ${name} — ${remove}`);
+            continue;
+        }
+        if (/^(#|\/\/)/.test(line) || /\s(#|\/\/)\s/.test(line) && /no viable alternative at (character|input)|mismatched input '\/'/i.test(message)) {
+            hints.push(`${where}: a Papyrus comment starts with \`;\` — \`#\` and \`//\` are none`);
+            continue;
+        }
+        if (/^(Else)?If\b/i.test(line) && /\bThen\s*$/i.test(line)) {
+            hints.push(`${where}: Papyrus writes no \`Then\` — \`${line.replace(/\s+Then\s*$/i, '')}\` alone on its line, its block ended by \`EndIf\``);
+            continue;
+        }
+        const glued = /^(\w+?)Property\s+(\w+)(?:\s+Auto\b.*)?$/i.exec(line);
+        if (glued && glued[1].length > 0) {
+            hints.push(`${where}: a property is declared with its type and the word Property apart — \`${glued[1]} Property ${glued[2]} Auto\``);
+            continue;
+        }
+        const bare = /^Property\s+(\w+)(?:\s+Auto\b.*)?$/i.exec(line);
+        if (bare) {
+            hints.push(`${where}: ${PROPERTY_FILLED}`);
+            continue;
+        }
+        const keywordless = /^(\w+)\s+(\w+)\s+Auto\b/i.exec(line);
+        if (keywordless && !/\bProperty\b/i.test(line)) {
+            hints.push(`${where}: a property is declared with the word Property between its type and its name — \`${keywordless[1]} Property ${keywordless[2]} Auto\``);
+            continue;
+        }
+        if (/\b(variable Player is undefined|unknown type player)\b/i.test(message) || /^Player\s*\./.test(line) && /\bnone is not\b/i.test(message)) {
+            hints.push(`${where}: Papyrus has no Player — the player is \`Game.GetPlayer()\`, an Actor: \`Game.GetPlayer().AddItem(Gold001, 100)\`, ` +
+                'or `Actor player = Game.GetPlayer()` first');
+            continue;
+        }
+        if (/\(\s*[0-9A-Fa-f]{6,8}(?::[^,)]+)?\s*[,)]/.test(line)) {
+            hints.push(`${where}: a script names no record by its FormID — ${PROPERTY_FILLED}`);
+            continue;
+        }
+        const undefinedName = /variable (\w+) is undefined/i.exec(message);
+        if (undefinedName) {
+            hints.push(`${where}: ${undefinedName[1]} is declared nowhere in the script — ${PROPERTY_FILLED}; a number of its own is a ` +
+                `variable, \`Int ${undefinedName[1]} = 100\``);
+        }
+    }
+    return [...new Set(hints)];
 }
 
 /**

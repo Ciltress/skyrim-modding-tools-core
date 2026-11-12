@@ -1551,7 +1551,8 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
         const result = await this.engine.helper.call<Omit<NewCellResult, 'project'>>('newCell', {
             plugin, projectPluginDir: paths.plugin, editorId: request.cell, like: request.like,
             ...(request.name ? { name: request.name } : {}),
-            ...(request.door ? { door: request.door } : {})
+            ...(request.door ? { door: request.door } : {}),
+            ...(request.location ? { location: request.location } : {})
         }, BUILD_TIMEOUT_MS);
         return { project: request.project, ...result };
     }

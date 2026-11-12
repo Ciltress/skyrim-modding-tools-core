@@ -25,6 +25,9 @@ The loop in `skyrim-modding-basics` — look up, get the text, edit, build, depl
   encounter zone, its `MinLevel` and `MaxLevel` — `skyrim-modding-world`, *Locations, encounter zones, regions*.
 - **Adding to an existing list**: `addPatch` the list, then append your entries to the copy, every
   entry already in it kept. A new item or NPC goes into a list once a build has given it its FormID.
+- **More of a kind the game has** — wolves that can be ice wolves, bandits that can be Orcs — is the game's NPC put into
+  the list, not a new NPC: `findRecords` with types `["NPC_"]` and its name finds it (the Ice Wolf is `EncWolfIce`), and
+  the list its kind comes from is named so (`LCharWolf`). A new NPC is written only where the user asks for one.
 - **Other mods changing the same list**: `readRecord` with `allVersions: true` shows every version.
   Their additions belong in your copy too, or your override drops them (REFERENCE, *The conflict
   problem*).

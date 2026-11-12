@@ -227,11 +227,14 @@ public static class RecordLinks
                         var leaf = field[(field.LastIndexOf('.') + 1)..];
                         string Line(string id) => leaf.EndsWith(']') ? $"- {id}" : $"{leaf}: {id}";
                         var was = other.Linked is { } linkedEditorId ? $"which is {linkedEditorId}" : "which no record has";
+                        // The FormID's own record offered only where the field takes its kind: "or `BaseEffect:
+                        // FortifySkillTwoHanded01`", a potion, was taken for Fortify Destruction (eval round 149's ingredient+detailed #1).
+                        var fits = index.ByFormKey.TryGetValue(linked, out var linkedEntry) && takes.IsAssignableFrom(linkedEntry.GetterType);
                         if (other.Meant is { } meant)
                             problems.Add($"{relative}: {field} is {raw}, {was}, but the comment after it names {meant.EditorId}" +
                                 (meant.FormKey is { } meantKey ? $" ({Session.FormKeyText(meantKey)})" : ", a new record of this project") +
                                 $" — the build reads the FormID and skips the comment. Write the one meant by its editor ID: `{Line(meant.EditorId)}`" +
-                                (other.Linked is { } linkedId ? $" or `{Line(linkedId)}`" : ""));
+                                (other.Linked is { } linkedId && fits ? $" or `{Line(linkedId)}`" : ""));
                         else
                         {
                             var near = Near(other.Named, takes, own, index);
@@ -1184,7 +1187,9 @@ public static class RecordLinks
     internal static readonly HashSet<string> TextFields = new(["TargetLanguage", "Value", "Values"], StringComparer.Ordinal);
 
     /// <summary>A comment after a value that names one record — `# NordRace`, as readRecord writes one — not words.</summary>
-    private static readonly Regex CommentName = new(@"^[ \t]+#[ \t]*(?<id>[A-Za-z0-9_]+)[ \t]*\r?$", RegexOptions.None, TimeSpan.FromSeconds(5));
+    // A word in brackets after the name is the model's own note on it: `# AlchFortifyDestruction (Assumed)` went past the check, and
+    // eval round 149's ingredient+detailed #1 built Fortify Two-handed for Fortify Destruction.
+    private static readonly Regex CommentName = new(@"^[ \t]+#[ \t]*(?<id>[A-Za-z0-9_]+)[ \t]*(?:\([^()\n]*\)[ \t]*)?\r?$", RegexOptions.None, TimeSpan.FromSeconds(5));
 
     /// <summary>An editor ID as a model makes one up — `FireDamageEnchantment`, `1stPersonFlameBlade`: a capital inside the word, or a digit.</summary>
     private static readonly Regex MadeUpEditorId = new(@"^(?=.*(?:[a-z0-9][A-Z]|[0-9]))[A-Za-z0-9_]{6,}$", RegexOptions.None, TimeSpan.FromSeconds(5));
