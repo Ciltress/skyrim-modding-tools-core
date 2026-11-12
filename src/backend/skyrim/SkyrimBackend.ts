@@ -366,7 +366,7 @@ export interface NewCellResult {
         arrival: string;
     } | null;
     /** The location the room is in — `made` where newCell wrote it as a new Location — or null for none. */
-    location?: { editorId: string; formId?: string | null; made: boolean; parent?: string | null } | null;
+    location?: { editorId: string; formId?: string | null; made: boolean; parent?: string | null; hold?: boolean } | null;
     files: number;
     cellFile?: string | null;
 }

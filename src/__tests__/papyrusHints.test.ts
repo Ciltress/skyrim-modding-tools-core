@@ -74,6 +74,23 @@ describe('papyrusHints', () => {
         expect(hints).toHaveLength(7);
     });
 
+    // Eval round 150's activator runs: functions made up for gold and for a message on the screen.
+    it('says how the game gives gold and shows a message where a made-up function was called', () => {
+        const { scripts, vanilla } = folders();
+        const file = path.join(scripts, 'LeverScript.psc');
+        fs.writeFileSync(file, 'ScriptName LeverScript extends ObjectReference\nEvent OnActivate(ObjectReference akActionRef)\n' +
+            '    Game.GetPlayer().AddGold(100)\n    Game.GetPlayer().DisplayNotification("Gold!")\n    Game.GetPlayer().Debug.Notification("Gold!")\nEndEvent\n');
+        const hints = papyrusHints([
+            `${file}(3,21): AddGold is not a function or does not exist.`,
+            `${file}(4,21): DisplayNotification is not a function or does not exist.`,
+            `${file}(5,21): the type name Debug cannot be used as a property.`
+        ], scripts, vanilla);
+        expect(hints[0]).toMatch(/^line 3 .*: Papyrus has no AddGold — gold is an item, given as `Game.GetPlayer\(\).AddItem\(Gold001, 100\)`/);
+        expect(hints[1]).toMatch(/^line 4 .*: a message on the screen is `Debug.Notification\("…"\)`/);
+        expect(hints[2]).toMatch(/^line 5 .*: a message on the screen is `Debug.Notification\("…"\)`/);
+        expect(hints).toHaveLength(3);
+    });
+
     it('names the script file left over beside the one named as its ScriptName', () => {
         const { scripts, vanilla } = folders();
         fs.writeFileSync(path.join(scripts, 'LeverScript.psc'), 'ScriptName GoldLeverScript extends ObjectReference\n');

@@ -97,6 +97,21 @@ internal static class BuiltRecords
                 yield return $"weight {Number(potion.Weight)}, value {potion.Value}";
                 yield return Effects(potion.Effects, id);
                 break;
+            // An ingredient's effects by name: written as FormIDs from memory, eval round 150's ingredient #2 and #3 built Fortify
+            // Conjuration for Restore Magicka, the line saying only "Ingredient GlacialSalt (new)".
+            case IIngredientGetter ingredient:
+                yield return $"weight {Number(ingredient.Weight)}, value {ingredient.Value}";
+                yield return Effects(ingredient.Effects, id);
+                break;
+            case ILightGetter light:
+                yield return $"radius {light.Radius}, color #{light.Color.R:X2}{light.Color.G:X2}{light.Color.B:X2} (red, green, blue)";
+                break;
+            // A location's parent by name: written from memory, eval round 149's location+detailed #2 put its camp in 0130FF, not
+            // the WhiterunHoldLocation it had read.
+            case ILocationGetter location:
+                yield return location.ParentLocation.IsNull ? "in no parent location" : $"in {id(location.ParentLocation)}";
+                if (location.Keywords is { Count: > 0 } keywords) yield return $"keywords {string.Join(", ", keywords.Select(k => id(k)))}";
+                break;
             case IMagicEffectGetter effect:
                 yield return effect.MagicSkill == ActorValue.None ? "no school" : effect.MagicSkill.ToString();
                 if (effect.ResistValue != ActorValue.None) yield return $"resisted by {effect.ResistValue}";

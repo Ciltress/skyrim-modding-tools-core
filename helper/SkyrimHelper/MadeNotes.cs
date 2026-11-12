@@ -473,7 +473,7 @@ internal static class MadeNotes
     {
         var made = mod.EnumerateMajorRecords().Where(r => r.FormKey.ModKey == mod.ModKey
             && r is INpcGetter or ILeveledItemGetter or ILeveledNpcGetter or ILeveledSpellGetter or IContainerGetter or IEncounterZoneGetter
-                or ILocationGetter).ToList();
+                or ILocationGetter or IActivatorGetter).ToList();
         if (made.Count == 0) return [];
         var named = new HashSet<Mutagen.Bethesda.Plugins.FormKey>();
         foreach (var record in mod.EnumerateMajorRecords())
@@ -507,6 +507,18 @@ internal static class MadeNotes
                     $"PlacedObject file in that cell's Temporary/ folder places it{cell}: readRecord of the cell answers `newReference`, the path " +
                     $"and the lines to write, with `Base: {id}` — and its lock, where it has one, is that reference's `Lock:`, `Level:` and `Key:` " +
                     "below it. Where the container record alone was asked for, nothing to change, and this warning stays");
+                continue;
+            }
+            // A lever of the mod's own placed nowhere, as a chest: a placement written into its own record and deleted when refused,
+            // eval round 150's activator runs answered levers in Breezehome that stood nowhere.
+            if (record is IActivatorGetter activator)
+            {
+                var cell = cells is [var only] ? $" — the project's cell {only.EditorID ?? Session.FormKeyText(only.FormKey)} is one" : "";
+                notes.Add($"{file}: {id}{(activator.Name?.String is { Length: > 0 } name ? $" \"{name}\"" : "")}, a new Activator, is placed in no cell, " +
+                    $"and nothing in the plugin names {id}, so the game never shows it. Where the user asked for it somewhere, a house or a room, a " +
+                    $"PlacedObject file in that cell's Temporary/ folder places it{cell}: readRecord of the cell answers `newReference`, the path " +
+                    $"and the lines to write, with `Base: {id}`. Where the activator record alone was asked for, nothing to change, and this " +
+                    "warning stays");
                 continue;
             }
             // A zone of the mod's own no cell takes: eval round 148's encounterzone+detailed #2 wrote one for the mine, named no cell
@@ -552,6 +564,76 @@ internal static class MadeNotes
                     : "Where a list of the game's was to change, copy that one with addPatch and change the copy; where this list is to be used, " +
                       "link it from what holds it. ") +
                 "Where the user asked for this list alone, nothing to change, and this warning stays");
+        }
+        return notes;
+    }
+
+    /// <summary>
+    /// A new NPC of the project's that one of its leveled lists holds, whose name a non-unique NPC of the load order has: the
+    /// game's own, with its own looks and stats, where the user asked for the game's. Told the game's Ice Wolf and its list, all
+    /// three plain leveled-npc runs of eval round 150 put an Ice Wolf of their own into LCharWolf — a copy of EncWolf, a grey
+    /// wolf by that name — and built with no word.
+    /// </summary>
+    public static List<string> GameNamedInLists(ISkyrimModGetter mod, ILinkCache lookup, RecordIndex index, string pluginDir)
+    {
+        var notes = new List<string>();
+        var lists = mod.LeveledNpcs.ToList();
+        if (lists.Count == 0) return notes;
+        var files = EffectCasting.Files(pluginDir);
+        var project = ToolCalls.ProjectOf(pluginDir);
+        foreach (var npc in mod.Npcs.Where(n => n.FormKey.ModKey == mod.ModKey))
+        {
+            if (npc.Name?.String is not { Length: > 0 } name) continue;
+            var holder = lists.Select(l => (List: l, At: (l.Entries ?? []).Select((e, i) => (e, i))
+                    .Where(x => x.e.Data?.Reference.FormKey == npc.FormKey).Select(x => x.i).ToList()))
+                .FirstOrDefault(h => h.At.Count > 0);
+            if (holder.List is null) continue;
+            var twins = index.ByFormKey.Values.Where(e => e.Type == "Npc" && e.FormKey.ModKey != mod.ModKey && e.EditorId is not null
+                && string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase)).OrderBy(e => e.FormKey.ModKey.FileName == "Skyrim.esm" ? 0 : 1).ToList();
+            if (twins.Count is 0 or > 3 || !lookup.TryResolve<INpcGetter>(twins[0].FormKey, out var twin)
+                || twin.Configuration.Flags.HasFlag(NpcConfiguration.Flag.Unique)) continue;
+            var twinId = twins[0].EditorId!;
+            var id = npc.EditorID ?? Session.FormKeyText(npc.FormKey);
+            var file = files.GetValueOrDefault(npc.FormKey) ?? id;
+            var listId = holder.List.EditorID ?? Session.FormKeyText(holder.List.FormKey);
+            var listFile = files.GetValueOrDefault(holder.List.FormKey) ?? listId;
+            var set = string.Join(", ", holder.At.Select(i => $"{{\"path\": \"Entries[{i}].Data.Reference\", \"value\": {ToolCalls.Quoted(twinId)}}}"));
+            notes.Add($"{file}: {id} \"{name}\", a new NPC, is in {listId}, and the game has an NPC of that name already: {twinId} " +
+                $"({Session.FormKeyText(twins[0].FormKey)}), another NPC, with its own looks and stats, which {id} is not — in game {listId} brings " +
+                $"{id}, as its file writes it. Where the user asked for the game's {name}, one call puts {twinId} in its place and builds: " +
+                ToolCalls.Edit(project, listFile, set, build: true) + $"; this file is then left over: {ToolCalls.Delete(pluginDir, file)}. Where an " +
+                "NPC of the mod's own of that name was meant, nothing to change, and this warning stays");
+        }
+        return notes;
+    }
+
+    /// <summary>The words of a thing used where it stands, by which a new MiscItem's name or editor ID says it is an Activator.</summary>
+    private static readonly Regex UsedWhereItStands = new(@"(?i:\b(lever|switch|button|handle|crank|valve|pull ?chain)s?\b)|(?<=[a-z])(Lever|Switch|Button|Handle|Crank|Valve)(?![a-z])");
+
+    /// <summary>
+    /// A new MiscItem of the project's that carries a script or is named a lever, a switch, a button: a misc item is picked up when
+    /// activated, and a thing used where it stands is an Activator. Asked for a lever that gives gold when pulled, 4 of eval round
+    /// 150's 5 failed activator runs wrote it in MiscItems/, and one built so, its script attached, with no word.
+    /// </summary>
+    public static List<string> MiscActivators(ISkyrimModGetter mod, string pluginDir)
+    {
+        var files = EffectCasting.Files(pluginDir);
+        var notes = new List<string>();
+        foreach (var item in mod.MiscItems.Where(m => m.FormKey.ModKey == mod.ModKey))
+        {
+            var scripted = item.VirtualMachineAdapter?.Scripts is { Count: > 0 };
+            var name = item.Name?.String;
+            if (!scripted && !UsedWhereItStands.IsMatch($"{name} {item.EditorID}")) continue;
+            var id = item.EditorID ?? Session.FormKeyText(item.FormKey);
+            var file = files.GetValueOrDefault(item.FormKey) ?? id;
+            var move = file.StartsWith("MiscItems/", StringComparison.Ordinal)
+                ? $"one call moves this file there, {ToolCalls.Move(pluginDir, file, $"Activators/{file["MiscItems/".Length..]}")}, and its reference in a cell keeps its Base; then"
+                : "move this file there with moveRecord, then";
+            notes.Add($"{file}: {id}{(name is { Length: > 0 } ? $" \"{name}\"" : "")} is a MiscItem{(scripted ? " with a script" : "")} — a thing the player " +
+                "picks up and carries: activating one where it lies takes it into the inventory. A lever, a button, a switch — a thing used " +
+                "where it stands, that does something when pulled or pressed — is an Activator, in Activators/, as the game's NorLever01 has it " +
+                $"(readRecord {{\"record\": \"NorLever01\"}}: its Model, its Name, its script by its VirtualMachineAdapter): {move} write it with " +
+                "an Activator's fields, as NorLever01's. Where an item to pick up and carry was meant, nothing to change, and this warning stays");
         }
         return notes;
     }

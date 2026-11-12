@@ -183,6 +183,17 @@ function writingHints(problems: readonly string[], scriptsDir: string): string[]
             hints.push(`${where}: a script names no record by its FormID — ${PROPERTY_FILLED}`);
             continue;
         }
+        // Functions a model makes up for what the game does otherwise: eval round 150's activator runs called AddGold and
+        // DisplayNotification on the player, and Debug as the player's property.
+        const madeUp = /(\w+) is not a function or does not exist/i.exec(message)?.[1];
+        if (madeUp && /^(Add|Give)(Gold|Money|Coins?|Septims?)$/i.test(madeUp)) {
+            hints.push(`${where}: Papyrus has no ${madeUp} — gold is an item, given as \`Game.GetPlayer().AddItem(Gold001, 100)\`; ${PROPERTY_FILLED}`);
+            continue;
+        }
+        if (madeUp && /^(Display|Show)?(Notification|Message|Text)$|^Print$/i.test(madeUp) || /the type name Debug cannot be used as a property/i.test(message)) {
+            hints.push(`${where}: a message on the screen is \`Debug.Notification("…")\`, Debug's own function, called by its name alone — not on the player`);
+            continue;
+        }
         const undefinedName = /variable (\w+) is undefined/i.exec(message);
         if (undefinedName) {
             hints.push(`${where}: ${undefinedName[1]} is declared nowhere in the script — ${PROPERTY_FILLED}; a number of its own is a ` +

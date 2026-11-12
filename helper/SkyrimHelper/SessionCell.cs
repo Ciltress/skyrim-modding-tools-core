@@ -44,7 +44,12 @@ public sealed partial class Session
                 throw new HelperException("badRequest", $"The load order has a record named {name} already ({FormKeyText(taken)}): name the cell otherwise.");
             if (Directory.Exists(projectDir) && Directory.EnumerateFiles(projectDir, "*.yaml", SearchOption.AllDirectories)
                 .Any(f => Regex.IsMatch(File.ReadAllText(f), $@"^[ \t]*EditorID:[ \t]*{Regex.Escape(name)}[ \t]*\r?$", RegexOptions.Multiline | RegexOptions.IgnoreCase)))
-                throw new HelperException("badRequest", $"The project has a record named {name} already: name the cell otherwise.");
+                // The room's own location's name, taken by a Location the project has: told "name the cell otherwise", eval round
+                // 150's location+detailed #1 had written that location itself, and only had to name it.
+                throw new HelperException("badRequest", name == editorId + "Location"
+                    ? $"The project has a record named {name} already, the name newCell gives a location of the room's own: to put the room in " +
+                      $"that one, name it, \"location\": \"{name}\" — or give the cell another name."
+                    : $"The project has a record named {name} already: name the cell otherwise.");
         }
 
         var likeName = Required(p, "like").Trim();
@@ -191,7 +196,11 @@ public sealed partial class Session
                 if (OfKind(wanted, "Location", "location") is { } gameLocation)
                 {
                     cell.Location.SetTo(gameLocation);
-                    where = new JsonObject { ["editorId"] = Index.ByFormKey[gameLocation].EditorId ?? wanted, ["formId"] = FormKeyText(gameLocation), ["made"] = false };
+                    // A hold, the whole of its land, named where the room was to be a place of its own in it: 2 of eval round 150's 3
+                    // plain location runs sent WhiterunHoldLocation.
+                    var hold = Contexts(gameLocation).Select(c => c.Record).OfType<ILocationGetter>().FirstOrDefault()?.Keywords?
+                        .Any(k => Index.ByFormKey.TryGetValue(k.FormKey, out var keyword) && keyword.EditorId == "LocTypeHold") == true;
+                    where = new JsonObject { ["editorId"] = Index.ByFormKey[gameLocation].EditorId ?? wanted, ["formId"] = FormKeyText(gameLocation), ["made"] = false, ["hold"] = hold };
                     break;
                 }
                 var locations = Path.Combine(projectDir, "Locations");

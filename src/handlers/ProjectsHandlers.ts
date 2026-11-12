@@ -872,8 +872,8 @@ export class ProjectsHandlers extends BaseHandler {
                                 description: 'The location the room is in, which the game knows it by — on the map, in quests, cleared or not: a ' +
                                     'Location\'s editor ID, the game\'s like "WhiterunBreezehomeLocation" or the project\'s; or a location of the ' +
                                     'room\'s own, written as a new Location: {"name": "Ashen Camp", "parent": "WhiterunHoldLocation", "keywords": ' +
-                                    '["LocTypeDwelling"]}, its parent the location it lies in, a hold\'s or a city\'s. Defaults to the location of ' +
-                                    'the door\'s cell.'
+                                    '["LocTypeDwelling"]}, its parent the location it lies in, a hold\'s or a city\'s — a hold itself is the whole ' +
+                                    'of its land, no place of the room\'s own. Defaults to the location of the door\'s cell.'
                             }
                         },
                         required: ['project', 'cell', 'like']
@@ -892,9 +892,20 @@ export class ProjectsHandlers extends BaseHandler {
                         ...(door ? { door } : {}),
                         ...(location ? { location } : {})
                     }));
+                    // A hold named as the room's location: told nothing of it, 2 of eval round 150's 3 plain location runs, asked for a
+                    // room the game knows as a location of its own in Whiterun Hold, put it in WhiterunHoldLocation and answered it so.
+                    const own = `${made.cell}Location`;
                     const where = made.location
                         ? ` It is in the location ${made.location.editorId}` + (made.location.made
-                            ? `, a new Location written beside it${made.location.parent ? `, in ${made.location.parent}` : ''}.` : '.')
+                            ? `, a new Location written beside it${made.location.parent ? `, in ${made.location.parent}` : ''}.`
+                            : made.location.hold
+                                ? `, a hold — the whole of its land, no place of the room's own. A place the game knows by a name of its own, on ` +
+                                  `the map and in quests, is a Location whose parent is the hold; where the user asked for one, write it as ` +
+                                  `Locations/${own}.yaml in the plugin folder — \`EditorID: ${own}\`, \`Name:\` with \`TargetLanguage: English\` ` +
+                                  `and \`Value: <its name>\` below it, \`ParentLocation: ${made.location.editorId}\` — then one call puts the room ` +
+                                  `in it and builds: editRecord {"project": ${JSON.stringify(project)}, "record": ${JSON.stringify(made.cellFile ?? made.cell)}, ` +
+                                  `"set": [{"path": "Location", "value": ${JSON.stringify(own)}}], "build": true}.`
+                                : '.')
                         : ' It is in no location.';
                     const navmesh = (cell: string) => `generateNavmesh {"project": ${JSON.stringify(project)}, "cell": ${JSON.stringify(cell)}}`;
                     const kinds = Object.entries(made.byKind).map(([kind, count]) => `${count} ${kind}`).join(', ');

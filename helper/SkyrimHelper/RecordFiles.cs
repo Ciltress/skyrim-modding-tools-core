@@ -520,6 +520,14 @@ public static class RecordFiles
         // location+detailed #2 deleted it and built its room in no location.
         (["Cell"], ["ParentLocation", "ParentLocations", "LocationParent", "InLocation", "CellLocation", "Locations"], "Location",
             "a cell's location is its Location line, naming a Location record; ParentLocation is a Location's own field, the location it lies in"),
+        // A lever written as a MiscItem with a script of its own: told "a MiscItem has no field Script — delete it", eval round 150's
+        // activator #1 and #2 deleted it and built a gold lever the player picks up, with no script.
+        (["MiscItem"], ["Script", "Scripts", "ScriptName", "ActivatorType", "Activator", "OnActivate", "Activate", "Activation", "ActivateText",
+            "ActivateTextOverride", "ActivationSound", "Trigger", "Action", "Event"], null,
+            "a MiscItem is a thing the player picks up and carries, and has no script of its own to run; a thing used where it stands — a " +
+            "lever, a button — is an Activator, in Activators/, as the game's NorLever01 has it (readRecord {\"record\": \"NorLever01\"}), its " +
+            "script attached by `VirtualMachineAdapter:` — move this file there with moveRecord and write it with an Activator's fields; " +
+            "delete it here"),
         // The cell a thing stands in, written into the thing's own record: told "a Light has no field placed — delete it", eval round
         // 149's light+detailed #3 deleted it and answered its light placed in Breezehome, placed nowhere.
         (["Light", "Container", "Activator", "TalkingActivator", "Furniture", "Static", "MoveableStatic", "Door", "Flora", "Tree", "MiscItem",
