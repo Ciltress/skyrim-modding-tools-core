@@ -12,7 +12,6 @@
   "31": "editRecord: a record changed field by field",
   "33": "Items and crafting reference",
   "34": "profiles.test.ts",
-  "37": "src/index.ts",
   "40": "ci.yml",
   "42": "SkyrimHelper",
   "43": "generateNavmesh: a cell's navmesh made from the collision of what stands in it (outdoors the ground), edges linked with neighbours",
