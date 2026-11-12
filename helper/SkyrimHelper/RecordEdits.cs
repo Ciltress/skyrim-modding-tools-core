@@ -601,7 +601,7 @@ public static class RecordEdits
                 $"{RecordFiles.HintFor(type, only.Key)} — one call sets {meant} and builds again: " +
                 ToolCalls.Edit(ToolCalls.ProjectOf(context.PluginDir), context.Relative, $"{{\"path\": \"{meant}\", \"value\": {value.ToJsonString()}}}", build: true) +
                 ". Nothing was written.");
-        var types = Types(type, steps, label, (below, link) => Linked(text, steps, below, link, context));
+        var types = Types(type, steps, label, (below, link) => Linked(text, steps, below, link, context, value));
         if (value is JsonValue braced && braced.TryGetValue<string>(out var bracedText) && Fielded(bracedText, types[^1], out var unescaped) is { } parsed)
         {
             value = parsed;
@@ -694,10 +694,10 @@ public static class RecordEdits
         if (steps[^1].Index is null && value is JsonValue partsSent && partsSent.TryGetValue<string>(out var partsSaid)
             && Items(types[^1]) is { } part && typeof(Loqui.ILoquiObject).IsAssignableFrom(part))
         {
-            value = ListOf(partsSaid) ?? throw new HelperException("badRequest", $"{label}: a list, and \"{Shown(partsSent)}\" reads as " +
-                $"none — send its items as a JSON list, {{\"path\": \"{Upto(steps, steps.Count)}\", \"value\": [{{…}}, …]}}, or as the " +
+            value = ListOf(partsSaid, out var mended, out var broken) ?? throw new HelperException("badRequest", $"{label}: a list, and \"{Shown(partsSent)}\" reads as " +
+                $"none{(broken is null ? "" : $" — {broken}")} — send its items as a JSON list, {{\"path\": \"{Upto(steps, steps.Count)}\", \"value\": [{{…}}, …]}}, or as the " +
                 "lines a file writes them in, each item from `- `. Nothing was written.");
-            label += " (a list, sent as a text)";
+            label += mended is null ? " (a list, sent as a text)" : $" (a list, sent as a text: {mended})";
         }
         // Links inside the parts sent, each with the comment a file writes after it — a leveled list's Entries with
         // `"Reference": "037C18:Skyrim.esm # LItemBanditMace"` — are the links alone: written in quotes, comment and all, the
@@ -882,24 +882,96 @@ public static class RecordEdits
 
     /// <summary>
     /// A text that reads as a list — JSON, or the lines a file writes, a line end written or sent as `\n`, a JSON text's quotes
-    /// escaped once more read as quotes — as that list; null for a text that reads as none.
+    /// escaped once more read as quotes — as that list; null for a text that reads as none, <paramref name="broken"/> where and why.
+    ///
+    /// A `# comment` inside an item's braces, as readRecord writes one after a FormID, is left out: YAML reads the rest of the
+    /// line as the comment, the item's `}` with it — eval round 148's encounterzone+detailed #3 sent a leveled list's entries so,
+    /// `{ Level: 1, Reference: 039D26:Skyrim.esm  # SubCharBandit01Melee1H, Count: 1 }`. And braces or brackets the text leaves
+    /// open are closed: the same run sent a JSON list with its last item's `}` left out four times, each answered "reads as none"
+    /// with nothing of why. <paramref name="mended"/> says which was done.
     /// </summary>
-    private static JsonArray? ListOf(string said)
+    private static JsonArray? ListOf(string said, out string? mended, out string? broken)
     {
+        mended = null;
+        broken = null;
         var written = said.Trim();
-        var tried = new List<string> { written, Regex.Replace(written, @"\\r\\n|\\n", "\n") };
-        if (written.StartsWith('[') && written.Contains("\\\"") && !Regex.IsMatch(written, @"(?<!\\)""")) tried.Add(Regex.Replace(written, @"\\([""\\])", "$1"));
-        foreach (var each in tried.Distinct())
+        var tried = new List<(string Text, string? Mend)> { (written, null), (Regex.Replace(written, @"\\r\\n|\\n", "\n"), null) };
+        if (written.StartsWith('[') && written.Contains("\\\"") && !Regex.IsMatch(written, @"(?<!\\)""")) tried.Add((Regex.Replace(written, @"\\([""\\])", "$1"), null));
+        foreach (var (each, _) in tried.ToList())
+        {
+            var bare = Regex.Replace(each, @"[ \t]+#[^,{}\[\]\n]*(?=[,}\]])", "");
+            var uncommented = bare == each ? null : "a `# comment` inside an item's braces left out — YAML reads the rest of its line as the comment";
+            if (uncommented is not null) tried.Add((bare, uncommented));
+            if (Closed(bare) is { } closed)
+                tried.Add((closed.Text, string.Join("; ", new[] { uncommented, $"{closed.Said} put in, to close what the text left open" }.OfType<string>())));
+        }
+        foreach (var (each, mend) in tried.DistinctBy(t => t.Text))
         {
             try
             {
                 var yaml = new YamlStream();
                 yaml.Load(new StringReader(each));
-                if (yaml.Documents.Count > 0 && yaml.Documents[0].RootNode is YamlSequenceNode list) return (JsonArray)FromYaml(list)!;
+                if (yaml.Documents.Count > 0 && yaml.Documents[0].RootNode is YamlSequenceNode list)
+                {
+                    mended = mend;
+                    return (JsonArray)FromYaml(list)!;
+                }
+            }
+            catch (YamlException e) when (broken is null)
+            {
+                var at = (int)Math.Clamp(e.Start.Index, 0, each.Length);
+                var reason = Regex.Replace(e.Message, @"^\(Line: \d+, Col: \d+, Idx: \d+\) - \(Line: \d+, Col: \d+, Idx: \d+\): ", "").TrimEnd('.');
+                broken = $"it reads no further than character {at + 1}, `…{each[Math.Max(0, at - 40)..at]}`: {reason}";
             }
             catch (Exception e) when (e is YamlException or ArgumentException or InvalidCastException) { }
         }
         return null;
+    }
+
+    /// <summary>
+    /// A text of braces and brackets with those it leaves open closed — a `}` put in before a `]` that closes a `[` with a `{`
+    /// still open inside it, and those open at its end closed there — and what was put in; null where none is open, or where a
+    /// `}` closes what no `{` opened.
+    /// </summary>
+    private static (string Text, string Said)? Closed(string text)
+    {
+        var open = new Stack<char>();
+        var built = new System.Text.StringBuilder();
+        var (braces, brackets) = (0, 0);
+        char? quote = null;
+        for (var i = 0; i < text.Length; i++)
+        {
+            var c = text[i];
+            if (quote is { } q)
+            {
+                built.Append(c);
+                if (c == '\\' && q == '"' && i + 1 < text.Length) built.Append(text[++i]);
+                else if (c == q) quote = null;
+                continue;
+            }
+            if (c is '"' or '\'') quote = c;
+            else if (c is '{' or '[') open.Push(c);
+            else if (c == ']')
+            {
+                if (!open.Contains('[')) return null;
+                while (open.Peek() == '{') { open.Pop(); built.Append('}'); braces++; }
+                open.Pop();
+            }
+            else if (c == '}')
+            {
+                if (open.Count == 0 || open.Peek() != '{') return null;
+                open.Pop();
+            }
+            built.Append(c);
+        }
+        while (open.Count > 0)
+        {
+            if (open.Pop() == '{') { built.Append('}'); braces++; }
+            else { built.Append(']'); brackets++; }
+        }
+        if (braces + brackets == 0) return null;
+        var said = new[] { braces == 0 ? null : braces == 1 ? "a `}`" : $"{braces} `}}`s", brackets == 0 ? null : brackets == 1 ? "a `]`" : $"{brackets} `]`s" }.OfType<string>();
+        return (built.ToString(), string.Join(" and ", said));
     }
 
     private static string Json(IEnumerable<string> names) => new JsonArray(names.Select(n => (JsonNode?)JsonValue.Create(n)).ToArray()).ToJsonString();
@@ -1356,7 +1428,7 @@ public static class RecordEdits
     /// model went on to set a magnitude on an enchanted sword it had taken for the enchantment, and answered the sword built
     /// (eval round 111's sword+detailed #4).
     /// </summary>
-    private static string? Linked(string text, List<Step> steps, int below, Type link, Context context)
+    private static string? Linked(string text, List<Step> steps, int below, Type link, Context context, JsonNode? sent = null)
     {
         if (RecordLinks.LinkTarget(link) is not { } target) return null;
         // A link the file sets to nothing — an exterior cell with no EncounterZone — the new record of its kind it can be set to:
@@ -1396,6 +1468,22 @@ public static class RecordEdits
         // encounterzone+detailed #3, asked for a zone of the cell's own, copied the game's EmbershardMineZone — a change of it
         // wherever the game uses it.
         var folder = RecordFiles.GroupFolderOf(kind) ?? $"{kind}s";
+        // The record of its own as the calls that make it: told to write one made from the game's, eval round 148's
+        // encounterzone+detailed #1 copied EmbershardMineZone with addPatch, set its levels, and changed the game's zone.
+        if (entry.EditorId is { } gameId && RecordFiles.Identity(text).EditorId is { Length: > 0 } holder)
+        {
+            var fresh = $"{holder}{kind}";
+            var copy = $"{folder}/{gameId} - {Session.FormKeyText(entry.FormKey).Replace(':', '_')}.yaml";
+            return $"here {id} ({Session.FormKeyText(entry.FormKey)}), {RecordFiles.Article(kind)} of {entry.FormKey.ModKey.FileName}: {there}. " +
+                $"For this record alone, {RecordFiles.Article(kind)} of its own, made from {id}, is three calls: copy it, addPatch {{\"project\": {ToolCalls.Quoted(project)}, " +
+                $"\"records\": [{ToolCalls.Quoted(id)}]}}; make the copy a new {kind} with {field ?? rest} set — " +
+                ToolCalls.Edit(project, copy, $"{{\"path\": \"EditorID\", \"value\": {ToolCalls.Quoted(fresh)}}}, " +
+                    $"{{\"path\": \"{field ?? rest}\", \"value\": {sent?.ToJsonString() ?? "…"}}}", "\"FormKey\"") +
+                $", the FormKey taken out, so it changes {id} nowhere; and set {where} to it, " +
+                ToolCalls.Edit(project, context.Relative, $"{{\"path\": \"{where}\", \"value\": {ToolCalls.Quoted(fresh)}}}", build: true) +
+                $". To change {id} itself, wherever the game uses it, copy it the same way and set {field ?? rest} in the copy, its FormKey kept; " +
+                $"or set {where} itself to another {kind}.";
+        }
         return $"here {id} ({Session.FormKeyText(entry.FormKey)}), {RecordFiles.Article(kind)} of {entry.FormKey.ModKey.FileName}: {there}. " +
             $"For this record alone, write a new {kind} of its own — its file in {folder}/, made from {id} (readRecord {{\"record\": {ToolCalls.Quoted(id)}}}) " +
             $"with {field ?? rest} set — and set {where} to it, " +

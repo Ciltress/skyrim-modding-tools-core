@@ -374,6 +374,45 @@ public static class RecordFiles
                 : "copy the cell in first with addPatch, whose answer names the cell's folder, then move this file into that folder's Temporary/ with moveRecord");
     }
 
+    /// <summary>
+    /// A placed reference's file inside a cell's folder, but not in its Temporary/ or Persistent/ itself — in a folder below it,
+    /// `Temporary/PlacedObjects/0.yaml`, or beside RecordData.yaml — moved into that cell's Temporary/ (Persistent/, where it
+    /// was below that): the cell it is placed in is clear. Eval round 148's key+detailed #2 wrote its chest so, was answered
+    /// with the move, and spent the turn on it that its build would have needed. One whose name is taken there is left to the
+    /// refusal.
+    /// </summary>
+    public static List<(string File, string Change)> PlacedIntoCellFolders(string pluginDir)
+    {
+        var changes = new List<(string File, string Change)>();
+        foreach (var group in new[] { "Cells", "Worldspaces" })
+        {
+            var folder = Path.Combine(pluginDir, group);
+            if (!Directory.Exists(folder)) continue;
+            foreach (var file in Directory.EnumerateFiles(folder, "*.yaml", SearchOption.AllDirectories).Order(StringComparer.Ordinal).ToList())
+            {
+                var relative = Path.GetRelativePath(pluginDir, file).Replace('\\', '/');
+                var parts = relative.Split('/');
+                if (CellDepth(parts) is not (> 0 and var depth) || parts.Length <= depth || IsCellFile(parts) || IsPlacedFile(parts)
+                    || !File.Exists(Path.Combine(pluginDir, Path.Combine(parts[..depth]), "RecordData.yaml"))
+                    || PlacedKind(File.ReadAllText(file)) is not { } kind)
+                    continue;
+                var placed = string.Equals(parts[depth], "Persistent", StringComparison.OrdinalIgnoreCase) ? "Persistent" : "Temporary";
+                var target = $"{string.Join('/', parts[..depth])}/{placed}/{parts[^1]}";
+                var to = Path.Combine(pluginDir, target);
+                if (File.Exists(to)) continue;
+                Directory.CreateDirectory(Path.GetDirectoryName(to)!);
+                File.Move(file, to);
+                // A folder the move left empty goes too: a reference's folder holds files alone.
+                for (var dir = Path.GetDirectoryName(file)!; dir.Length > Path.Combine(pluginDir, Path.Combine(parts[..depth])).Length
+                     && !Directory.EnumerateFileSystemEntries(dir).Any(); dir = Path.GetDirectoryName(dir)!)
+                    Directory.Delete(dir);
+                changes.Add((target, $"moved from {relative} — {Article(kind.Name)} is read only in its cell's {placed}/ folder itself, beside the cell's " +
+                    "RecordData.yaml folder, not in a folder below it"));
+            }
+        }
+        return changes;
+    }
+
     /// <summary>The placed kind a reference's file names — PlacedObject, PlacedNpc… — or null.</summary>
     internal static Type? PlacedKind(string text) =>
         ObjectTypeLine.Match(text) is { Success: true } named
@@ -1051,7 +1090,7 @@ public static class RecordFiles
 
     /// <summary>
     /// A placed reference's position and rotation written otherwise than as readRecord shows them — as a list, `Position: [300,
-    /// 50, 64]`; as X, Y and Z lines below it; at the margin with no `Placement:` above them — and a lock's key under another
+    /// 50, 64]`; as X, Y and Z lines below it; at the margin with no `Placement:` above them; as Placement's own one value — and a lock's key under another
     /// name, `RequiredKey:`, written as the lines they are. Refused "takes fields of its own" and "Lock has no field
     /// RequiredKey", eval round 147's key+detailed #3 rewrote its chest's reference until its turns ran out; round 146's key #1
     /// wrote its Position and Rotation at the margin.
@@ -1060,7 +1099,7 @@ public static class RecordFiles
     {
         const string Number = @"-?\d+(?:\.\d+)?";
         var changes = new List<(string File, string Change)>();
-        foreach (var (file, relative, _) in CellRecords(pluginDir).Where(c => c.Type is not null && typeof(IPlaced).IsAssignableFrom(c.Type)))
+        foreach (var (file, relative, type) in CellRecords(pluginDir).Where(c => c.Type is not null && typeof(IPlaced).IsAssignableFrom(c.Type)))
         {
             var text = File.ReadAllText(file).Replace("\r\n", "\n").TrimEnd('\n') + "\n";
             var made = new List<string>();
@@ -1073,6 +1112,17 @@ public static class RecordFiles
             // `Position: 300` with `Y: 50` and `Z: 64` below it, at its own indentation (eval round 147's key+detailed #3).
             after = Regex.Replace(after, $@"^(?<lead>[ \t]*)(?<key>Position|Rotation):[ \t]*(?<x>{Number})[ \t]*\n\k<lead>Y:[ \t]*(?<y>{Number})[ \t]*\n\k<lead>Z:[ \t]*(?<z>{Number})[ \t]*\n",
                 m => { made.Add($"{m.Groups["key"].Value} with the Y and Z below it as one line"); return Line(m); }, RegexOptions.Multiline);
+            // `Placement: 1500, 500, 0` — the position written as Placement's one value (eval round 148's key+detailed #2, refused
+            // "Placement is written as one value" at its last turn), with the rotation after it where six numbers are written.
+            after = Regex.Replace(after, $@"^Placement:[ \t]*\[?[ \t]*(?<x>{Number})[ \t]*,[ \t]*(?<y>{Number})[ \t]*,[ \t]*(?<z>{Number})" +
+                    $@"(?:[ \t]*,[ \t]*(?<rx>{Number})[ \t]*,[ \t]*(?<ry>{Number})[ \t]*,[ \t]*(?<rz>{Number}))?[ \t]*\]?[ \t]*\n",
+                m =>
+                {
+                    var turned = m.Groups["rx"].Success;
+                    made.Add(turned ? "Placement's six numbers as its Position and Rotation" : "Placement's three numbers as its Position");
+                    return $"Placement:\n  Position: {m.Groups["x"].Value}, {m.Groups["y"].Value}, {m.Groups["z"].Value}\n" +
+                        (turned ? $"  Rotation: {m.Groups["rx"].Value}, {m.Groups["ry"].Value}, {m.Groups["rz"].Value}\n" : "");
+                }, RegexOptions.Multiline);
             // At the margin — where readRecord shows them two spaces in below `Placement:`: into that block, or one written for them.
             var margin = Regex.Matches(after, $@"^(?<key>Position|Rotation):[ \t]*{Number}[ \t]*,[ \t]*{Number}[ \t]*,[ \t]*{Number}[ \t]*\n", RegexOptions.Multiline)
                 .Where(m => !Regex.IsMatch(Regex.Match(after, @"^Placement:[ \t]*\n(?:[ \t]+.*\n)*", RegexOptions.Multiline).Value,
@@ -1085,6 +1135,37 @@ public static class RecordFiles
                 var place = Regex.Match(after, @"^Placement:[ \t]*\n(?:[ \t]+.*\n)*", RegexOptions.Multiline);
                 after = place.Success ? after.Insert(place.Index + place.Length, lines) : after.Insert(Math.Min(first, after.Length), "Placement:\n" + lines);
                 made.Add($"{string.Join(" and ", margin.Select(m => m.Groups["key"].Value))} below `Placement:`");
+            }
+            // A reference's own field written below `Placement:`, as deep as Position — `  Lock:` after Rotation, refused "Placement has
+            // no field Lock (move it up …)" twice in eval round 148's key+detailed #1 — at the margin, its lines with it.
+            if (Regex.Match(after, @"^Placement:[ \t]*\n(?<block>(?:[ \t]+.*\n|[ \t]*\n)*)", RegexOptions.Multiline) is { Success: true } placement)
+            {
+                var block = placement.Groups["block"].Value.Split('\n').ToList();
+                var depth = block.FirstOrDefault(l => l.Trim().Length > 0) is { } firstLine ? firstLine.Length - firstLine.TrimStart().Length : 0;
+                var own = FieldsOf(type!);
+                var kept = new List<string>();
+                var lifted = new List<string>();
+                var names = new List<string>();
+                for (var i = 0; i < block.Count; i++)
+                {
+                    var key = Regex.Match(block[i], $@"^ {{{depth}}}(?<key>[A-Za-z]\w*):");
+                    if (depth == 0 || !key.Success || key.Groups["key"].Value is "Position" or "Rotation" || !own.Contains(key.Groups["key"].Value))
+                    {
+                        kept.Add(block[i]);
+                        continue;
+                    }
+                    names.Add(key.Groups["key"].Value);
+                    lifted.Add(block[i][depth..]);
+                    while (i + 1 < block.Count && block[i + 1].Trim().Length > 0 && block[i + 1].Length - block[i + 1].TrimStart().Length > depth)
+                        lifted.Add(block[++i][depth..]);
+                }
+                if (lifted.Count > 0)
+                {
+                    var body = string.Join('\n', kept).TrimEnd('\n', ' ', '\t');
+                    after = after.Remove(placement.Index, placement.Length)
+                        .Insert(placement.Index, "Placement:\n" + (body.Length > 0 ? body + "\n" : "") + string.Join('\n', lifted) + "\n");
+                    made.Add($"{string.Join(" and ", names)}, written below `Placement:`, at the margin");
+                }
             }
             after = Regex.Replace(after, @"^(?<head>Lock:[ \t]*\n(?:[ \t]+.*\n)*?[ \t]+)(?<key>RequiredKey|RequiresKey|LockKey|KeyRequired|OpenedBy|Opener|KeyItem):",
                 m => { made.Add($"the lock's {m.Groups["key"].Value} as its Key"); return m.Groups["head"].Value + "Key:"; }, RegexOptions.Multiline);

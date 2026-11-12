@@ -464,7 +464,7 @@ internal static class MadeNotes
     }
 
     /// <summary>
-    /// A new NPC or leveled list of the project's that nothing in the plugin names — no reference places the NPC, no list,
+    /// A new NPC, leveled list, container or encounter zone of the project's that nothing in the plugin names — no reference places the NPC, no list,
     /// alias, outfit, container or script property holds either — so the game never shows or uses it. Four of eval round 145's
     /// follower and package runs built a new NPC placed in no cell and answered her in the inn; leveled-spell #3 made its copy of
     /// LSpellBandit01FireFrostShock a new list nothing uses, and the game's list stayed as it was.
@@ -472,7 +472,7 @@ internal static class MadeNotes
     public static List<string> Unused(ISkyrimModGetter mod, ILinkCache lookup, RecordIndex index, string pluginDir)
     {
         var made = mod.EnumerateMajorRecords().Where(r => r.FormKey.ModKey == mod.ModKey
-            && r is INpcGetter or ILeveledItemGetter or ILeveledNpcGetter or ILeveledSpellGetter or IContainerGetter).ToList();
+            && r is INpcGetter or ILeveledItemGetter or ILeveledNpcGetter or ILeveledSpellGetter or IContainerGetter or IEncounterZoneGetter).ToList();
         if (made.Count == 0) return [];
         var named = new HashSet<Mutagen.Bethesda.Plugins.FormKey>();
         foreach (var record in mod.EnumerateMajorRecords())
@@ -505,6 +505,21 @@ internal static class MadeNotes
                     $"PlacedObject file in that cell's Temporary/ folder places it{cell}: readRecord of the cell answers `newReference`, the path " +
                     $"and the lines to write, with `Base: {id}` — and its lock, where it has one, is that reference's `Lock:`, `Level:` and `Key:` " +
                     "below it. Where the container record alone was asked for, nothing to change, and this warning stays");
+                continue;
+            }
+            // A zone of the mod's own no cell takes: eval round 148's encounterzone+detailed #2 wrote one for the mine, named no cell
+            // by it, and answered the mine made more dangerous.
+            if (record is IEncounterZoneGetter)
+            {
+                var cellFiles = RecordFiles.CellRecords(pluginDir).Where(c => c.Type == typeof(Cell)).Select(c => c.Relative).ToList();
+                var cellCall = cellFiles is [var cellFile]
+                    ? $" — the project's cell {cellFile[..cellFile.LastIndexOf('/')].Split('/')[^1]} is one, and one call sets it and builds: " +
+                      ToolCalls.Edit(project, cellFile, $"{{\"path\": \"EncounterZone\", \"value\": {ToolCalls.Quoted(id)}}}", build: true)
+                    : "";
+                notes.Add($"{file}: {id}, a new EncounterZone, is named by no cell of the plugin, so no place takes its levels: a cell takes a " +
+                    $"zone by its own `EncounterZone:` line, and the zone's Location does not set it. Where the user asked for it in a place — a " +
+                    $"cave, a mine, a house — copy that place's cell with addPatch and set the copy's EncounterZone to {id}{cellCall}. Where the " +
+                    "zone record alone was asked for, nothing to change, and this warning stays");
                 continue;
             }
             var type = RecordIndex.TypeName(record);

@@ -300,6 +300,76 @@ public static class MisplacedFields
     }
 
     /// <summary>
+    /// The fields of a list's item written in the item itself where every one of them is one part's of it — a leveled list's
+    /// `- Level: 1` with `Reference:` and `Count:` below, where an entry is `- Data:` with those three below it — written under
+    /// that part, `Data:` on the dash's line. Sent so as a JSON list, eval round 148's encounterzone+detailed #3 had 39 fields
+    /// refused "Entries[0] has no field Level (move it under Data)" three builds long, and answered unbuilt. An item that has
+    /// the part already, or a field of its own beside them, is left to the refusal.
+    /// </summary>
+    public static List<(string File, string Change)> IntoItemParts(string pluginDir)
+    {
+        var changes = new List<(string File, string Change)>();
+        foreach (var (file, relative, type) in RecordFiles.FlatRecords(pluginDir))
+        {
+            var written = File.ReadAllText(file);
+            var text = written.Replace("\r\n", "\n");
+            if (Root(text) is not { } root) continue;
+            var lines = text.Split('\n').ToList();
+            var items = new List<(int Line, int Dash, int Column, string Part)>();
+            var moved = new List<(string List, string Part, List<string> Keys, int Count)>();
+            foreach (var (keyNode, value) in root.Children)
+            {
+                if (keyNode is not YamlScalarNode { Value: { } name } || value is not YamlSequenceNode { Style: not SequenceStyle.Flow } list
+                    || type.GetProperties(Public).FirstOrDefault(p => p.Name == name) is not { } property
+                    || RecordLinks.ElementType(Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType) is not { IsAbstract: false } element)
+                    continue;
+                var fields = RecordFiles.FieldsOf(element);
+                var count = 0;
+                var said = new List<string>();
+                string? listPart = null;
+                foreach (var item in list.Children.OfType<YamlMappingNode>())
+                {
+                    if (item.Style == MappingStyle.Flow) continue;
+                    var keys = item.Children.Keys.OfType<YamlScalarNode>().Select(k => k.Value!).ToList();
+                    if (keys.Count == 0 || keys.Any(fields.Contains)) continue;
+                    var parts = keys.Select(k => System.Text.RegularExpressions.Regex.Match(RecordFiles.HintFor(element, k), @"^ \(move it under (?<part>\w+)\)$")).ToList();
+                    if (parts.Any(p => !p.Success) || parts.Select(p => p.Groups["part"].Value).Distinct().Count() != 1) continue;
+                    var part = parts[0].Groups["part"].Value;
+                    var first = item.Children.Keys.First();
+                    var line = (int)first.Start.Line - 1;
+                    var column = (int)first.Start.Column - 1;
+                    var dash = lines[line].LastIndexOf('-', Math.Max(0, column - 1));
+                    // The item's first field on its dash's line, nothing else between them.
+                    if (dash < 0 || lines[line][..dash].Trim().Length > 0 || lines[line][(dash + 1)..column].Trim().Length > 0) continue;
+                    items.Add((line, dash, column, part));
+                    count++;
+                    listPart = part;
+                    foreach (var key in keys) if (!said.Contains(key)) said.Add(key);
+                }
+                if (count > 0) moved.Add((name, listPart!, said, count));
+            }
+            if (items.Count == 0) continue;
+            // From the last item up: the lines above keep their numbers.
+            foreach (var (line, dash, column, part) in items.OrderByDescending(i => i.Line))
+            {
+                var end = line + 1;
+                while (end < lines.Count && lines[end].Trim().Length > 0 && Indent(lines[end]) > dash) end++;
+                for (var i = line + 1; i < end; i++) lines[i] = "  " + lines[i];
+                var rest = lines[line][column..];
+                lines[line] = lines[line][..column] + $"{part}:";
+                lines.Insert(line + 1, new string(' ', column + 2) + rest);
+            }
+            var mended = string.Join('\n', lines);
+            if (Root(mended) is null) continue;
+            Save(file, written.Contains("\r\n") ? mended.Replace("\n", "\r\n") : mended);
+            changes.AddRange(moved.Select(m => (relative,
+                $"moved {Quoted(m.Keys)} of {(m.Count == 1 ? "an item" : $"{m.Count} items")} of {m.List} under `{m.Part}:`, written on the item's dash — " +
+                $"each item of {m.List} has {(m.Keys.Count == 1 ? "it" : "them")} there, below its {m.Part}, not in the item itself")));
+        }
+        return changes;
+    }
+
+    /// <summary>
     /// A list whose items take fields, one of them the link the item is for, written as names alone — a story manager node's
     /// `Quests:` with `- ArrivalRumorQuest` below it: each name written as that link's line, `- Quest: ArrivalRumorQuest`. As
     /// written, the reader refused the file "Expected 'SequenceEnd', got 'DocumentEnd'", which names nothing; 3 of eval round

@@ -741,6 +741,8 @@ public sealed partial class Session : IDisposable
         corrected.AddRange(RecordFiles.Untab(dir));
         // And a quote mark alone on a line, which keeps the reader from the rest of the file.
         corrected.AddRange(RecordFiles.DropLoneQuotes(dir));
+        // A reference in its cell's folder but below its Temporary/, into it: the corrections of references read it only there.
+        corrected.AddRange(RecordFiles.PlacedIntoCellFolders(dir));
         // An editor ID first: a copied FormKey is taken out by the EditorID beside it.
         corrected.AddRange(RecordFiles.CleanEditorIds(dir, Index));
         corrected.AddRange(RecordFiles.DropCopiedFormKeys(dir, Index));
@@ -775,6 +777,8 @@ public sealed partial class Session : IDisposable
         corrected.AddRange(FlagLines.OutOfFlags(dir));
         corrected.AddRange(FlagLines.IntoFlags(dir));
         corrected.AddRange(FlagLines.NoneOutOfFlags(dir));
+        // A list item's fields that are one part's of it, under that part: a leveled list's Level, Reference and Count, under Data.
+        corrected.AddRange(MisplacedFields.IntoItemParts(dir));
         // A weapon's field at the margin takes the place of its part's, where that one is the weapon's it was written after.
         corrected.AddRange(MisplacedFields.Move(dir, (type, text, part, key, kept, written) =>
             KeptFromSource.CopiedFrom(Cache, Index, type, text, part, key, kept, written)));
