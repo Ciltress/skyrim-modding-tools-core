@@ -1707,6 +1707,19 @@ public static class RecordFiles
             }
 
             var text = File.ReadAllText(file);
+            // Records written one after another in one file, split by `---` lines: refused for what the first one's fields said,
+            // eval round 151's light+detailed #2 wrote its file of three references anew five times, each a copy of a reference
+            // the game's room has already, and ran out of turns.
+            if (Documents(text) is > 1 and var documents)
+            {
+                problems.Add($"{relative}: holds {documents} records, split by `---` lines, and a record file holds one, read as a whole — " +
+                    (CellDepth(parts) > 0
+                        ? "write each reference the mod adds as a file of its own in this folder, named after its EditorID; those the game's " +
+                          "cell has already stand there, as readRecord of the cell lists them, and need no file of the mod's"
+                        : $"write each as a file of its own in {parts[0]}/, named after its EditorID") +
+                    $"; this file is then left over: {ToolCalls.Delete(pluginDir, relative)}");
+                continue;
+            }
             var line = FormKeyLine.Match(text);
             if (line.Success)
             {
@@ -1867,6 +1880,11 @@ public static class RecordFiles
         }
         return (records, problems, leftOut);
     }
+
+    /// <summary>How many YAML documents a file holds: its parts between `---` lines that hold more than comments.</summary>
+    internal static int Documents(string text) =>
+        Regex.Split(text.Replace("\r\n", "\n"), @"^---[ \t]*$", RegexOptions.Multiline)
+            .Count(part => part.Split('\n').Any(l => l.Trim().Length > 0 && !l.TrimStart().StartsWith('#')));
 
     /// <summary>
     /// A top-level field of the record written twice, which the reader refuses as a duplicate key — said with both

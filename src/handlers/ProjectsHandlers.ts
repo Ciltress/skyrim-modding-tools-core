@@ -128,7 +128,22 @@ export function inputSections(text: string, copies: { names: string[]; file?: st
     return texts.size > 0 ? texts : undefined;
 }
 
+/** A refused build's own words, without the corrections it made: what two refusals in a row are compared by. */
+function refusalOf(message: string): string {
+    return message.split('Corrected in the files already')[0].replace(/\s+/g, ' ').trim();
+}
+
+/** The tool calls a refusal names, `editRecord {…}`, `moveRecord {…}` and the like: the first of them, or none. */
+const NAMED_CALL = /\b(?:editRecord|moveRecord|deleteRecord|addPatch|newCell) \{/;
+
 export class ProjectsHandlers extends BaseHandler {
+    /**
+     * Each project's last refused build, and how many builds in a row refused it so: the same refusal again means the file was
+     * written anew with what was refused. Eval round 151's three runs that ran out of turns met one refusal three to five times
+     * each, the file written again between them.
+     */
+    private readonly refused = new Map<string, { text: string; times: number }>();
+
     protected toolSpecs(): ToolSpec[] {
         return [
             {
@@ -1134,16 +1149,31 @@ export class ProjectsHandlers extends BaseHandler {
         // told the user the mod was built — most fixed the file after it and never built again. Said at both ends.
         // After 12 of the 29 refusals of rounds 40–50 that named corrections it had written, the model's edits found
         // nothing — it made the build's moves itself, from the file as it had written it, and read it first once.
+        const key = project.trim().toLowerCase();
         const { warnings, combined, ...built } = await asRequestError(this.backend.buildProject(project)
             .catch((error: unknown) => {
-                if (error instanceof Error) error.message = `Not built: ${error.message.replace(/\.?\s*$/, '.')} ` +
-                    (error.message.includes('Corrected in the files already')
-                        ? 'The corrections are made: redo none of them, and read a corrected file before editing it — it ' +
-                            'no longer reads as you wrote it. Fix what else this names'
-                        : 'Fix what this names') +
-                    ', then build again — only a build that answers success writes the plugin.';
+                if (error instanceof Error) {
+                    // The same refusal as the build before: said so, with the way out of writing it again.
+                    const text = refusalOf(error.message);
+                    const last = this.refused.get(key);
+                    const times = last?.text === text ? last.times + 1 : 1;
+                    this.refused.set(key, { text, times });
+                    const again = times > 1
+                        ? ` This is what the last ${times === 2 ? 'build' : `${times - 1} builds`} refused too, word for word: the file was ` +
+                          'written again with what was refused. ' + (NAMED_CALL.test(text)
+                              ? 'Send the call this names as it is — it changes the file itself — instead of writing the file again.'
+                              : 'Read the file it names first, then change only the line it names, with editRecord or an edit — not the whole file.')
+                        : '';
+                    error.message = `Not built: ${error.message.replace(/\.?\s*$/, '.')}${again} ` +
+                        (error.message.includes('Corrected in the files already')
+                            ? 'The corrections are made: redo none of them, and read a corrected file before editing it — it ' +
+                                'no longer reads as you wrote it. Fix what else this names'
+                            : 'Fix what this names') +
+                        ', then build again — only a build that answers success writes the plugin.';
+                }
                 throw error;
             }));
+        this.refused.delete(key);
         // Told what the build had moved, the model made the moves itself — edits of the file as it had been, which
         // found nothing — then wrote it anew without the FormKey line the build gave it (eval round 45's
         // npc #3): 4 of the 209 builds with `corrected` in rounds 30–45 were followed so, and 2 of those runs failed.

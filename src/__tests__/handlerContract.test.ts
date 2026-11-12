@@ -476,3 +476,32 @@ describe("newCell's answer says where the room is", () => {
         expect(request.location).toEqual({ parent: 'WhiterunHoldLocation' });
     });
 });
+
+describe('a build refused as the one before says so', () => {
+    async function refusals(messages: string[]) {
+        const backend = new InMemorySkyrimBackend();
+        let n = 0;
+        vi.spyOn(backend, 'buildProject').mockImplementation(async () => { throw new Error(messages[Math.min(n++, messages.length - 1)]); });
+        const handler = createHandlers(backend, CORE_PRODUCT).find(h => h.getTools().some(t => t.name === 'buildProject'))!;
+        const said: string[] = [];
+        for (let i = 0; i < messages.length; i++) {
+            try { await handler.handle('buildProject', { project: 'GoldLever' }); } catch (error) { said.push((error as Error).message); }
+        }
+        return said;
+    }
+
+    // Eval round 151's runs that ran out of turns met one refusal three to five times, the file written anew between them.
+    it('names a refusal met again word for word, with the call it names or the line to change', async () => {
+        const flags = 'MiscItems/GoldCoin.yaml: a MiscItem has no field Flags (delete it: one call deletes it and builds again: ' +
+            'editRecord {"project": "GoldLever", "record": "MiscItems/GoldCoin.yaml", "remove": ["Flags"], "build": true})';
+        const [first, second, third] = await refusals([flags, flags, flags]);
+        expect(first).not.toContain('word for word');
+        expect(second).toContain('This is what the last build refused too, word for word: the file was written again with what was refused. ' +
+            'Send the call this names as it is');
+        expect(third).toContain('This is what the last 2 builds refused too');
+        const [, plain] = await refusals(['Weapons/A.yaml: the YAML breaks at line 3', 'Weapons/A.yaml: the YAML breaks at line 3']);
+        expect(plain).toContain('Read the file it names first, then change only the line it names');
+        const [, other] = await refusals(['Weapons/A.yaml: the YAML breaks at line 3', 'Weapons/A.yaml: the YAML breaks at line 4']);
+        expect(other).not.toContain('word for word');
+    });
+});
