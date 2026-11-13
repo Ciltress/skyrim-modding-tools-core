@@ -960,6 +960,19 @@ public static class RecordFiles
                     : "move this file there with moveRecord, then") +
                 " write it with an Activator's fields, as NorLever01's, and build again: the build names any field an Activator has not)";
         }
+        // A chair written as a recipe, an item, a static: told "if this is a Book, move the file into Books/" for its recipe's Name,
+        // Model and InventoryArt, eval round 144's furniture #5 wrote it as a MiscItem next, and built a chair no one sits in.
+        if (SeatKinds.Contains(type.Name) && SeatLike(type, text, relative, keys))
+        {
+            var seatFolder = relative.Contains('/') ? relative[..relative.IndexOf('/')] : "";
+            return $"{string.Join(", ", keys)} (a chair, a bench, a bed — a thing the player sits or lies on — is no {type.Name} but " +
+                "Furniture, in Furniture/, as the game's WoodenChair01 has it (readRecord {\"record\": \"WoodenChair01\"}: its Model, and " +
+                "its Markers, where and how the player sits): " +
+                (seatFolder.Length > 0
+                    ? $"one call moves this file there, {ToolCalls.Move(pluginDir, relative, $"Furniture/{relative[(seatFolder.Length + 1)..]}")}; then"
+                    : "move this file there with moveRecord, then") +
+                " write it with Furniture's fields, as WoodenChair01's, and build again: the build names any field Furniture has not)";
+        }
         // A block of the record's own fields: an armor's Value, Weight and ArmorRating written under a weapon's BasicStats, told
         // only to delete it, built as 0, 0 and 0 (refusal probes of 2026-10-31, A05) — written at the margin with one call.
         var hinted = keys.Select(key => (Key: key, Hint: Lifted(type, known, key, text, pluginDir, relative)
@@ -1019,6 +1032,9 @@ public static class RecordFiles
                       $"has its {of.Name} already, {theirs}: this file is a copy of {Article(of.Name)} written in {Path.GetDirectoryName(relative)?.Replace('\\', '/')}/. " +
                       $"If {Article(type.Name)} was meant, write this file anew with {Article(type.Name)}'s fields alone{example}; if not, delete it — " +
                       ToolCalls.Delete(pluginDir, relative)
+                    : ItemModel(type, of!, text, pluginDir, relative, bare) is { } asItem
+                    ? $"{(bare.Count == 1 ? "it is" : "they are")} {Article(of!.Name)}'s, which {Article(type.Name)} has nowhere. {asItem}; if " +
+                      $"{Article(of.Name)} was meant, move the file into {folder}/ — {ToolCalls.Move(pluginDir, relative, $"{folder}/{Path.GetFileName(relative)}")}"
                     : $"{(bare.Count == 1 ? "it is" : "they are")} {Article(of!.Name)}'s, which {Article(type.Name)} has nowhere: if this is " +
                       $"{Article(of.Name)}, move the file into {folder}/ — {ToolCalls.Move(pluginDir, relative, $"{folder}/{Path.GetFileName(relative)}")}"
             : $"delete {them}: {Article(type.Name)} has {them} nowhere; one call deletes {them} and builds again: " +
@@ -1039,6 +1055,40 @@ public static class RecordFiles
         MadeNotes.UsedWhereItStands.IsMatch($"{Identity(text).EditorId} {BlockOf(text, "Name")} {Path.GetFileNameWithoutExtension(relative)}")
         || type == typeof(MiscItem) && keys.Any(k => SynonymHint(typeof(MiscItem), k)?.Contains("NorLever01", StringComparison.Ordinal) == true)
         || Regex.IsMatch(text, @"^[ \t]*-[ \t]*Activator[ \t]*\r?$", RegexOptions.Multiline);
+
+    /// <summary>
+    /// A misc item written as a copy of an armor — a ring, an amulet — kept a misc item, as its folder says: the armor's ground
+    /// model written as its `Model:`, the armor's fields deleted, in one call. Told only "if this is an Armor, move the file into
+    /// Armors/", 4 of eval round 144's 5 misc+detailed runs, asked for a locket to sell, moved it there or wrote it there, and
+    /// built an armor. Null for any other pair of types, or with no model to keep.
+    /// </summary>
+    private static string? ItemModel(Type type, Type of, string text, string pluginDir, string relative, IReadOnlyList<string> bare)
+    {
+        if (type != typeof(MiscItem) || of != typeof(Armor)) return null;
+        var model = Regex.Match(BlockOf(text, "WorldModel"), @"^[ \t]+File:[ \t]*['""]?(?<file>[^'""\r\n#]+?)['""]?[ \t]*\r?$", RegexOptions.Multiline);
+        if (!model.Success) return null;
+        var file = model.Groups["file"].Value.Replace(@"\\", @"\");
+        return $"A misc item — as its folder says, a thing to carry and sell — has one model, `Model:` and its `File:`: one call writes the " +
+            $"{of.Name}'s ground model there, {file}, deletes the {of.Name}'s fields and builds again: " +
+            ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, $"{{\"path\": \"Model.File\", \"value\": {ToolCalls.Quoted(file)}}}",
+                string.Join(", ", bare.Select(ToolCalls.Quoted)), build: true);
+    }
+
+    /// <summary>The kinds a chair, a bench, a bed was written as, which a seat is told to be Furniture from.</summary>
+    private static readonly HashSet<string> SeatKinds = new([.. LeverKinds, "ConstructibleObject", "Static", "MoveableStatic", "Activator",
+        "Container"], StringComparer.Ordinal);
+
+    /// <summary>The words of a thing sat or lain on, by which a record's name, editor ID or file name says it is Furniture.</summary>
+    internal static readonly Regex Seat = new(@"(?i:\b(chair|stool|bench|throne|bed|bedroll|seat|couch|sofa|armchair|hammock)s?\b)|" +
+        @"(?<=[a-z])(Chair|Stool|Bench|Throne|Bed|Bedroll|Seat|Couch|Sofa|Armchair|Hammock)(?![a-z])");
+
+    /// <summary>
+    /// Whether a file of another kind is a seat's: its name, editor ID or file name says chair, bench, bed… — a recipe's only
+    /// where it carries an item's fields too, a Name or a Model, as a recipe for a chair has neither.
+    /// </summary>
+    private static bool SeatLike(Type type, string text, string relative, IEnumerable<string> keys) =>
+        (type != typeof(ConstructibleObject) || keys.Any(k => k is "Name" or "Model"))
+        && Seat.IsMatch($"{Identity(text).EditorId} {BlockOf(text, "Name")} {Path.GetFileNameWithoutExtension(relative)}");
 
     /// <summary>Fields only a quest's alias has: written in a record file of their own, they are an alias written as a record.</summary>
     private static readonly HashSet<string> AliasFields = new(StringComparer.Ordinal)
@@ -2622,13 +2672,16 @@ public static class RecordFiles
         bool Free(string name) => !taken.Contains(name) && !index.ByEditorId.ContainsKey(name);
         foreach (var (file, relative, text) in files)
         {
-            if (Identity(text) is not { FormKey: null, EditorId: { } editorId } || !index.ByEditorId.TryGetValue(editorId, out var key)
+            // A new record, numbered by a build or not: eval round 144's spelltome #4 gave its numbered spell, nameless, the
+            // EditorID Firebolt, and the tome's `Spell: Firebolt` took it — a spell of cost 0 — in place of the game's.
+            if (Identity(text) is not { EditorId: { } editorId } identity || identity.FormKey is { } numbered && numbered.ModKey != own
+                || !index.ByEditorId.TryGetValue(editorId, out var key)
                 || key.ModKey == own || !index.ByFormKey.TryGetValue(key, out var entry) || EditorIdLine.Match(text) is not { Success: true } line)
                 continue;
             // A game setting or a global of the game's name is the game's changed: the game reads a setting by its name alone, and a
             // renamed copy is one it never reads — `fJumpHeightMin` written anew was built as fJumpHeightMinHigherJump, and the jump
             // stayed as it was (2026-11-07). Its FormKey written in, the file is the game's record's override, as addPatch copies it.
-            if (entry.Type.StartsWith("GameSetting", StringComparison.Ordinal) || entry.Type.StartsWith("Global", StringComparison.Ordinal))
+            if (identity.FormKey is null && (entry.Type.StartsWith("GameSetting", StringComparison.Ordinal) || entry.Type.StartsWith("Global", StringComparison.Ordinal)))
             {
                 var at = Regex.Match(text, @"\A(?:MutagenObjectType:[^\n]*\n)?").Length;
                 File.WriteAllText(file, $"{text[..at]}FormKey: {Session.FormKeyText(key)}\n{text[at..]}");
@@ -2652,7 +2705,8 @@ public static class RecordFiles
                     $"{key.ModKey.FileName}'s, and nothing of the project names this one: delete it rather than fix it, " +
                     $"{ToolCalls.Delete(pluginDir, relative, build: true)}; only where this one was meant — then name {name} in {linker} — fix it: ";
             changes.Add((relative,$"wrote `EditorID: {name}` for `EditorID: {editorId}` — {editorId} is {key.ModKey.FileName}'s " +
-                $"{entry.Type} ({Session.FormKeyText(key)}), and this file, with no FormKey line, is a new record of its own; a link by " +
+                $"{entry.Type} ({Session.FormKeyText(key)}), and this file, " +
+                (identity.FormKey is { } mine ? $"{Session.FormKeyText(mine)}, " : "with no FormKey line, ") + "is a new record of its own; a link by " +
                 $"{editorId} names {key.ModKey.FileName}'s. " + (linker is null
                     ? "To change that one instead, copy it in with addPatch and write this file empty"
                     : $"{linker} names {editorId}, so it has {key.ModKey.FileName}'s, and nothing has this one: where the game's " +

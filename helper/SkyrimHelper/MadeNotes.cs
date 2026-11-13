@@ -464,7 +464,8 @@ internal static class MadeNotes
     }
 
     /// <summary>
-    /// A new NPC, leveled list, container or encounter zone of the project's that nothing in the plugin names — no reference places the NPC, no list,
+    /// A new NPC, leveled list, container, encounter zone, location, activator, race or spell of the project's that nothing in the
+    /// plugin names — no reference places the NPC, no list,
     /// alias, outfit, container or script property holds either — so the game never shows or uses it. Four of eval round 145's
     /// follower and package runs built a new NPC placed in no cell and answered her in the inn; leveled-spell #3 made its copy of
     /// LSpellBandit01FireFrostShock a new list nothing uses, and the game's list stayed as it was.
@@ -473,7 +474,7 @@ internal static class MadeNotes
     {
         var made = mod.EnumerateMajorRecords().Where(r => r.FormKey.ModKey == mod.ModKey
             && r is INpcGetter or ILeveledItemGetter or ILeveledNpcGetter or ILeveledSpellGetter or IContainerGetter or IEncounterZoneGetter
-                or ILocationGetter or IActivatorGetter or IRaceGetter).ToList();
+                or ILocationGetter or IActivatorGetter or IRaceGetter or ISpellGetter).ToList();
         if (made.Count == 0) return [];
         var named = new HashSet<Mutagen.Bethesda.Plugins.FormKey>();
         foreach (var record in mod.EnumerateMajorRecords())
@@ -562,6 +563,24 @@ internal static class MadeNotes
                     "warning stays");
                 continue;
             }
+            // A spell of the mod's own nothing gives, beside a tome of the mod's that teaches the game's: asked for a tome that teaches
+            // Firebolt, eval round 144's spelltome #4 wrote a spell beside it and built it with no word. A new spell alone is a
+            // spell the user asked for (the eval's spell task: "no spell tome is needed"), and no note.
+            if (record is ISpellGetter spell)
+            {
+                var taught = mod.Books.Where(b => b.FormKey.ModKey == mod.ModKey)
+                    .Select(b => (Book: b, Spell: b.Teaches is IBookSpellGetter teaches && !teaches.Spell.IsNull ? teaches.Spell.FormKey : (Mutagen.Bethesda.Plugins.FormKey?)null))
+                    .FirstOrDefault(t => t.Spell is { } s && s.ModKey != mod.ModKey);
+                if (taught.Spell is not { } learnt) continue;
+                var gameSpell = index.ByFormKey.TryGetValue(learnt, out var entry) && entry.EditorId is { } learntId ? learntId : Session.FormKeyText(learnt);
+                notes.Add($"{file}: {id}{(spell.Name?.String is { Length: > 0 } name ? $" \"{name}\"" : "")}, a new Spell, is named by nothing in the " +
+                    "plugin — no spell tome teaches it, no NPC, perk, list or script property has it — so the player never gets it: " +
+                    $"{taught.Book.EditorID ?? Session.FormKeyText(taught.Book.FormKey)} teaches {learnt.ModKey.FileName}'s {gameSpell}. Where the " +
+                    $"game's spell was meant, this one is a second spell the game holds for nothing — one call deletes it: " +
+                    $"{ToolCalls.Delete(pluginDir, file, build: true)}; where this spell is to be learnt, name {id} in the tome's `Teaches:`, " +
+                    $"`Spell: {id}`. Where the spell record alone was asked for, nothing to change, and this warning stays");
+                continue;
+            }
             var type = RecordIndex.TypeName(record);
             var origin = GameListLike(record, lookup, index, mod.ModKey);
             notes.Add($"{file}: {id}, a new {type}, is named by nothing in the plugin — no NPC, outfit, container or other list holds it — so " +
@@ -633,9 +652,23 @@ internal static class MadeNotes
         {
             var scripted = item.VirtualMachineAdapter?.Scripts is { Count: > 0 };
             var name = item.Name?.String;
-            if (!scripted && !UsedWhereItStands.IsMatch($"{name} {item.EditorID}")) continue;
+            var lever = UsedWhereItStands.IsMatch($"{name} {item.EditorID}");
+            if (!scripted && !lever && !RecordFiles.Seat.IsMatch($"{name} {item.EditorID}")) continue;
             var id = item.EditorID ?? Session.FormKeyText(item.FormKey);
             var file = files.GetValueOrDefault(item.FormKey) ?? id;
+            // A chair, a bench, a bed written as a misc item: eval round 144's furniture #5 built its Reading Chair so, to be picked up.
+            if (!scripted && !lever)
+            {
+                var seat = file.StartsWith("MiscItems/", StringComparison.Ordinal)
+                    ? $"one call moves this file there, {ToolCalls.Move(pluginDir, file, $"Furniture/{file["MiscItems/".Length..]}")}, and its reference in a cell keeps its Base; then"
+                    : "move this file there with moveRecord, then";
+                notes.Add($"{file}: {id}{(name is { Length: > 0 } ? $" \"{name}\"" : "")} is a MiscItem — a thing the player picks up and carries: " +
+                    "activating one where it lies takes it into the inventory, and nobody sits on it. A chair, a bench, a bed — a thing sat or " +
+                    "lain on — is Furniture, in Furniture/, as the game's WoodenChair01 has it (readRecord {\"record\": \"WoodenChair01\"}: its " +
+                    $"Model, and its Markers, where and how the player sits): {seat} write it with Furniture's fields, its Markers as " +
+                    "WoodenChair01's. Where an item to pick up and carry was meant, nothing to change, and this warning stays");
+                continue;
+            }
             var move = file.StartsWith("MiscItems/", StringComparison.Ordinal)
                 ? $"one call moves this file there, {ToolCalls.Move(pluginDir, file, $"Activators/{file["MiscItems/".Length..]}")}, and its reference in a cell keeps its Base; then"
                 : "move this file there with moveRecord, then";

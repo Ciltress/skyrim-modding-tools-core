@@ -76,13 +76,95 @@ public static class ScriptLines
                 adapter.Remove("Properties");
                 said.Add("`Properties:`, beside Scripts, under its one script");
             }
+            // Each property of the kind Mutagen names for what it holds.
+            var kinded = false;
+            foreach (var script in scripts.OfType<JsonObject>())
+            {
+                if (script["Properties"] is not JsonArray props) continue;
+                for (var i = 0; i < props.Count; i++)
+                {
+                    if (props[i] is not JsonObject property || Kinded(property) is not { } mended) continue;
+                    props[i] = mended.Property;
+                    said.Add(mended.Said);
+                    kinded = true;
+                }
+            }
             if (said.Count == 0) continue;
             lines.RemoveRange(at, count);
             lines.InsertRange(at, RecordEdits.Render("VirtualMachineAdapter", adapter, 0));
             File.WriteAllText(file, string.Join('\n', lines));
             changes.Add((relative, $"wrote {string.Join("; ", said)} — a script is attached as an item of `Scripts:` under " +
-                "`VirtualMachineAdapter:`, `- Name: <the script>` and its `Properties:` below it, as readRecord shows the game's levers"));
+                "`VirtualMachineAdapter:`, `- Name: <the script>` and its `Properties:` below it, as readRecord shows the game's levers" +
+                (kinded ? "; a property is `- MutagenObjectType:` the kind Mutagen names for what it holds — ScriptObjectProperty and " +
+                    "`Object:` for a record (a Message, an Actor, a MiscItem…), ScriptIntProperty, ScriptFloatProperty, ScriptBoolProperty " +
+                    "or ScriptStringProperty and `Data:` for a value — then `Name:`; its Papyrus type is the script's own line" : "")));
         }
         return changes;
+    }
+
+    /// <summary>The kinds of a script's property, as Mutagen names them.</summary>
+    private static readonly HashSet<string> PropertyKinds = new(["ScriptObjectProperty", "ScriptIntProperty", "ScriptFloatProperty",
+        "ScriptBoolProperty", "ScriptStringProperty", "ScriptObjectListProperty", "ScriptIntListProperty", "ScriptFloatListProperty",
+        "ScriptBoolListProperty", "ScriptStringListProperty"], StringComparer.Ordinal);
+
+    /// <summary>The fields a property of any kind has.</summary>
+    private static readonly HashSet<string> PropertyFields = new(["MutagenObjectType", "Name", "Flags", "Object", "Alias", "Unused", "Data",
+        "Objects"], StringComparer.Ordinal);
+
+    /// <summary>A kind written as Papyrus's value type, or Mutagen's without its words: `Int`, `IntProperty`, `ScriptBool`.</summary>
+    private static readonly Regex ValueKind = new(@"^(?:Script)?(?<type>Int|Integer|Float|Bool|Boolean|String)(?:Property)?$", RegexOptions.IgnoreCase);
+
+    /// <summary>
+    /// A property written with a kind Mutagen has not, or none, made the kind its value says: `Object:` a record's, `Data:` a value's
+    /// by the kind written or the value itself; `Value:` read as either; a property written as its name and value alone,
+    /// `- WelcomeMessage: WelcomeMessageMsg`, given `Name:`. Eval round 144's message runs wrote `MutagenObjectType: MessageProperty`,
+    /// Papyrus's type, were told the Object was "a Quest's, under Data in each item of DialogConditions", and 4 of 10 answered unbuilt.
+    /// Null where the property is Mutagen's already or says nothing of what it holds.
+    /// </summary>
+    private static (JsonObject Property, string Said)? Kinded(JsonObject property)
+    {
+        var written = property["MutagenObjectType"] is JsonValue k ? k.ToString() : null;
+        if (written is not null && PropertyKinds.Contains(written)) return null;
+        var name = property["Name"]?.DeepClone();
+        var rest = property.Where(f => !PropertyFields.Contains(f.Key)).ToList();
+        JsonNode? held = null;
+        var from = "";
+        if (property["Object"] is { } linked) (held, from) = (linked, "Object");
+        else if (property["Objects"] is JsonArray) (held, from) = (property["Objects"], "Objects");
+        else if (property["Data"] is { } data) (held, from) = (data, "Data");
+        else if (property["Value"] is JsonValue value) (held, from) = (value, "Value");
+        // `- WelcomeMessage: WelcomeMessageMsg`: one field, none a property's, its name the property's.
+        else if (name is null && rest is [(var key, JsonValue alone)])
+        {
+            name = JsonValue.Create(key);
+            (held, from) = (alone, key);
+        }
+        if (held is null) return null;
+
+        string kind;
+        if (from == "Objects") kind = "ScriptObjectListProperty";
+        else if (from == "Object") kind = "ScriptObjectProperty";
+        else if (held is not JsonValue scalar) return null;
+        else if (written is not null && ValueKind.Match(written) is { Success: true } said)
+            kind = said.Groups["type"].Value.ToLowerInvariant() switch
+            {
+                "int" or "integer" => "ScriptIntProperty", "float" => "ScriptFloatProperty", "bool" or "boolean" => "ScriptBoolProperty", _ => "ScriptStringProperty"
+            };
+        else if (scalar.TryGetValue<bool>(out _)) kind = "ScriptBoolProperty";
+        else if (scalar.TryGetValue<long>(out _)) kind = "ScriptIntProperty";
+        else if (scalar.TryGetValue<double>(out _)) kind = "ScriptFloatProperty";
+        else kind = "ScriptObjectProperty";
+        var field = kind switch { "ScriptObjectProperty" => "Object", "ScriptObjectListProperty" => "Objects", _ => "Data" };
+        if (kind == written && field == from) return null;
+
+        var mended = new JsonObject { ["MutagenObjectType"] = kind };
+        if (name is not null) mended["Name"] = name;
+        if (property["Flags"] is { } flags) mended["Flags"] = flags.DeepClone();
+        mended[field] = held.DeepClone();
+        foreach (var (key, value) in property)
+            if (key is not ("MutagenObjectType" or "Name" or "Flags") && key != from) mended[key] = value?.DeepClone();
+        var shown = name?.ToString() ?? "a";
+        return (mended, $"{(written is null ? "no kind" : $"`MutagenObjectType: {written}`")} of {shown} property as `MutagenObjectType: {kind}`" +
+            (from == field ? "" : from == name?.ToString() ? $", `{from}: …` as `Name: {from}` and `{field}:`" : $", its `{from}:` as `{field}:`"));
     }
 }
