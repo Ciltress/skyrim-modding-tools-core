@@ -356,9 +356,10 @@ export class InMemorySkyrimBackend implements AppBackend {
             byKind: { Static: 30, Light: 8, Furniture: 4 },
             doors: request.door ? {
                 in: request.door.in,
-                entrance: { editorId: `${request.cell}Entrance`, formId: '000830:Sample.esp', base: 'HouseDoor01', at: request.door.at.join(', ') },
+                entrance: { editorId: `${request.cell}Entrance`, formId: '000830:Sample.esp', base: 'HouseDoor01', at: (request.door.at ?? [-96, 304, 0]).join(', ') },
                 roomDoor: { editorId: `${request.cell}Door`, formId: '00082F:Sample.esp', at: '512, 128, 0' },
-                arrival: '512, 224, 0'
+                arrival: '512, 224, 0',
+                found: request.door.at ? null : `by a wall of ${request.door.in}'s floor — an edge of its navmesh with floor before it, no door near and nothing standing there, 412 units from where the player comes in`
             } : null,
             files: request.door ? 46 : 43, cellFile: `Cells/0/8/${request.cell} - 000800_Sample.esp/RecordData.yaml`
         };

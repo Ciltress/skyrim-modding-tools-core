@@ -121,7 +121,7 @@ was asked), and a **reference** placing it in a cell, as the chest above.
 | static (a statue, a rock) | `Statics/` | a vanilla static of its look | `Model` a mesh the game has; nothing else to do |
 | chair, bench, bed | `Furniture/` | `WoodenChair01`, a vanilla bed | `Model` and its `Markers` (where and how an actor sits or lies) copied whole: without them nobody can use it |
 | lever, button, shrine | `Activators/` | `SimpleLever`, `DweLever01` | `Model`; what it does is a script of its own in `VirtualMachineAdapter` with `Event OnActivate(ObjectReference akActionRef)` (`skyrim-modding-quests-and-scripts`) |
-| plant to harvest | `Florae/` | `BirdsNest` | `Ingredient` — what picking gives, the mod's own ingredient or a game one; `HarvestSound`; `Production` per season; `ActivateTextOverride` "Harvest" |
+| plant to harvest | `Trees/` for a flower or herb, `Florae/` for a nest or a sack | `TreeFloraMountainFlower01Blue`, `BirdsNest` | its one `Ingredient:` line — what picking gives, the mod's own ingredient by editor ID or a game one; `HarvestSound`; `Production` per season; placed as a reference — not the ingredient itself, which lies there to be picked up once |
 | light | `Lights/` | `Torch01`, a candle's light | `Radius`, `Color` (`'#00RRGGBB'`), `Flags`; placed as a reference, it lights what is around it |
 
 A **locked** door or container is its reference with `Lock`: `Level` (`Novice` … `Master`, `RequiresKey`) and `Key`, the
@@ -136,13 +136,14 @@ the player comes from.
 
 1. Find a game room like it: `findRecords` with `types: ["CELL"]` and "cellar", "cave", "basement" —
    `MorthalAlvasHouseCellar` is a small cellar.
-2. Find where the door stands: `readRecord` of the cell the player comes from lists what is placed there under
-   `placed.references` — its doors among them, each load door with the cell it `leadsTo` — and the new door stands on
-   the floor of one of them, along the same wall, a step from it. One read is enough: no door record to choose, newCell
-   places the door the game pairs with the room's own.
+2. Name the cell the player comes from: `"door": {"in": "WhiterunBreezehome"}`. newCell stands the door by a wall of the
+   floor the player comes in on, from that cell's navmesh, and says where; only where the user named a spot — beside the
+   fireplace — add `"at": [x, y, z]`: `readRecord` of the cell lists what is placed there under `placed.references`. No
+   door record to choose: newCell places the door the game pairs with the room's own.
 3. `newCell {"project": "BreezehomeCellar", "cell": "BreezehomeCellar", "name": "Breezehome Cellar", "like":
-   "MorthalAlvasHouseCellar", "door": {"in": "WhiterunBreezehome", "at": [x, y, z]}}` — its answer names the doors and
-   where the player arrives, and `coc BreezehomeCellar` goes there too. The room takes the location of the door's cell;
+   "MorthalAlvasHouseCellar", "door": {"in": "WhiterunBreezehome"}}` — its answer names the doors and where the player
+   arrives, and `coc BreezehomeCellar` goes there too. A room made before without a door gets its pair from the same
+   call, sent again with `door`. The room takes the location of the door's cell;
    a room the game knows as a place of its own — a camp, a cave — takes `"location": {"name": "Ashen Camp", "parent":
    "WhiterunHoldLocation"}`, its name in words as the map shows it; a hold named alone gets the room such a place in it.
 4. `generateNavmesh` the new cell, then the door's cell — its door is new to its navmesh (next section) — and build.

@@ -754,6 +754,8 @@ public sealed partial class Session : IDisposable
         corrected.AddRange(RecordFiles.DropRepeatedLines(dir));
         // A script block written in another shape that means one thing, before the fields are checked against it.
         corrected.AddRange(ScriptLines.Attached(dir));
+        // So too a plant's ingredient written as its drops or yield.
+        corrected.AddRange(PlantLines.Gives(dir));
         // A part's field at the margin below the part's empty line goes back under it, before Dedent reads it as the record's.
         corrected.AddRange(MisplacedFields.IntoEmptyPart(dir));
         // So too a record's fields indented below one that has a value: the reader stops there.
@@ -945,7 +947,7 @@ public sealed partial class Session : IDisposable
             .Concat(MadeNotes.NpcItems(mod, lookup, dir)).Concat(MadeNotes.ListEntries(mod, lookup, dir)).Concat(MadeNotes.KeywordsReplaced(mod, lookup, dir)).Concat(MadeNotes.Words(mod, dir))
             .Concat(MadeNotes.Unplayable(mod, dir)).Concat(MadeNotes.LightWorldspace(mod, dir)).Concat(MadeNotes.NotScrolls(mod, dir))
             .Concat(MadeNotes.Unused(mod, lookup, Index, dir)).Concat(MadeNotes.GameNamedInLists(mod, lookup, Index, dir))
-            .Concat(MadeNotes.MiscActivators(mod, dir))
+            .Concat(MadeNotes.MiscActivators(mod, dir)).Concat(MadeNotes.Ungiven(mod, lookup, Index, dir))
             .Concat(MadeNotes.GameLights(mod, dir)).Concat(MadeNotes.EmptyEffects(mod, dir)).Concat(MadeNotes.LightColors(mod, dir))
             .Concat(MadeNotes.EffectsByFormId(mod, Index, dir))
             .Concat(CellContents.PlacedNotes(mod, Contexts, Index, dir)).Concat(DialogContents.Notes(mod, lookup, Index, dir)).Concat(DialogContents.StoryNotes(mod, lookup, dir)).Concat(GameSettings.Notes(mod, Index, dir))

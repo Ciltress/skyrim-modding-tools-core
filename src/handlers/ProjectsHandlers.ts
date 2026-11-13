@@ -36,21 +36,22 @@ function tripleOf(value: unknown, field: string, example: string): [number, numb
 }
 
 /** newCell's `door`: the cell it stands in and where, as an object or as its JSON text. */
-function doorOf(value: unknown): { in: string; at: [number, number, number]; rotation?: [number, number, number]; base?: string } | undefined {
+function doorOf(value: unknown): { in: string; at?: [number, number, number]; rotation?: [number, number, number]; base?: string } | undefined {
     if (value === undefined || value === null || value === '') return undefined;
     let door: any = value;
     if (typeof door === 'string') {
         try { door = JSON.parse(door); } catch { door = undefined; }
     }
     if (typeof door !== 'object' || door === null || Array.isArray(door)) {
-        throw new ToolError(ToolErrorCode.InvalidParams, '\'door\' is the door into the room: {"in": "WhiterunBreezehome", "at": [x, y, z]}.');
+        throw new ToolError(ToolErrorCode.InvalidParams, '\'door\' is the door into the room: {"in": "WhiterunBreezehome"}, with `at`, [x, y, z], where a spot was asked for.');
     }
+    // Where it stands: left out, newCell finds a spot by a wall of the cell's floor. Told it was needed, eval round 144's door #3
+    // asked the user for coordinates and made nothing.
     const at = tripleOf(door.at, 'door.at', '[256, -128, 64]');
-    if (!at) throw new ToolError(ToolErrorCode.InvalidParams, '\'door.at\' is where the door stands in its cell, [x, y, z]: readRecord of the cell lists what is placed there, with the floor\'s height.');
     const rotation = tripleOf(door.rotation, 'door.rotation', '[0, 0, 1.5708]');
     return {
         in: requireString(door, 'in', 'The cell the door stands in, by editor ID, e.g. "WhiterunBreezehome".'),
-        at,
+        ...(at ? { at } : {}),
         ...(rotation ? { rotation } : {}),
         ...(optionalString(door, 'base') ? { base: optionalString(door, 'base')! } : {})
     };
@@ -865,7 +866,8 @@ export class ProjectsHandlers extends BaseHandler {
                         'door, and the door the game pairs with it is placed `at` a spot in the cell `in` — each teleporting to the ' +
                         'other — and the new room takes that cell\'s location and owner. A COC marker stands where the player arrives, ' +
                         'so `coc <cell>` goes there. Creates the project when it does not exist. Then generateNavmesh the new cell and ' +
-                        'the door\'s cell, and buildProject. Move, add or remove what stands in the room as in any cell.',
+                        'the door\'s cell, and buildProject. Move, add or remove what stands in the room as in any cell. A room made ' +
+                        'before without a door takes its door pair from a second newCell of it with `door`.',
                     inputSchema: {
                         type: 'object',
                         properties: {
@@ -878,11 +880,11 @@ export class ProjectsHandlers extends BaseHandler {
                                 description: 'A door pair into the room from the cell the player comes from.',
                                 properties: {
                                     in: { type: 'string', description: 'The cell the door to the room stands in, its editor ID, like "WhiterunBreezehome".' },
-                                    at: { type: 'array', items: { type: 'number', description: 'x, y or z, in game units.' }, minItems: 3, maxItems: 3, description: 'Where it stands there, [x, y, z] in game units: readRecord of the cell lists what is placed there, its doors too — a step from one of them, on its floor.' },
+                                    at: { type: 'array', items: { type: 'number', description: 'x, y or z, in game units.' }, minItems: 3, maxItems: 3, description: 'Where it stands there, [x, y, z] in game units, where the user named a spot: readRecord of the cell lists what is placed there. Left out, newCell stands it by a wall of the floor the player comes in on, from the cell\'s navmesh, facing the room.' },
                                     rotation: { type: 'array', items: { type: 'number', description: 'About x, y or z, in radians.' }, minItems: 3, maxItems: 3, description: 'Its rotation, [x, y, z] in radians, as readRecord lists them. Defaults to [0, 0, 0].' },
                                     base: { type: 'string', description: 'The door placed there, a door record\'s editor ID. Defaults to the one the game pairs with the room\'s door.' }
                                 },
-                                required: ['in', 'at']
+                                required: ['in']
                             },
                             location: {
                                 description: 'The location the room is in, which the game knows it by — on the map, in quests, cleared or not: a ' +
@@ -939,15 +941,27 @@ export class ProjectsHandlers extends BaseHandler {
                         : ' It is in no location.';
                     const navmesh = (cell: string) => `generateNavmesh {"project": ${JSON.stringify(project)}, "cell": ${JSON.stringify(cell)}}`;
                     const kinds = Object.entries(made.byKind).map(([kind, count]) => `${count} ${kind}`).join(', ');
+                    // Where the door was set without `at`: said, with how to move it, as a spot no one chose.
+                    const found = made.doors?.found
+                        ? ` It stands ${made.doors.found}: a spot newCell chose — look at it in game, and where the user named another, set ` +
+                          `its Placement in its file.`
+                        : '';
+                    // No door: the call that adds the pair, as a room made so is no room the player walks into. Told only "It has no
+                    // door yet", eval round 144's door+detailed #3 and #4 answered their cellar made, no door to it.
+                    const addDoor = `newCell {"project": ${JSON.stringify(project)}, "cell": ${JSON.stringify(made.cell)}, "like": ` +
+                        `${JSON.stringify(made.like)}, "door": {"in": "<the cell the player comes from, by editor ID>"}}`;
                     return {
                         ...made,
-                        nextStep: `${made.cell} is written into the project, made like ${made.like}: ${made.references} references (${kinds}).${where}` +
+                        nextStep: (made.doors?.added
+                            ? `${made.cell}, the project's, has its door pair now.${where}`
+                            : `${made.cell} is written into the project, made like ${made.like}: ${made.references} references (${kinds}).${where}`) +
                             (made.doors
                                 ? ` Its door ${made.doors.roomDoor.editorId} and ${made.doors.entrance.editorId} at ${made.doors.entrance.at} in ` +
-                                  `${made.doors.in} lead to each other. Next: ${navmesh(made.cell)}, then ${navmesh(made.doors.in)} — the door ` +
-                                  `there is new to its navmesh — then buildProject {"project": ${JSON.stringify(project)}}.`
-                                : ` It has no door yet: the player gets there with \`coc ${made.cell}\` alone. Next: ${navmesh(made.cell)}, then ` +
-                                  `buildProject {"project": ${JSON.stringify(project)}}.`) +
+                                  `${made.doors.in} lead to each other.${found} Next: ${navmesh(made.cell)}, then ${navmesh(made.doors.in)} — the ` +
+                                  `door there is new to its navmesh — then buildProject {"project": ${JSON.stringify(project)}}.`
+                                : ` It has no door yet: the player gets there with \`coc ${made.cell}\` alone. Where the player is to walk in ` +
+                                  `from another cell — a house above its cellar — one call adds the door pair, standing it by a wall there: ${addDoor}. ` +
+                                  `Next: ${navmesh(made.cell)}, then buildProject {"project": ${JSON.stringify(project)}}.`) +
                             ' Change what stands in the room as in any cell: its references are files in its Temporary folder.'
                     };
                 }

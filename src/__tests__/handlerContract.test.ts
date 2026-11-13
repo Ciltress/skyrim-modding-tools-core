@@ -485,6 +485,31 @@ describe("newCell's answer says where the room is", () => {
     });
 });
 
+describe("newCell's door", () => {
+    async function made(args: Record<string, unknown>) {
+        const backend = new InMemorySkyrimBackend();
+        const spy = vi.spyOn(backend, 'newCell');
+        const handler = createHandlers(backend, CORE_PRODUCT).find(h => h.getTools().some(t => t.name === 'newCell'))!;
+        const result = await handler.handle('newCell', { project: 'BreezehomeCellar', cell: 'BreezehomeCellar', like: 'MorthalAlvasHouseCellar', ...args });
+        return { said: (JSON.parse(result.content[0].text) as { nextStep: string }).nextStep, request: spy.mock.calls[0][0] };
+    }
+
+    // Told `at` was needed, eval round 144's door #3 asked the user for coordinates and made nothing.
+    it('takes a door with no spot, and says where newCell stood it', async () => {
+        const { said, request } = await made({ door: { in: 'WhiterunBreezehome' } });
+        expect(request.door).toEqual({ in: 'WhiterunBreezehome' });
+        expect(said).toContain("It stands by a wall of WhiterunBreezehome's floor");
+        expect(said).toContain('a spot newCell chose — look at it in game');
+    });
+
+    // Told only "It has no door yet", eval round 144's door+detailed #3 and #4 answered their cellar made, no door to it.
+    it('names the call that adds the door pair to a room made without one', async () => {
+        const { said } = await made({});
+        expect(said).toContain('one call adds the door pair, standing it by a wall there: newCell {"project": "BreezehomeCellar", "cell": ' +
+            '"BreezehomeCellar", "like": "MorthalAlvasHouseCellar", "door": {"in": "<the cell the player comes from, by editor ID>"}}');
+    });
+});
+
 describe('a build refused as the one before says so', () => {
     async function refusals(messages: string[]) {
         const backend = new InMemorySkyrimBackend();

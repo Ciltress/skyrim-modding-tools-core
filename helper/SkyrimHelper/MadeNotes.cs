@@ -636,6 +636,89 @@ internal static class MadeNotes
         return notes;
     }
 
+    /// <summary>
+    /// A new ingredient of the project's that nothing gives — no plant, list, container, recipe or script names it — where the
+    /// project has a plant of its own that gives another or none, or places a plant of the game's, or the ingredient itself.
+    /// Asked for a plant to pick for a new leaf, eval round 145's flora runs built a Moonpetal giving nothing (+detailed #1),
+    /// placed the game's potato plant (#3) or the leaf itself (#1), each with no word. A new ingredient alone is no note.
+    /// </summary>
+    public static List<string> Ungiven(ISkyrimModGetter mod, ILinkCache lookup, RecordIndex index, string pluginDir)
+    {
+        var own = mod.ModKey;
+        var ingredients = mod.Ingredients.Where(i => i.FormKey.ModKey == own).ToList();
+        if (ingredients.Count == 0) return [];
+        var all = mod.EnumerateMajorRecords().ToList();
+        var placed = all.OfType<IPlacedObjectGetter>().Where(p => p.FormKey.ModKey == own && !p.Base.IsNull).ToList();
+        // What the project's records name, but where they are placed: a leaf lying in a cell is no plant giving it. A cell's and a
+        // worldspace's links are those of what they hold too.
+        var named = new HashSet<Mutagen.Bethesda.Plugins.FormKey>();
+        foreach (var record in all.Where(r => r is not (IPlacedObjectGetter or ICellGetter or IWorldspaceGetter)))
+            foreach (var link in record.EnumerateFormLinks())
+                if (link.FormKey != record.FormKey) named.Add(link.FormKey);
+        var plants = all.Where(r => r.FormKey.ModKey == own && r is ITreeGetter or IFloraGetter).ToList();
+        var files = EffectCasting.Files(pluginDir);
+        var placedFiles = RecordFiles.CellRecords(pluginDir).Where(c => c.Type != typeof(Cell))
+            .Select(c => (c.Relative, Key: RecordFiles.Identity(File.ReadAllText(c.File)).FormKey)).Where(c => c.Key is not null)
+            .GroupBy(c => c.Key!.Value).ToDictionary(g => g.Key, g => g.First().Relative);
+        var project = ToolCalls.ProjectOf(pluginDir);
+        string Id(IMajorRecordGetter r) => r.EditorID ?? Session.FormKeyText(r.FormKey);
+        string NameOf(Mutagen.Bethesda.Plugins.FormKey key) => index.ByFormKey.TryGetValue(key, out var e) && e.EditorId is { } id ? id : Session.FormKeyText(key);
+        Mutagen.Bethesda.Plugins.FormKey? GivesOf(IMajorRecordGetter plant) => plant switch
+        {
+            ITreeGetter tree => tree.Ingredient.FormKeyNullable,
+            IFloraGetter flora => flora.Ingredient.FormKeyNullable,
+            _ => null
+        };
+        const string example = "TreeFloraMountainFlower01Blue";
+        var notes = new List<string>();
+        foreach (var leaf in ingredients.Where(i => !named.Contains(i.FormKey)))
+        {
+            var leafId = Id(leaf);
+            var newPlant = $"{leafId}Plant";
+            // A plant of the project's own that gives another or none.
+            if (plants.FirstOrDefault(p => GivesOf(p) is not { } given || given.ModKey != own) is { } plant)
+            {
+                var file = files.GetValueOrDefault(plant.FormKey) ?? Id(plant);
+                var gives = GivesOf(plant) is { } given ? $"the game's {NameOf(given)}" : "nothing";
+                notes.Add($"{file}: {Id(plant)}, the project's plant, gives {gives} when picked, and {leafId}, the project's new ingredient, is " +
+                    "given by nothing — no plant, list or container names it. A plant gives what it is picked for by its one `Ingredient:` line: " +
+                    $"one call makes {Id(plant)} give {leafId} and builds: " +
+                    ToolCalls.Edit(project, file, $"{{\"path\": \"Ingredient\", \"value\": {ToolCalls.Quoted(leafId)}}}", build: true) +
+                    $". Where it was to give {gives}, nothing to change, and this warning stays");
+                continue;
+            }
+            if (plants.Count > 0) continue;
+            // A plant of the game's placed: it gives the game's ingredient, not the project's.
+            if (placed.FirstOrDefault(p => p.Base.FormKey.ModKey != own && index.ByFormKey.TryGetValue(p.Base.FormKey, out var b)
+                    && b.Type is "Tree" or "Flora") is { } gamePlant)
+            {
+                var file = placedFiles.GetValueOrDefault(gamePlant.FormKey) ?? Id(gamePlant);
+                var baseId = NameOf(gamePlant.Base.FormKey);
+                var gameGives = lookup.TryResolve<ITreeGetter>(gamePlant.Base.FormKey, out var tree) ? tree.Ingredient.FormKeyNullable
+                    : lookup.TryResolve<IFloraGetter>(gamePlant.Base.FormKey, out var flora) ? flora.Ingredient.FormKeyNullable : null;
+                notes.Add($"{file}: {Id(gamePlant)} places the game's {baseId}" + (gameGives is { } g ? $", which gives {NameOf(g)} when picked" : "") +
+                    $", and {leafId}, the project's new ingredient, is given by no plant. A plant of the project's own that gives it is a record " +
+                    $"of its own: write Trees/{newPlant}.yaml as the game's {baseId} is written (readRecord {{\"record\": \"{baseId}\"}}), with " +
+                    $"`EditorID: {newPlant}`, the plant's Name, and `Ingredient: {leafId}`; then one call stands it here and builds: " +
+                    ToolCalls.Edit(project, file, $"{{\"path\": \"Base\", \"value\": {ToolCalls.Quoted(newPlant)}}}", build: true) +
+                    $". Where the game's {baseId} was to stand there, nothing to change, and this warning stays");
+                continue;
+            }
+            // The ingredient itself placed: it lies there to be picked up once.
+            if (placed.FirstOrDefault(p => p.Base.FormKey == leaf.FormKey) is { } lying)
+            {
+                var file = placedFiles.GetValueOrDefault(lying.FormKey) ?? Id(lying);
+                notes.Add($"{file}: {Id(lying)} places {leafId}, the ingredient itself: it lies there to be picked up once, and is gone. A plant " +
+                    $"that gives it when picked, and grows it again, is a Tree of the project's own with `Ingredient: {leafId}`, as the game's " +
+                    $"{example} has it (readRecord {{\"record\": \"{example}\"}}): write Trees/{newPlant}.yaml so, with `EditorID: {newPlant}` and " +
+                    "the plant's Name; then one call stands it here in the leaf's stead and builds: " +
+                    ToolCalls.Edit(project, file, $"{{\"path\": \"Base\", \"value\": {ToolCalls.Quoted(newPlant)}}}", build: true) +
+                    ". Where the leaf itself was to lie there, nothing to change, and this warning stays");
+            }
+        }
+        return notes;
+    }
+
     /// <summary>The words of a thing used where it stands, by which a new MiscItem's name or editor ID says it is an Activator.</summary>
     internal static readonly Regex UsedWhereItStands = new(@"(?i:\b(lever|switch|button|handle|crank|valve|pull ?chain)s?\b)|(?<=[a-z])(Lever|Switch|Button|Handle|Crank|Valve)(?![a-z])");
 

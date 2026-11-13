@@ -43,8 +43,21 @@ public sealed partial class Session
         if (p["location"] is JsonObject) names.Add(editorId + "Location");
         bool ProjectNames(string name) => Directory.Exists(projectDir) && Directory.EnumerateFiles(projectDir, "*.yaml", SearchOption.AllDirectories)
             .Any(f => Regex.IsMatch(File.ReadAllText(f), $@"^[ \t]*EditorID:[ \t]*{Regex.Escape(name)}[ \t]*\r?$", RegexOptions.Multiline | RegexOptions.IgnoreCase));
+        // A room newCell made before without a door: `door` adds the pair to it. Told "It has no door yet", eval round 144's
+        // door+detailed #3 and #4 answered their cellar made, no door to it, and a second newCell of it was refused.
+        var madeBefore = door is not null ? OwnCell(projectDir, editorId, pluginName) : null;
+        if (madeBefore is not null)
+        {
+            if (ProjectNames(editorId + "Door"))
+                throw new HelperException("badRequest", $"The project's {editorId} has its door pair already, {editorId}Door and {editorId}Entrance: " +
+                    "to stand a door elsewhere, set its Placement in its file; or name a new cell otherwise.");
+            if (p["location"] is not null)
+                throw new HelperException("badRequest", $"The project has {editorId} already, and this call adds its door pair: leave `location` out — " +
+                    $"the room's location is the `Location:` line of its file, {madeBefore.Value.Relative}.");
+        }
         foreach (var name in names)
         {
+            if (madeBefore is not null && name == editorId) continue;
             if (Index.ByEditorId.TryGetValue(name, out var taken))
                 throw new HelperException("badRequest", $"The load order has a record named {name} already ({FormKeyText(taken)}): name the cell otherwise.");
             if (ProjectNames(name))
@@ -83,7 +96,7 @@ public sealed partial class Session
 
         var next = NextFormId(projectDir, pluginName);
         FormKey Next() => new(pluginName, next++);
-        var cell = new Cell(Next(), release)
+        var cell = new Cell(madeBefore?.Key ?? Next(), release)
         {
             EditorID = editorId,
             Name = shownCell,
@@ -108,7 +121,8 @@ public sealed partial class Session
         });
 
         var kinds = new Dictionary<string, int>(StringComparer.Ordinal);
-        foreach (var reference in room)
+        // A room made before stands as the project has it: its door pair alone is added.
+        foreach (var reference in madeBefore is null ? room : [])
         {
             cell.Temporary.Add(Stripped(reference.Duplicate(Next())));
             var kind = BaseOf(reference)!.Type;
@@ -123,17 +137,37 @@ public sealed partial class Session
             var inContexts = Contexts(Resolve(inName, byName: true)).Where(c => c.ModKey != pluginName).ToList();
             if (inContexts.FirstOrDefault()?.Record is not ICellGetter inCell)
                 throw new HelperException("badRequest", $"{inName} is no cell of the load order: name the cell the door stands in by its editor ID.");
-            var at = Triple(door["at"], "door.at", "the spot in " + inName + " the door stands at, x, y and z in game units — readRecord of the cell lists " +
-                "what stands there, with the floor's height")!.Value;
-            var turned = Triple(door["rotation"], "door.rotation", "its rotation in radians about x, y and z, as readRecord's placed lists them") ?? new P3Float(0, 0, 0);
-
             // The game's own pair: the room's load door and the door it leads to, whose model the new door outside takes.
             var twinKey = loadDoor.TeleportDestination!.Door.FormKey;
             var twin = Contexts(twinKey).Select(c => c.Record).OfType<IPlacedObjectGetter>().FirstOrDefault();
             var baseName = door["base"]?.GetValue<string>()?.Trim();
-            var baseKey = baseName is { Length: > 0 } ? Resolve(baseName) : twin?.Base.FormKeyNullable ?? loadDoor.Base.FormKey;
+            var twinBase = (twin?.Base.FormKeyNullable ?? loadDoor.Base.FormKey) is var pairedKey && Index.ByFormKey.TryGetValue(pairedKey, out var paired)
+                ? paired.EditorId ?? FormKeyText(pairedKey) : null;
+            FormKey baseKey;
+            // A door named that the load order has not: refused with the closest names alone, eval round 144's door+detailed #1
+            // sent `MyCellDoor`, built no door and answered the cellar unreachable.
+            try { baseKey = baseName is { Length: > 0 } ? Resolve(baseName) : twin?.Base.FormKeyNullable ?? loadDoor.Base.FormKey; }
+            catch (HelperException)
+            {
+                throw new HelperException("badRequest", $"door.base: {baseName} is no record of the load order. Leave base out: newCell places the door " +
+                    $"the game pairs with {likeName}'s own{(twinBase is not null ? $", {twinBase}" : "")}; or name a door by its editor ID — findRecords with types [\"DOOR\"].");
+            }
             if (!Index.ByFormKey.TryGetValue(baseKey, out var baseEntry) || baseEntry.Type != "Door")
-                throw new HelperException("badRequest", $"{baseName} is no door of the load order: name a door by its editor ID — findRecords with types [\"DOOR\"] — or leave base out.");
+                throw new HelperException("badRequest", $"door.base: {baseName} is no door of the load order. Leave base out: newCell places the door the game " +
+                    $"pairs with {likeName}'s own{(twinBase is not null ? $", {twinBase}" : "")}; or name a door by its editor ID — findRecords with types [\"DOOR\"].");
+
+            // Where it stands: as given, or a spot newCell finds by a wall of the cell's floor (DoorSpot).
+            var atSent = Triple(door["at"], "door.at", "the spot in " + inName + " the door stands at, x, y and z in game units");
+            var givenTurn = Triple(door["rotation"], "door.rotation", "its rotation in radians about x, y and z, as readRecord's placed lists them");
+            string? foundBy = null;
+            P3Float at, turned;
+            if (atSent is { } atGiven) (at, turned) = (atGiven, givenTurn ?? new P3Float(0, 0, 0));
+            else if (DoorSpot(inContexts.Select(c => c.Record).OfType<ICellGetter>().ToList(), twin, loadDoor, inName) is { } spot)
+                (at, turned, foundBy) = (spot.At, givenTurn ?? spot.Turn, spot.Said);
+            else
+                throw new HelperException("badRequest", $"door.at: {inName} has no navmesh newCell can find a spot on by a wall — give the spot the " +
+                    "door stands at, [x, y, z] in game units: readRecord of the cell lists what is placed there, its doors too — a step from one of " +
+                    "them, on its floor.");
 
             var inside = Stripped(loadDoor.Duplicate(Next()));
             inside.EditorID = editorId + "Door";
@@ -166,9 +200,12 @@ public sealed partial class Session
                 Base = new FormLinkNullable<IPlaceableObjectGetter>(CocMarkerHeading),
                 Placement = new Placement { Position = intoRoom.Position, Rotation = intoRoom.Rotation }
             });
-            // The room is the house's: its location and owner, so it is no stranger's room to the game's crime and AI.
-            cell.Location.SetTo(inCell.Location.FormKeyNullable);
-            if (inCell.Owner.FormKeyNullable is { } owner) cell.Owner.SetTo(owner);
+            // The room is the house's: its location and owner, so it is no stranger's room to the game's crime and AI — a room made
+            // before keeps those it has.
+            if (madeBefore is not { } before || !Regex.IsMatch(before.Text, @"^Location:", RegexOptions.Multiline))
+                cell.Location.SetTo(inCell.Location.FormKeyNullable);
+            if (inCell.Owner.FormKeyNullable is { } owner && (madeBefore is not { } owned || !Regex.IsMatch(owned.Text, @"^Owner:", RegexOptions.Multiline)))
+                cell.Owner.SetTo(owner);
             var copy = (Cell)inContexts[0].GetOrAddAsOverride(temp);
             copy.Temporary.Add(outside);
             doors = new JsonObject
@@ -176,7 +213,9 @@ public sealed partial class Session
                 ["in"] = inCell.EditorID ?? FormKeyText(inCell.FormKey),
                 ["entrance"] = new JsonObject { ["editorId"] = outside.EditorID, ["formId"] = FormKeyText(outside.FormKey), ["base"] = baseEntry.EditorId, ["at"] = TripleText(at) },
                 ["roomDoor"] = new JsonObject { ["editorId"] = inside.EditorID, ["formId"] = FormKeyText(inside.FormKey), ["at"] = TripleText(inside.Placement!.Position) },
-                ["arrival"] = TripleText(intoRoom.Position)
+                ["arrival"] = TripleText(intoRoom.Position),
+                ["found"] = foundBy,
+                ["added"] = madeBefore is not null
             };
         }
 
@@ -282,7 +321,17 @@ public sealed partial class Session
             await File.WriteAllTextAsync(target, written);
             files.Add(path);
         }
-        var cellFile = files.Select(f => f!.GetValue<string>()).FirstOrDefault(f => f.EndsWith($"/{editorId} - {cell.FormKey.ID:X6}_{pluginName.FileName}/RecordData.yaml", StringComparison.OrdinalIgnoreCase));
+        var cellFile = madeBefore?.Relative ?? files.Select(f => f!.GetValue<string>()).FirstOrDefault(f => f.EndsWith($"/{editorId} - {cell.FormKey.ID:X6}_{pluginName.FileName}/RecordData.yaml", StringComparison.OrdinalIgnoreCase));
+        // A room made before: its file stays, the location and owner of the door's cell written into it where it had none.
+        if (madeBefore is { } room0)
+        {
+            var lines = new List<string>();
+            if (cell.Location.FormKeyNullable is { } placeKey) lines.Add($"Location: {FormKeyText(placeKey)}");
+            if (cell.Owner.FormKeyNullable is { } ownerKey) lines.Add($"Owner: {FormKeyText(ownerKey)}");
+            if (lines.Count > 0)
+                await File.WriteAllTextAsync(room0.File, Regex.Replace(room0.Text, @"^EditorID:[^\n]*\n", m => m.Value + string.Join("\n", lines) + "\n",
+                    RegexOptions.Multiline));
+        }
         if (where?["made"]?.GetValue<bool>() == true)
             where["file"] = files.Select(f => f!.GetValue<string>()).FirstOrDefault(f => f.StartsWith("Locations/", StringComparison.OrdinalIgnoreCase));
         return new JsonObject
@@ -290,13 +339,117 @@ public sealed partial class Session
             ["cell"] = editorId,
             ["formId"] = FormKeyText(cell.FormKey),
             ["like"] = like.EditorID ?? likeName,
-            ["references"] = room.Count,
+            ["references"] = madeBefore is null ? room.Count : 0,
             ["byKind"] = new JsonObject(kinds.OrderByDescending(k => k.Value).Select(k => KeyValuePair.Create(k.Key, (JsonNode?)k.Value))),
             ["doors"] = doors,
             ["location"] = where,
             ["files"] = files.Count,
             ["cellFile"] = cellFile
         };
+    }
+
+    /// <summary>The project's own interior cell of this editor ID — its RecordData.yaml under Cells/, numbered by this plugin — or null.</summary>
+    private static (string File, string Relative, FormKey Key, string Text)? OwnCell(string projectDir, string editorId, ModKey plugin)
+    {
+        var cells = Path.Combine(projectDir, "Cells");
+        if (!Directory.Exists(cells)) return null;
+        foreach (var file in Directory.EnumerateFiles(cells, "RecordData.yaml", SearchOption.AllDirectories))
+        {
+            var text = File.ReadAllText(file);
+            if (!Regex.IsMatch(text, $@"^EditorID:[ \t]*{Regex.Escape(editorId)}[ \t]*\r?$", RegexOptions.Multiline | RegexOptions.IgnoreCase)
+                || Regex.Match(text, @"^FormKey:[ \t]*(\S+)", RegexOptions.Multiline) is not { Success: true } line
+                || !FormKey.TryFactory(line.Groups[1].Value, out var key) || key.ModKey != plugin) continue;
+            return (file, Path.GetRelativePath(projectDir, file).Replace('\\', '/'), key, text);
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// A spot for a door in a cell where none was given: on the cell's navmesh, by a wall of the floor its entrance is on — an edge
+    /// of the navmesh with no triangle beyond it, floor before it, no door near and nothing standing there — the nearest such to
+    /// where the player comes in, the door turned to face the room as the game's twin faces its own, set back toward the wall.
+    /// Told `at` was needed, eval round 144's door #3 asked the user for coordinates and made nothing. Null where the cell has
+    /// no navmesh or no such edge.
+    /// </summary>
+    private (P3Float At, P3Float Turn, string Said)? DoorSpot(IReadOnlyList<ICellGetter> versions, IPlacedObjectGetter? twin,
+        IPlacedObjectGetter roomDoor, string inName)
+    {
+        var references = versions.SelectMany(v => v.Persistent.Concat(v.Temporary)).OfType<IPlacedObjectGetter>()
+            .DistinctBy(r => r.FormKey).Where(r => r.Placement is not null && !r.IsDeleted).ToList();
+        string? TypeOf(IPlacedObjectGetter r) => r.Base.FormKeyNullable is { } key && Index.ByFormKey.TryGetValue(key, out var e) ? e.Type : null;
+        var doors = references.Where(r => TypeOf(r) == "Door").Select(r => r.Placement!.Position).ToList();
+        var entrance = references.FirstOrDefault(r => TypeOf(r) == "Door" && r.TeleportDestination is not null);
+        // Where the player comes in through the entrance: the far door's destination, in this cell.
+        var arrival = entrance?.TeleportDestination is { } leads
+            && Contexts(leads.Door.FormKey).Select(c => c.Record).OfType<IPlacedObjectGetter>().FirstOrDefault()?.TeleportDestination is { } back
+            ? back.Position : entrance?.Placement?.Position;
+        // What stands on the floor and would be in the door's way.
+        var standing = references.Where(r => TypeOf(r) is "Furniture" or "Container" or "Activator" or "TalkingActivator" or "Flora" or "MoveableStatic"
+            or "Npc" or "IdleMarker").Select(r => r.Placement!.Position).ToList();
+        var meshes = versions.SelectMany(v => v.NavigationMeshes).DistinctBy(n => n.FormKey).Select(n => n.Data)
+            .Where(d => d is { Triangles.Count: > 0 }).Select(d => d!).ToList();
+        if (meshes.Count == 0) return null;
+        var floor = arrival?.Z ?? meshes.SelectMany(d => d.Vertices).Select(v => v.Z).Order().ElementAt(meshes.Sum(d => d.Vertices.Count) / 2);
+        var from = arrival is { } a0 ? new System.Numerics.Vector2(a0.X, a0.Y) : (System.Numerics.Vector2?)null;
+
+        // Whether a point stands on the navmesh, on this floor.
+        bool OnFloor(System.Numerics.Vector2 q) => meshes.Any(d => d.Triangles.Any(t =>
+        {
+            var (p1, p2, p3) = (d.Vertices[t.Vertices.X], d.Vertices[t.Vertices.Y], d.Vertices[t.Vertices.Z]);
+            if (Math.Abs((p1.Z + p2.Z + p3.Z) / 3 - floor) > 64) return false;
+            float Side(P3Float u, P3Float w) => (w.X - u.X) * (q.Y - u.Y) - (w.Y - u.Y) * (q.X - u.X);
+            var (s1, s2, s3) = (Side(p1, p2), Side(p2, p3), Side(p3, p1));
+            return s1 >= 0 && s2 >= 0 && s3 >= 0 || s1 <= 0 && s2 <= 0 && s3 <= 0;
+        }));
+        float Near(System.Numerics.Vector2 q, float z, IEnumerable<P3Float> things) =>
+            things.Select(p => System.Numerics.Vector3.Distance(new(q.X, q.Y, z), new(p.X, p.Y, p.Z))).DefaultIfEmpty(float.MaxValue).Min();
+
+        (System.Numerics.Vector2 Mid, float Z, System.Numerics.Vector2 Inward, float Score)? best = null;
+        foreach (var data in meshes)
+            foreach (var t in data.Triangles)
+            {
+                var corners = new[] { data.Vertices[t.Vertices.X], data.Vertices[t.Vertices.Y], data.Vertices[t.Vertices.Z] };
+                var links = new[] { t.EdgeLink_0_1, t.EdgeLink_1_2, t.EdgeLink_2_0 };
+                var centre = new System.Numerics.Vector2(corners.Average(c => c.X), corners.Average(c => c.Y));
+                for (var e = 0; e < 3; e++)
+                {
+                    // An edge with a triangle beyond it, this navmesh's or another's, is floor going on: no wall.
+                    if (links[e] >= 0) continue;
+                    var (a, b) = (corners[e], corners[(e + 1) % 3]);
+                    var z = (a.Z + b.Z) / 2;
+                    var along = new System.Numerics.Vector2(b.X - a.X, b.Y - a.Y);
+                    var length = along.Length();
+                    if (length < 64 || Math.Abs(z - floor) > 48) continue;
+                    along /= length;
+                    var mid = new System.Numerics.Vector2((a.X + b.X) / 2, (a.Y + b.Y) / 2);
+                    var inward = new System.Numerics.Vector2(-along.Y, along.X);
+                    if (System.Numerics.Vector2.Dot(inward, centre - mid) < 0) inward = -inward;
+                    // Floor before the door and beside where it opens; no door near, nothing standing in the way.
+                    if (!OnFloor(mid + inward * 112) || !OnFloor(mid + inward * 40 + along * 48) || !OnFloor(mid + inward * 40 - along * 48)) continue;
+                    if (Near(mid, z, doors) < 160 || Near(mid, z, standing) < 96 || Near(mid + inward * 96, z, standing) < 80) continue;
+                    var distance = from is { } f ? System.Numerics.Vector2.Distance(mid, f) : 0;
+                    if (from is not null && distance < 160) continue;
+                    var score = distance - length / 4;
+                    if (best is null || score < best.Value.Score) best = (mid, z, inward, score);
+                }
+            }
+        if (best is not { } chosen) return null;
+        // The side of its door the game's twin has the player arrive on, in the door's own frame: the new one faces the room so.
+        var front = 1f;
+        if (twin?.Placement is { } twinAt && roomDoor.TeleportDestination is { } arrivesAt)
+        {
+            var local = TurnZ(new P3Float(arrivesAt.Position.X - twinAt.Position.X, arrivesAt.Position.Y - twinAt.Position.Y, 0), -twinAt.Rotation.Z);
+            if (local.Y < 0) front = -1f;
+        }
+        var heading = MathF.Atan2(front * chosen.Inward.X, front * chosen.Inward.Y);
+        if (heading < 0) heading += 2 * MathF.PI;
+        var setBack = chosen.Mid - chosen.Inward * 24;
+        var entranceName = entrance is null ? null
+            : entrance.EditorID ?? (TypeOf(entrance) is not null && entrance.Base.FormKeyNullable is { } eb && Index.ByFormKey.TryGetValue(eb, out var eEntry) ? eEntry.EditorId : null);
+        var said = $"by a wall of {inName}'s floor — an edge of its navmesh with floor before it, no door near and nothing standing there" +
+            (from is { } came ? $", {Math.Round(System.Numerics.Vector2.Distance(chosen.Mid, came))} units from where the player comes in" +
+                (entranceName is not null ? $" through {entranceName}" : "") : "");
+        return (new P3Float(setBack.X, setBack.Y, chosen.Z), new P3Float(0, 0, heading), said);
     }
 
     /// <summary>An editor ID in words, as the game shows a name: AshenCamp "Ashen Camp", Breezehome_Cellar "Breezehome Cellar".</summary>
@@ -340,7 +493,7 @@ public sealed partial class Session
     /// <summary>Three numbers given as a list — a position or a rotation — or null where none is given and none is needed.</summary>
     private static P3Float? Triple(JsonNode? node, string field, string what)
     {
-        if (node is null) return field == "door.at" ? throw new HelperException("badRequest", $"{field} is {what}.") : null;
+        if (node is null) return null;
         if (node is not JsonArray { Count: 3 } values || values.Any(v => v is not JsonValue))
             throw new HelperException("badRequest", $"{field} is three numbers, [x, y, z]: {what}.");
         var n = values.Select(v => v!.GetValue<float>()).ToArray();

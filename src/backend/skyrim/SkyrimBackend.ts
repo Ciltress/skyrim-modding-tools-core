@@ -333,10 +333,14 @@ export interface NewCellRequest {
     name?: string;
     /** The load order's room it is made like, by editor ID: its lighting, sound, walls, floor, lights and furniture are copied. */
     like: string;
-    /** A load-door pair: the room's own load door kept inside, its twin placed `at` a spot in the cell `in`. */
+    /**
+     * A load-door pair: the room's own load door kept inside, its twin placed `at` a spot in the cell `in` — left out, a spot
+     * by a wall of the floor the player comes in on, from the cell's navmesh. For a room the project has, made by newCell
+     * before without a door, the pair alone is added to it.
+     */
     door?: {
         in: string;
-        at: [number, number, number];
+        at?: [number, number, number];
         /** Radians about x, y and z, as readRecord's `placed` lists them. Defaults to 0, 0, 0. */
         rotation?: [number, number, number];
         /** The door placed in `in`, a door record's editor ID. Defaults to the one the game pairs with the room's door. */
@@ -365,6 +369,10 @@ export interface NewCellResult {
         entrance: { editorId: string; formId: string; base: string; at: string };
         roomDoor: { editorId: string; formId: string; at: string };
         arrival: string;
+        /** Where the spot was found, where no `at` was given. */
+        found?: string | null;
+        /** The pair added to a room the project had, made by newCell before. */
+        added?: boolean;
     } | null;
     /**
      * The location the room is in — `made` where newCell wrote it as a new Location, with its name and file — or null for none.
