@@ -136,7 +136,16 @@ at the margin, never inside a weight. A class only matters to an NPC with `AutoC
 | iron armor | `ArmorIronAllOutfit` |
 | steel armor | `ArmorSteelAllOutfit` |
 
-A **new outfit** names the game's armor in its `Items` by editor ID, `ArmorHideCuirass`: no copies of the armor.
+A **new outfit** is an Outfit, a record of its own in `Outfits/` — never an Armor — with no `Name`. Its `Items` name the
+game's armor by editor ID, one on each line: no copies of the armor. The NPC wears it by `DefaultOutfit: HunterOutfit`.
+
+```yaml
+EditorID: HunterOutfit
+Items:
+- ArmorHideCuirass
+- ArmorHideBoots
+- ArmorHideGauntlets
+```
 
 A follower carries the factions the game's followers carry — as `HousecarlWhiterun` (Lydia) does:
 

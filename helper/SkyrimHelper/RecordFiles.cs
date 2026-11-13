@@ -899,6 +899,30 @@ public static class RecordFiles
               $"is a Container, in Containers/: if this is one, move the file there, {ToolCalls.Move(pluginDir, relative, $"Containers/{Path.GetFileName(relative)}")}, " +
               "and build again — the build then names what of it a Container has not";
 
+    /// <summary>Editor IDs of things worn: the game's armor and clothes, their pieces.</summary>
+    private static readonly Regex Worn = new(@"\b(?:Armor\w*|Clothes\w*|\w*(?:Cuirass|Boots|Gauntlets|Bracers|Helmet|Hood|Shield|Robes?)\w*)\b(?![ \t]*:)",
+        RegexOptions.IgnoreCase);
+
+    /// <summary>
+    /// What to say of an Armor's file listing Items, or another's listing armor: what an NPC wears, several pieces at once, is an
+    /// Outfit, a record of its own. Told "an Armor has no field Items (delete it …)" and "what holds items in the world … is a
+    /// Container", eval round 153's outfit+detailed #3 and #5 wrote their HunterOutfit as an Armor build after build, then as a
+    /// MiscItem, and ran out of turns. Null for an Outfit or a Container, or where the file's Items name nothing worn.
+    /// </summary>
+    private static string? OutfitLike(Type type, string text, string pluginDir, string relative)
+    {
+        if (type.Name is "Outfit" or "Container" or "LeveledItem" || FieldsOf(type).Contains("Items")) return null;
+        var items = BlockOf(text, "Items");
+        if (!Worn.IsMatch(items.Replace("Items:", "")) && type.Name != "Armor") return null;
+        var id = Identity(text).EditorId ?? Path.GetFileNameWithoutExtension(relative);
+        var pieces = Worn.Matches(items.Replace("Items:", "")).Select(m => m.Value).Where(p => Regex.IsMatch(p, "^[A-Z][a-z]+[A-Z0-9]"))
+            .Distinct(StringComparer.OrdinalIgnoreCase).Take(4).ToList();
+        if (pieces.Count == 0) pieces = ["ArmorHideCuirass", "ArmorHideBoots"];
+        return $"{Article(type.Name)} holds no Items: what an NPC wears, several pieces at once, is an Outfit — a record of its own in Outfits/, " +
+            $"with no Name, its `Items:` naming each piece by editor ID on a line of its own ({string.Join(", ", pieces.Select(p => $"`- {p}`"))}), " +
+            $"worn by the NPC's `DefaultOutfit: {id}`. Write it as Outfits/{id}.yaml so, and delete this file: {ToolCalls.Delete(pluginDir, relative)}";
+    }
+
     /// <summary>What a top-level field its type lacks is likely meant to be, as the file writes it — the value on its line, the fields below it — or null.</summary>
     private static string? HintIn(Type type, HashSet<string> known, string key, string text) =>
         ActorValueHint(type, key, text) ?? DataHint(type, key, text) ?? TextHint(type, key, text) ?? Hint(type, known, key, ValueOf(text, key), ValuesOf(text, key), FieldsBelow(text, key));
@@ -973,6 +997,28 @@ public static class RecordFiles
                     : "move this file there with moveRecord, then") +
                 " write it with Furniture's fields, as WoodenChair01's, and build again: the build names any field Furniture has not)";
         }
+        // A plant to pick written as a misc item, or inside its own ingredient's file: told "a MiscItem has no field Ingredients,
+        // PlantType (delete them …)" and "an Ingredient has no field Ingredient, HarvestSound, Production", eval round 153's flora runs
+        // deleted them, wrote them back, and 6 of 10 built no plant.
+        if (PlantKinds.Contains(type.Name) && keys.Where(PlantFields.Contains).ToList() is { Count: > 0 } plantKeys)
+        {
+            var plant = "TreeFloraMountainFlower01Blue";
+            var own = Identity(text).EditorId ?? Path.GetFileNameWithoutExtension(relative);
+            if (type == typeof(Ingredient))
+                return $"{string.Join(", ", keys)} ({string.Join(", ", plantKeys)} {(plantKeys.Count == 1 ? "is" : "are")} a plant's, not its " +
+                    $"ingredient's: the plant the player picks is a record of its own, a Tree in Trees/ with `Ingredient: {own}`, as the game's " +
+                    $"{plant} has it (readRecord {{\"record\": \"{plant}\"}}: its Model, HarvestSound, Production) — write it so, " +
+                    $"Trees/{own}Plant.yaml with `EditorID: {own}Plant`, and place it as a reference; one call takes them out of this file and " +
+                    "builds again: " + ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, "", string.Join(", ", keys.Select(ToolCalls.Quoted)), build: true) + ")";
+            var plantFolder = relative.Contains('/') ? relative[..relative.IndexOf('/')] : "";
+            return $"{string.Join(", ", keys)} (a plant the player picks — a flower, an herb — is no {type.Name} but a Tree, in Trees/, with " +
+                $"`Ingredient:` naming what picking it gives, as the game's {plant} has it (readRecord {{\"record\": \"{plant}\"}}: its " +
+                "Model, HarvestSound, Production): " +
+                (plantFolder.Length > 0
+                    ? $"one call moves this file there, {ToolCalls.Move(pluginDir, relative, $"Trees/{relative[(plantFolder.Length + 1)..]}")}; then"
+                    : "move this file there with moveRecord, then") +
+                $" write it with a Tree's fields, as {plant}'s, and build again: the build names any field a Tree has not)";
+        }
         // A block of the record's own fields: an armor's Value, Weight and ArmorRating written under a weapon's BasicStats, told
         // only to delete it, built as 0, 0 and 0 (refusal probes of 2026-10-31, A05) — written at the margin with one call.
         var hinted = keys.Select(key => (Key: key, Hint: Lifted(type, known, key, text, pluginDir, relative)
@@ -1010,13 +1056,15 @@ public static class RecordFiles
                 .FirstOrDefault(o => o != relative.Replace('\\', '/') && o.StartsWith($"{ownFolder}/", StringComparison.OrdinalIgnoreCase))
             : null;
         var example = ExampleName(type.Name) is { } vanilla ? $" (readRecord {{\"record\": \"{vanilla}\"}})" : "";
-        var holds = owner.Count == 0 && bare.Contains("Items") ? HoldsItems(type, text, pluginDir, relative) : null;
+        var outfit = bare.Contains("Items") ? OutfitLike(type, text, pluginDir, relative) : null;
+        var holds = outfit is null && owner.Count == 0 && bare.Contains("Items") ? HoldsItems(type, text, pluginDir, relative) : null;
         // A quest alias written as a record file of its own — `Npcs/HuldaAlias.yaml` with an alias's UniqueActor and flags — is an
         // item of its quest's Aliases list: told "a Npc has no field UniqueActor (delete it …)", eval round 146's scene+detailed #1
         // and #3 ran out of turns on such files.
         var quest = type != typeof(Quest) && bare.Any(AliasFields.Contains)
             ? FlatRecords(pluginDir).Where(f => f.Type == typeof(Quest)).Select(f => f.Relative).FirstOrDefault() ?? "" : null;
-        var deleted = quest is not null
+        var deleted = outfit is not null ? outfit
+            : quest is not null
             ? $"{(bare.Count == 1 ? "it is" : "they are")} a quest alias's: an alias is no record of its own but an item of its quest's " +
               $"`Aliases:` list, in the quest's file{(quest.Length > 0 ? $", {quest}" : "")} — `- ID: 0`, `Name: …`, `UniqueActor: <the NPC's editor ID>`, " +
               $"its Flags below them — write it there, and delete this file: {ToolCalls.Delete(pluginDir, relative)}"
@@ -1089,6 +1137,14 @@ public static class RecordFiles
     private static bool SeatLike(Type type, string text, string relative, IEnumerable<string> keys) =>
         (type != typeof(ConstructibleObject) || keys.Any(k => k is "Name" or "Model"))
         && Seat.IsMatch($"{Identity(text).EditorId} {BlockOf(text, "Name")} {Path.GetFileNameWithoutExtension(relative)}");
+
+    /// <summary>The kinds a plant to pick was written as, which it is told to be a Tree from.</summary>
+    private static readonly HashSet<string> PlantKinds = new(["MiscItem", "Ingredient", "Static", "MoveableStatic", "Activator", "Ingestible"],
+        StringComparer.Ordinal);
+
+    /// <summary>Fields a plant to pick was written with: what picking gives, its sound, its seasons.</summary>
+    private static readonly HashSet<string> PlantFields = new(["Ingredient", "Ingredients", "HarvestSound", "Production", "PlantType",
+        "Harvest", "Harvests", "Harvestable", "Yields", "Yield", "Gives", "Drops", "Season", "Seasons"], StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Fields only a quest's alias has: written in a record file of their own, they are an alias written as a record.</summary>
     private static readonly HashSet<string> AliasFields = new(StringComparer.Ordinal)

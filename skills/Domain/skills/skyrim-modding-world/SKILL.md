@@ -118,7 +118,7 @@ was asked), and a **reference** placing it in a cell, as the chest above.
 
 | A new … | Folder | Mirror | What makes it work |
 |---|---|---|---|
-| static (a statue, a rock) | `Statics/` | a vanilla static of its look | `Model` a mesh the game has; nothing else to do |
+| static (a statue, a rock) | `Statics/` | a vanilla static of its look, `StatueDibella` (`findRecords` with `"types": ["STAT"]`) — not a MiscItem like the statuette `StatueDibellaGold`, which the player picks up | `Model` a mesh the game has; nothing else to do |
 | chair, bench, bed | `Furniture/` | `WoodenChair01`, a vanilla bed | `Model` and its `Markers` (where and how an actor sits or lies) copied whole: without them nobody can use it |
 | lever, button, shrine | `Activators/` | `SimpleLever`, `DweLever01` | `Model`; what it does is a script of its own in `VirtualMachineAdapter` with `Event OnActivate(ObjectReference akActionRef)` (`skyrim-modding-quests-and-scripts`) |
 | plant to harvest | `Trees/` for a flower or herb, `Florae/` for a nest or a sack | `TreeFloraMountainFlower01Blue`, `BirdsNest` | its one `Ingredient:` line — what picking gives, the mod's own ingredient by editor ID or a game one; `HarvestSound`; `Production` per season; placed as a reference — not the ingredient itself, which lies there to be picked up once |

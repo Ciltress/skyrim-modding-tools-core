@@ -283,7 +283,12 @@ internal static class MadeNotes
                     lookup.TryResolve<ILeveledItemGetter>(l.FormKey, out var g) ? Of(g.Entries, e => e.Data is { } d ? (d.Reference.FormKey, d.Level, d.Count) : null) : null))
             .Concat(mod.LeveledNpcs.Where(l => l.FormKey.ModKey != mod.ModKey)
                 .Select(l => ((IMajorRecordGetter)l, Of(l.Entries, e => e.Data is { } d ? (d.Reference.FormKey, d.Level, d.Count) : null),
-                    lookup.TryResolve<ILeveledNpcGetter>(l.FormKey, out var g) ? Of(g.Entries, e => e.Data is { } d ? (d.Reference.FormKey, d.Level, d.Count) : null) : null)));
+                    lookup.TryResolve<ILeveledNpcGetter>(l.FormKey, out var g) ? Of(g.Entries, e => e.Data is { } d ? (d.Reference.FormKey, d.Level, d.Count) : null) : null)))
+            // Eval round 153's leveled-spell #4 set LSpellBandit01FireFrostShock's Entries whole to its Ice Spike alone, #1 wrote the
+            // list anew with three of its entries, each build a plain success.
+            .Concat(mod.LeveledSpells.Where(l => l.FormKey.ModKey != mod.ModKey)
+                .Select(l => ((IMajorRecordGetter)l, Of(l.Entries, e => e.Data is { } d ? (d.Reference.FormKey, d.Level, d.Count) : null),
+                    lookup.TryResolve<ILeveledSpellGetter>(l.FormKey, out var g) ? Of(g.Entries, e => e.Data is { } d ? (d.Reference.FormKey, d.Level, d.Count) : null) : null)));
         foreach (var (copy, has, game) in lists)
         {
             if (game is null || files.GetValueOrDefault(copy.FormKey) is not { } relative) continue;
@@ -424,13 +429,15 @@ internal static class MadeNotes
             if (recipe.CreatedObject.FormKeyNullable is not { } made || !records.TryGetValue(made, out var record)) continue;
             if ((record as INamedGetter)?.Name is not { Length: > 0 } name || files.GetValueOrDefault(recipe.FormKey) is not { } relative) continue;
             var type = RecordIndex.TypeName(record);
-            var game = index.ByFormKey.Values.FirstOrDefault(e => e.Type == type && e.FormKey.ModKey != mod.ModKey && !e.Unplayable
-                && e.EditorId is not null && string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase));
+            // Of any kind a player carries, where the copy is one: eval round 153's cooking #3 made its Vegetable Soup an Ingredient,
+            // the game's FoodVegetableSoup an Ingestible, and built with no word.
+            var game = GameTwin(index, mod.ModKey, name, type, CarriedKinds.Contains(type) ? CarriedKinds : new HashSet<string> { type });
             if (game is null) continue;
             var copy = record.EditorID ?? Session.FormKeyText(record.FormKey);
             var copyFile = files.GetValueOrDefault(record.FormKey);
             notes.Add($"{relative}: {recipe.EditorID ?? Session.FormKeyText(recipe.FormKey)} makes {copy} \"{name}\", a new {type} of this mod's own " +
-                $"with the name of the game's {game.EditorId} (\"{game.Name}\", {Session.FormKeyText(game.FormKey)}) — at the workbench the player gets " +
+                $"with the name of the game's {game.EditorId} (\"{game.Name}\", {(game.Type == type ? "" : RecordFiles.Article(game.Type) + ", ")}" +
+                $"{Session.FormKeyText(game.FormKey)}) — at the workbench the player gets " +
                 $"the copy, not the game's. Where the game's {game.Name} was meant, one call makes the recipe make it and builds again: " +
                 ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, $"{{\"path\": \"CreatedObject\", \"value\": {ToolCalls.Quoted(game.EditorId!)}}}", build: true) +
                 (copyFile is null ? "" : $", and {copyFile} is then named by nothing: delete it, which builds again too, {ToolCalls.Delete(pluginDir, copyFile, build: true)}") +
@@ -607,7 +614,7 @@ internal static class MadeNotes
     {
         var notes = new List<string>();
         var lists = mod.LeveledNpcs.ToList();
-        if (lists.Count == 0) return notes;
+        if (lists.Count == 0) return GameNamedSpellsInLists(mod, index, pluginDir);
         var files = EffectCasting.Files(pluginDir);
         var project = ToolCalls.ProjectOf(pluginDir);
         foreach (var npc in mod.Npcs.Where(n => n.FormKey.ModKey == mod.ModKey))
@@ -632,6 +639,40 @@ internal static class MadeNotes
                 $"{id}, as its file writes it. Where the user asked for the game's {name}, one call puts {twinId} in its place and builds: " +
                 ToolCalls.Edit(project, listFile, set, build: true) + $"; this file is then left over: {ToolCalls.Delete(pluginDir, file)}. Where an " +
                 "NPC of the mod's own of that name was meant, nothing to change, and this warning stays");
+        }
+        notes.AddRange(GameNamedSpellsInLists(mod, index, pluginDir));
+        return notes;
+    }
+
+    /// <summary>
+    /// A new spell of the project's that one of its leveled spell lists holds, whose name a spell of the load order has: the
+    /// game's own where the user named the game's. Told bandit mages could also cast Ice Spike, eval round 153's leveled-spell #1
+    /// put an Ice Spike of its own — a cost and magnitude of its guessing — into LSpellBandit01FireFrostShock, with no word.
+    /// </summary>
+    private static List<string> GameNamedSpellsInLists(ISkyrimModGetter mod, RecordIndex index, string pluginDir)
+    {
+        var notes = new List<string>();
+        var lists = mod.LeveledSpells.ToList();
+        if (lists.Count == 0) return notes;
+        var files = EffectCasting.Files(pluginDir);
+        var project = ToolCalls.ProjectOf(pluginDir);
+        foreach (var spell in mod.Spells.Where(s => s.FormKey.ModKey == mod.ModKey))
+        {
+            if (spell.Name?.String is not { Length: > 0 } name) continue;
+            var holder = lists.Select(l => (List: l, At: (l.Entries ?? []).Select((e, i) => (e, i))
+                    .Where(x => x.e.Data?.Reference.FormKey == spell.FormKey).Select(x => x.i).ToList()))
+                .FirstOrDefault(h => h.At.Count > 0);
+            if (holder.List is null || GameTwin(index, mod.ModKey, name, "Spell", new HashSet<string> { "Spell" }) is not { } twin) continue;
+            var id = spell.EditorID ?? Session.FormKeyText(spell.FormKey);
+            var file = files.GetValueOrDefault(spell.FormKey) ?? id;
+            var listId = holder.List.EditorID ?? Session.FormKeyText(holder.List.FormKey);
+            var listFile = files.GetValueOrDefault(holder.List.FormKey) ?? listId;
+            var set = string.Join(", ", holder.At.Select(i => $"{{\"path\": \"Entries[{i}].Data.Reference\", \"value\": {ToolCalls.Quoted(twin.EditorId!)}}}"));
+            notes.Add($"{file}: {id} \"{name}\", a new spell, is in {listId}, and the game has a spell of that name already: {twin.EditorId} " +
+                $"({Session.FormKeyText(twin.FormKey)}), with the game's own cost, effects and look, which {id} is not — in game {listId} hands out " +
+                $"{id}, as its file writes it. Where the user asked for the game's {name}, one call puts {twin.EditorId} in its place and builds: " +
+                ToolCalls.Edit(project, listFile, set, build: true) + $"; this file is then left over: {ToolCalls.Delete(pluginDir, file)}. Where a " +
+                "spell of the mod's own of that name was meant, nothing to change, and this warning stays");
         }
         return notes;
     }
@@ -719,6 +760,9 @@ internal static class MadeNotes
         return notes;
     }
 
+    /// <summary>The words of a thing that stands where it is placed, part of a room, by which a new MiscItem's name says it is a Static.</summary>
+    private static readonly Regex Standing = new(@"(?i:\b(statue|monument|obelisk|pillar|column|pedestal|bust)s?\b)|(?<=[a-z])(Statue|Monument|Obelisk|Pillar|Column|Pedestal)(?![a-z])");
+
     /// <summary>The words of a thing used where it stands, by which a new MiscItem's name or editor ID says it is an Activator.</summary>
     internal static readonly Regex UsedWhereItStands = new(@"(?i:\b(lever|switch|button|handle|crank|valve|pull ?chain)s?\b)|(?<=[a-z])(Lever|Switch|Button|Handle|Crank|Valve)(?![a-z])");
 
@@ -736,20 +780,40 @@ internal static class MadeNotes
             var scripted = item.VirtualMachineAdapter?.Scripts is { Count: > 0 };
             var name = item.Name?.String;
             var lever = UsedWhereItStands.IsMatch($"{name} {item.EditorID}");
-            if (!scripted && !lever && !RecordFiles.Seat.IsMatch($"{name} {item.EditorID}")) continue;
+            // A chair's or statue's name before its script: eval round 153's furniture #3 and #5 copied a HearthFires chair, a MiscItem
+            // with its building script, were told it was a lever, and moved it into Activators/.
+            var seat = !lever && RecordFiles.Seat.IsMatch($"{name} {item.EditorID}");
+            var standing = !lever && !seat && Standing.IsMatch($"{name} {item.EditorID}");
+            if (!scripted && !lever && !standing && !seat) continue;
             var id = item.EditorID ?? Session.FormKeyText(item.FormKey);
             var file = files.GetValueOrDefault(item.FormKey) ?? id;
-            // A chair, a bench, a bed written as a misc item: eval round 144's furniture #5 built its Reading Chair so, to be picked up.
-            if (!scripted && !lever)
+            // A statue written as a misc item: asked for a static statue in Breezehome, eval round 153's static+detailed #2 and #3 took
+            // the game's Dibella statuette, a MiscItem, for their pattern and built a statue the player picks up.
+            if (standing)
             {
-                var seat = file.StartsWith("MiscItems/", StringComparison.Ordinal)
+                var statics = file.StartsWith("MiscItems/", StringComparison.Ordinal)
+                    ? $"one call moves this file there, {ToolCalls.Move(pluginDir, file, $"Statics/{file["MiscItems/".Length..]}")}, and its reference in a cell keeps its Base; then"
+                    : "move this file there with moveRecord, then";
+                notes.Add($"{file}: {id}{(name is { Length: > 0 } ? $" \"{name}\"" : "")} is a MiscItem — a thing the player picks up and carries, as " +
+                    "the game's Dibella statuette StatueDibellaGold is: activating one where it lies takes it into the inventory. A statue that " +
+                    "stands where it is placed, part of the room, is a Static, in Statics/, as the game's StatueDibella has it (readRecord " +
+                    $"{{\"record\": \"StatueDibella\"}}: its Model, one the game has, and its ObjectBounds): {statics} write it with a Static's " +
+                    $"fields{(scripted ? ", its VirtualMachineAdapter left out" : "")}. Where a statuette to pick up and carry was meant, nothing to " +
+                    "change, and this warning stays");
+                continue;
+            }
+            // A chair, a bench, a bed written as a misc item: eval round 144's furniture #5 built its Reading Chair so, to be picked up.
+            if (seat)
+            {
+                var moveTo = file.StartsWith("MiscItems/", StringComparison.Ordinal)
                     ? $"one call moves this file there, {ToolCalls.Move(pluginDir, file, $"Furniture/{file["MiscItems/".Length..]}")}, and its reference in a cell keeps its Base; then"
                     : "move this file there with moveRecord, then";
                 notes.Add($"{file}: {id}{(name is { Length: > 0 } ? $" \"{name}\"" : "")} is a MiscItem — a thing the player picks up and carries: " +
                     "activating one where it lies takes it into the inventory, and nobody sits on it. A chair, a bench, a bed — a thing sat or " +
                     "lain on — is Furniture, in Furniture/, as the game's WoodenChair01 has it (readRecord {\"record\": \"WoodenChair01\"}: its " +
-                    $"Model, and its Markers, where and how the player sits): {seat} write it with Furniture's fields, its Markers as " +
-                    "WoodenChair01's. Where an item to pick up and carry was meant, nothing to change, and this warning stays");
+                    $"Model, and its Markers, where and how the player sits): {moveTo} write it with Furniture's fields, its Markers as " +
+                    $"WoodenChair01's{(scripted ? ", and no VirtualMachineAdapter: WoodenChair01 has no script" : "")}. Where an item to pick up and " +
+                    "carry was meant, nothing to change, and this warning stays");
                 continue;
             }
             var move = file.StartsWith("MiscItems/", StringComparison.Ordinal)
@@ -1003,9 +1067,7 @@ internal static class MadeNotes
             {
                 if (!records.TryGetValue(recipe.Items[at].Item.Item.FormKey, out var material) || (material as INamedGetter)?.Name is not { Length: > 0 } name)
                     continue;
-                var game = index.ByFormKey.Values.Where(e => CarriedKinds.Contains(e.Type) && e.FormKey.ModKey != mod.ModKey && !e.Unplayable
-                        && e.EditorId is not null && string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase))
-                    .OrderBy(e => e.Type == RecordIndex.TypeName(material) ? 0 : 1).FirstOrDefault();
+                var game = GameTwin(index, mod.ModKey, name, RecordIndex.TypeName(material), CarriedKinds);
                 if (game is null) continue;
                 var copy = material.EditorID ?? Session.FormKeyText(material.FormKey);
                 var copyFile = files.GetValueOrDefault(material.FormKey);
@@ -1020,6 +1082,25 @@ internal static class MadeNotes
             }
         }
         return notes;
+    }
+
+    /// <summary>
+    /// The load order's record with the in-game name a new record of the project's has, of these kinds: of the record's own
+    /// kind first, then the one whose editor ID is the name's words (SaltPile for "Salt Pile") or ends in them (FoodPotato for
+    /// "Potato"), then Skyrim.esm's. "Salt Pile" is also MS03BlackBriarSecretIngredient, a quest's: told to take that one, eval
+    /// round 153's cooking #2 made its soup of it.
+    /// </summary>
+    private static RecordIndex.Entry? GameTwin(RecordIndex index, Mutagen.Bethesda.Plugins.ModKey own, string name, string type, ISet<string> kinds)
+    {
+        var words = Regex.Replace(name, "[^A-Za-z0-9]", "");
+        return index.ByFormKey.Values.Where(e => kinds.Contains(e.Type) && e.FormKey.ModKey != own && !e.Unplayable && e.EditorId is not null
+                && string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(e => e.Type == type ? 0 : 1)
+            .ThenBy(e => e.EditorId!.Equals(words, StringComparison.OrdinalIgnoreCase) ? 0
+                : words.Length > 0 && e.EditorId!.EndsWith(words, StringComparison.OrdinalIgnoreCase) ? 1 : 2)
+            .ThenBy(e => e.FormKey.ModKey.FileName.String.Equals("Skyrim.esm", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+            .ThenBy(e => e.EditorId!.Length)
+            .FirstOrDefault();
     }
 
     /// <summary>

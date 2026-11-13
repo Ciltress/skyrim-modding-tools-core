@@ -101,6 +101,25 @@ describe('papyrusHints', () => {
             `${JSON.stringify(path.basename(path.dirname(scripts)))}, "record": ${JSON.stringify(path.join(scripts, 'LeverScript.psc').split(path.sep).join('/'))}}`);
     });
 
+    it('says the ScriptName line whole where it was split or lost, and Papyrus\'s name of a type', () => {
+        const { scripts, vanilla } = folders();
+        const split = path.join(scripts, 'StrangeLeverScript.psc');
+        fs.writeFileSync(split, 'Scriptname StrangeLeverScript\nextends Activator\n\nEvent OnActivate(ObjectReference akActionRef)\nEndEvent\n');
+        const lost = path.join(scripts, 'GoldLeverScript.psc');
+        fs.writeFileSync(lost, 'MiscObject Property Gold001 Auto\n\nInteger Property Amount Auto\n');
+        const hints = papyrusHints([`${split}(2,0): missing EOF at 'extends'`, `${lost}(1,0): missing SCRIPTNAME at 'MiscObject'`,
+            `${lost}(3,0): unknown type integer`], scripts, vanilla);
+        expect(hints).toEqual([
+            'line 2 of StrangeLeverScript.psc, `extends Activator`: a script\'s first line is its ScriptName and what it extends, on one line — ' +
+            '`ScriptName StrangeLeverScript extends ObjectReference` (a script on a thing placed in a cell — a lever, a door, a chest — ' +
+            'extends ObjectReference, whose event OnActivate is, not Activator)',
+            'line 1 of GoldLeverScript.psc, `MiscObject Property Gold001 Auto`: a script\'s first line is its ScriptName and what it extends, ' +
+            'on one line — `ScriptName GoldLeverScript extends ObjectReference`',
+            'line 3 of GoldLeverScript.psc, `Integer Property Amount Auto`: Papyrus has no type integer — it is `Int` (Papyrus\'s types: Int, ' +
+            'Float, Bool, String, and the game\'s, such as MiscObject)'
+        ]);
+    });
+
     it('adds nothing for an error the sources do not explain', () => {
         const { scripts, vanilla } = folders();
         expect(papyrusHints(['C:\\p\\scripts\\X.psc(1,0): mismatched input', 'Compilation failed'], scripts, vanilla)).toEqual([]);

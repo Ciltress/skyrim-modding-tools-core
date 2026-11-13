@@ -151,6 +151,22 @@ function writingHints(problems: readonly string[], scriptsDir: string): string[]
                   `then delete ${name} — ${remove}`);
             continue;
         }
+        // Eval round 153's activator+detailed #1 wrote `Scriptname StrangeLeverScript` and `extends Activator` on two lines, told
+        // "missing EOF at 'extends'" three builds; activator #3's edit put a property in place of its ScriptName line.
+        if (/missing EOF at 'extends'|missing SCRIPTNAME at/i.test(message)) {
+            const declared = /^\s*Scriptname\s+(\w+)/im.exec(source)?.[1] ?? path.basename(name, path.extname(name));
+            const parent = /\bextends\s+(\w+)/i.exec(source)?.[1];
+            const extended = !parent || /^Activator$/i.test(parent) ? 'ObjectReference' : parent;
+            hints.push(`${where}: a script's first line is its ScriptName and what it extends, on one line — \`ScriptName ${declared} extends ${extended}\`` +
+                (parent && extended !== parent ? ` (a script on a thing placed in a cell — a lever, a door, a chest — extends ObjectReference, whose event OnActivate is, not ${parent})` : ''));
+            continue;
+        }
+        const typeWord = /unknown type (integer|int32|int64|long|number|boolean|double|decimal|str|text)\b/i.exec(message)?.[1]?.toLowerCase();
+        if (typeWord) {
+            const papyrus = /^(integer|int32|int64|long|number)$/.test(typeWord) ? 'Int' : typeWord === 'boolean' ? 'Bool' : /^(double|decimal)$/.test(typeWord) ? 'Float' : 'String';
+            hints.push(`${where}: Papyrus has no type ${typeWord} — it is \`${papyrus}\` (Papyrus's types: Int, Float, Bool, String, and the game's, such as MiscObject)`);
+            continue;
+        }
         if (/^(#|\/\/)/.test(line) || /\s(#|\/\/)\s/.test(line) && /no viable alternative at (character|input)|mismatched input '\/'/i.test(message)) {
             hints.push(`${where}: a Papyrus comment starts with \`;\` — \`#\` and \`//\` are none`);
             continue;
