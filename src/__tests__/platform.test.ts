@@ -128,7 +128,9 @@ describe('the Papyrus command', () => {
         ]);
     });
 
-    it('speaks russo-2025\'s command line when SKYRIM_PAPYRUS_COMPILER names it', async () => {
+    // russo's compiler searches its header folders from the last named: named as the Creation Kit's imports are, the vanilla
+    // Form.psc hid SKSE's, and eval round 157's storymanager #4 was refused SKSE's GetName.
+    it('speaks russo-2025\'s command line when SKYRIM_PAPYRUS_COMPILER names it, the folder that wins named last', async () => {
         const { root, game, options } = setup();
         const compiler = path.join(root, 'tools', 'papyrus-compiler');
         const { executable, args } = await papyrusCommand(options(linuxPlatform(tempDir()), compiler));
@@ -137,8 +139,8 @@ describe('the Papyrus command', () => {
             'compile', '-nocache',
             '-i', path.join(root, 'project', 'scripts'),
             '-o', path.join(root, 'project', 'build', 'Scripts'),
-            '-h', path.join(root, 'mods', 'SKSE', 'scripts', 'source'),
-            '-h', path.join(game, 'Data', 'Source', 'Scripts')
+            '-h', path.join(game, 'Data', 'Source', 'Scripts'),
+            '-h', path.join(root, 'mods', 'SKSE', 'scripts', 'source')
         ]);
     });
 

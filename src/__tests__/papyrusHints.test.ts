@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { declarationIn, papyrusHints } from '../backend/skyrim/externalTools';
+import { compilerProblems, declarationIn, papyrusHints } from '../backend/skyrim/externalTools';
 
 /**
  * What a failed compile adds to the compiler's words from the game's sources: eval round 139's storymanager runs guessed
@@ -24,6 +24,8 @@ function folders(): { scripts: string; vanilla: string } {
     fs.writeFileSync(path.join(vanilla, 'LocationAlias.psc'), 'Scriptname LocationAlias extends Alias Hidden\n\n' +
         '; Clears the alias\nFunction Clear() native\n\n; Returns the location\nLocation Function GetLocation() native\n\n' +
         'Function ForceLocationTo(Location akNewLocation) native\n');
+    fs.writeFileSync(path.join(vanilla, 'Message.psc'), 'Scriptname Message extends Form Hidden\n\nint Function Show() native\n');
+    fs.writeFileSync(path.join(vanilla, 'Actor.psc'), 'Scriptname Actor extends ObjectReference Hidden\n\nFunction AddPerk(Perk akPerk) native\n');
     return { scripts, vanilla };
 }
 
@@ -118,6 +120,87 @@ describe('papyrusHints', () => {
             'line 3 of GoldLeverScript.psc, `Integer Property Amount Auto`: Papyrus has no type integer — it is `Int` (Papyrus\'s types: Int, ' +
             'Float, Bool, String, and the game\'s, such as MiscObject)'
         ]);
+    });
+
+    // Eval round 157, on Linux: russo-2025's compiler words its errors otherwise, and 12 of 30 runs were told only its summary.
+    it('reads russo-2025\'s compiler as the Creation Kit\'s', () => {
+        const { scripts, vanilla } = folders();
+        fs.writeFileSync(path.join(scripts, 'ArrivalScript.psc'), 'Scriptname ArrivalScript extends Quest\n\n' +
+            'LocationAlias Property NewLocation Auto\n\nEvent OnInit()\n    Debug.Notification(NewLocation.GetLocationName())\nEndEvent\n');
+        const lever = path.join(scripts, 'GoldLeverScript.psc');
+        fs.writeFileSync(lever, 'ScriptName GoldLeverScript extends ObjectReference\n\nMiscObjectProperty Gold001 Auto\nInteger Property Amount Auto\n' +
+            'Event OnActivate(ObjectReference akActionRef)\n    If akActionRef != None Then\n        Player.AddItem(Gold001, 100)\n' +
+            '        Game.GetPlayer().AddItem(000F00:Skyrim.esm, 100)\n    EndIf\n    # gold given\n    Game.GetPlayer().AddItem(Gold, 100)\n' +
+            '    Game.GetPlayer().AddGold(100)\n    Game.GetPlayer().Debug.Notification("Gold!")\n    Actor Player = Game.GetPlayer()\n' +
+            '    Player.GiveItem(Gold001, 100)\n    Player.AddItem("Gold", 100)\nEndEvent\n');
+        fs.writeFileSync(path.join(scripts, 'WelcomeScript.psc'), 'ScriptName WelcomeScript extends Quest\n\nMessageObjectProperty WelcomeMessage Auto\n');
+        fs.writeFileSync(path.join(scripts, 'LeverScript.psc'), 'ScriptName GoldLeverScript extends ObjectReference\n');
+        fs.writeFileSync(path.join(scripts, 'Lost.psc'), 'Integer Property Amount Auto\n');
+        // As russo's compiler names them: the whole path it was given, or one from the folder it ran in.
+        const hints = papyrusHints([
+            `${path.join(scripts, 'ArrivalScript.psc')}:6:36: Checker error: undefined function \`GetLocationName\``,
+            `${lever}:3:20: Checker error: undefined type: \`MiscObjectProperty\``,
+            `${lever}:4:9: Checker error: undefined type: \`Integer\``,
+            `${lever}:6:28: Checker error: undefined identifier \`Then\``,
+            `${lever}:7:9: Checker error: undefined identifier \`Player\``,
+            `${lever}:7:16: Checker error: undefined function \`AddItem\``,
+            'GoldLever/scripts/GoldLeverScript.psc:8:40: Scanner error: invalid character `:`',
+            `${lever}:10:5: Scanner error: invalid character \`#\``,
+            `${lever}:11:30: Checker error: undefined identifier \`Gold\``,
+            `${lever}:12:22: Checker error: undefined function \`AddGold\``,
+            `${lever}:13:22: Checker error: field or property \`Debug\` not found`,
+            `${lever}:13:28: Checker error: undefined function \`Notification\``,
+            `${lever}:15:12: Checker error: undefined function \`GiveItem\``,
+            `${lever}:16:12: Checker error: cannot convert type \`String\` to type \`Form\``,
+            `${path.join(scripts, 'LeverScript.psc')}:1:22: Parser error: script name \`GoldLeverScript\` does not match file name \`LeverScript\``,
+            `${path.join(scripts, 'Lost.psc')}:1:1: Parser error: unexpected \`Integer\`, expecting \`scriptname\` or \`scriptplus\``,
+            `${path.join(scripts, 'WelcomeScript.psc')}:3:23: Checker error: undefined type: \`MessageObjectProperty\``
+        ], scripts, vanilla);
+        const said = (line: number) => hints.filter(hint => hint.startsWith(`line ${line} of GoldLeverScript.psc,`));
+        expect(said(3)).toEqual(['line 3 of GoldLeverScript.psc, `MiscObjectProperty Gold001 Auto`: a property is declared with its type and the ' +
+            'word Property apart — `MiscObject Property Gold001 Auto`']);
+        expect(said(4)).toEqual([expect.stringMatching(/: Papyrus has no type integer — it is `Int`/)]);
+        expect(said(6)).toEqual([expect.stringMatching(/: Papyrus writes no `Then`/)]);
+        expect(said(7)).toEqual([expect.stringMatching(/: Papyrus has no Player — the player is `Game.GetPlayer\(\)`/)]);
+        expect(said(8)).toEqual([expect.stringMatching(/: a script names no record by its FormID — /)]);
+        expect(said(10)).toEqual([expect.stringMatching(/: a Papyrus comment starts with `;`/)]);
+        expect(said(11)).toEqual([expect.stringMatching(/: Gold is declared nowhere in the script — .*`Int Gold = 100`$/)]);
+        expect(said(12)).toEqual([expect.stringMatching(/: Papyrus has no AddGold — gold is an item/)]);
+        expect(said(13)).toEqual([expect.stringMatching(/: a message on the screen is `Debug.Notification\("…"\)`/)]);
+        // Answered so, and not with every function of Actor, the type of the Player it declared.
+        expect(said(15)).toEqual([expect.stringMatching(/: Papyrus has no GiveItem — an item is given with AddItem, as `Game.GetPlayer\(\).AddItem\(Gold001, 100\)`/)]);
+        expect(hints.filter(hint => /whose functions are/.test(hint))).toHaveLength(1);
+        expect(said(16)).toEqual([expect.stringMatching(/`Player.AddItem\("Gold", 100\)`: a script names no record by its name in quotes — /)]);
+        expect(hints).toContain('NewLocation is a LocationAlias, whose functions are Clear, GetLocation, ForceLocationTo, and Alias\'s, ' +
+            'which it extends (LocationAlias.psc of the game\'s sources)');
+        expect(hints).toContainEqual(expect.stringMatching(/^LeverScript.psc declares `ScriptName GoldLeverScript`, as GoldLeverScript.psc does/));
+        expect(hints).toContainEqual(expect.stringMatching(/^line 1 of Lost.psc, `Integer Property Amount Auto`: a script's first line is its ScriptName/));
+        // The record's `ScriptObjectProperty` copied: the game has a Message, and no MessageObject.
+        expect(hints).toContain('line 3 of WelcomeScript.psc, `MessageObjectProperty WelcomeMessage Auto`: a property is declared with its ' +
+            'type and the word Property apart — `Message Property WelcomeMessage Auto`');
+    });
+
+    it('keeps russo-2025\'s errors and summary from what it wrote, not the source lines it quotes', () => {
+        // Its output for a script with three errors, cut short: stdout's timings, stderr's errors with their source lines.
+        const output = 'used header dirs [\'/p/GoldLever/scripts\', \'/game/Data/Source/Scripts\']\n1 files in total\nparse files: 0.06 ms\n' +
+            '/p/GoldLever/scripts/T.psc:4:30: Checker error: undefined identifier `Gold`\n' +
+            '    2 | MiscObject Property Gold001 Auto\n    4 |     Game.GetPlayer().AddItem(Gold, Amount) ; failed\n' +
+            '      |                              ~~~~\n' +
+            '/p/GoldLever/scripts/T.psc:4:22: Checker error: cannot convert type `None` to type `Int`\n' +
+            'failed to compile files, 2 errors\n' +
+            // A parser error comes after its stack trace.
+            '                     | 0x47701a | /tools/papyrus(papyrus__parser__parse_file+0x36a) \n' +
+            'GoldLever/scripts/U.psc:4:5: Parser error: (block statement) invalid token: /, \n    4 |     // gold given\n';
+        expect(compilerProblems(output)).toEqual([
+            '/p/GoldLever/scripts/T.psc:4:30: Checker error: undefined identifier `Gold`',
+            '/p/GoldLever/scripts/T.psc:4:22: Checker error: cannot convert type `None` to type `Int`',
+            'failed to compile files, 2 errors',
+            'GoldLever/scripts/U.psc:4:5: Parser error: (block statement) invalid token: /,'
+        ]);
+        // The Creation Kit's, as before.
+        expect(compilerProblems('Starting 1 compile threads for 1 files...\nCompiling "MyQuest"...\n' +
+            'C:\\p\\scripts\\MyQuest.psc(3,1): no viable alternative at input \'Then\'\nNo output generated for MyQuest, compilation failed.\n'))
+            .toEqual(['C:\\p\\scripts\\MyQuest.psc(3,1): no viable alternative at input \'Then\'', 'No output generated for MyQuest, compilation failed.']);
     });
 
     it('adds nothing for an error the sources do not explain', () => {

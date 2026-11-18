@@ -47,9 +47,9 @@ export async function compileScripts(options: CompileOptions): Promise<number> {
     try {
         await run(executable, args, { windowsHide: true, timeout: 300_000, maxBuffer: 10 * 1024 * 1024 });
     } catch (error: any) {
-        // The compiler reports problems as `<file>(line,col): message`, then a summary.
-        const lines = `${error?.stdout ?? ''}\n${error?.stderr ?? ''}`.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
-        const problems = lines.filter(line => /\(\d+,\d+\):|failed|unable/i.test(line));
+        const output = `${error?.stdout ?? ''}\n${error?.stderr ?? ''}`;
+        const lines = output.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+        const problems = compilerProblems(output);
         const vanilla = SOURCE_FOLDERS.map(folder => findCaseInsensitive(options.creationKitDir, folder)).find(Boolean);
         const hints = vanilla ? papyrusHints(problems, scriptsDir, vanilla) : [];
         throw new ScriptCompileError(
@@ -57,6 +57,40 @@ export async function compileScripts(options: CompileOptions): Promise<number> {
             (hints.length ? `\n${hints.join('\n')}` : ''));
     }
     return sources.length;
+}
+
+/** A problem a compiler names in a script: the file, the line, and its words. */
+export interface CompilerProblem {
+    file: string;
+    line: number;
+    message: string;
+}
+
+/**
+ * A compiler's line naming a problem in a script, as either compiler writes it: the Creation Kit's
+ * `<file>(line,col): message`, russo-2025's `<file>:line:col: Checker error: message` (or Parser, Scanner error), its
+ * message without that prefix. Null for any other line.
+ */
+export function compilerProblem(text: string): CompilerProblem | null {
+    const at = /^(.+?\.psc)(?:\((\d+),\d+\)|:(\d+):\d+):\s*(?:\w+ error:\s*)?(.*)$/i.exec(text.trim());
+    return at ? { file: at[1], line: Number(at[2] ?? at[3]), message: at[4] } : null;
+}
+
+/**
+ * The lines of a failed compile's output that name its problems, and its summary. The Creation Kit's compiler writes
+ * `<file>(line,col): message`, then "No output generated … compilation failed"; russo-2025's writes
+ * `<file>:line:col: Checker error: message` to stderr, each followed by the source lines it quotes (`4 |     Gold = 5`, a
+ * parser error by its own stack trace, `| 0x47701a | …`), then "failed to compile files, 3 errors". Eval round 157 on
+ * Linux: russo's errors were dropped, and 12 of 30 runs were told only that summary.
+ */
+export function compilerProblems(output: string): string[] {
+    return output.split(/\r?\n/).map(line => line.trim()).filter(line =>
+        compilerProblem(line) !== null || !/^\d*\s*\|/.test(line) && /\(\d+,\d+\):|failed|unable/i.test(line));
+}
+
+/** The function a call named that its type has none of, in either compiler's words. */
+function undefinedFunction(message: string): string | undefined {
+    return /(\w+) is not a function or does not exist|undefined function `(\w+)`/i.exec(message)?.slice(1).find(Boolean);
 }
 
 /** A game script's source by its name, from the vanilla sources, with its file's own name; null where it has none. */
@@ -83,7 +117,16 @@ export function declarationIn(source: string, name: string): string | null {
  */
 export function papyrusHints(problems: readonly string[], scriptsDir: string, vanilla: string): string[] {
     const hints = new Set<string>();
-    for (const hint of writingHints(problems, scriptsDir)) hints.add(hint);
+    // A line written unlike Papyrus is answered with what to write. What else the compiler names on that line follows from it
+    // (russo-2025's names `Player` undefined, then its AddItem), and a list of a type's functions would only bury the answer.
+    const answered = new Set<string>();
+    const lineOf = (at: CompilerProblem) => `${scriptFile(at.file, scriptsDir)}:${at.line}`;
+    for (const problem of problems) {
+        const written = writingHint(problem, scriptsDir, vanilla);
+        if (!written) continue;
+        hints.add(written);
+        answered.add(lineOf(compilerProblem(problem)!));
+    }
     for (const problem of problems) {
         const mismatch = /parameter types of function (\w+) .*do not match the parent script (\w+)/i.exec(problem);
         if (mismatch) {
@@ -93,13 +136,13 @@ export function papyrusHints(problems: readonly string[], scriptsDir: string, va
             if (declared && line) hints.add(`${declared.file} declares it so — write these parameter types: ${line}`);
             continue;
         }
-        const missing = /^(.+?\.psc)\((\d+),\d+\):\s*(\w+) is not a function or does not exist/i.exec(problem);
-        if (!missing) continue;
-        const [, file, lineNumber, called] = missing;
-        const script = path.isAbsolute(file) ? file : path.join(scriptsDir, path.basename(file));
+        const at = compilerProblem(problem);
+        const called = at && undefinedFunction(at.message);
+        if (!at || !called || answered.has(lineOf(at))) continue;
+        const script = scriptFile(at.file, scriptsDir);
         if (!fs.existsSync(script)) continue;
         const source = fs.readFileSync(script, 'latin1');
-        const line = source.split(/\r?\n/)[Number(lineNumber) - 1] ?? '';
+        const line = source.split(/\r?\n/)[at.line - 1] ?? '';
         const variable = new RegExp(`(\\w+)\\s*\\.\\s*${called}\\s*\\(`, 'i').exec(line)?.[1];
         if (!variable) continue;
         const type = new RegExp(`^\\s*(\\w+)\\s+(?:Property\\s+)?${variable}\\b`, 'im').exec(source)?.[1];
@@ -115,108 +158,115 @@ export function papyrusHints(problems: readonly string[], scriptsDir: string, va
     return [...hints];
 }
 
+/** The script a compiler names: as named where that is a whole path, else by its file's name in the project's scripts. */
+function scriptFile(file: string, scriptsDir: string): string {
+    return path.isAbsolute(file) ? file : path.join(scriptsDir, path.basename(file));
+}
+
 /** How a record a script uses is declared and given to it, said where a script wrote one otherwise. */
 const PROPERTY_FILLED = 'a record a script uses is a property, declared at its top — `MiscObject Property Gold001 Auto`, the record\'s type ' +
     'first (the game\'s gold, Gold001, is a MiscObject) — and given to it by the record the script is attached to, in its ' +
     'VirtualMachineAdapter\'s Properties: `- MutagenObjectType: ScriptObjectProperty`, `Name: Gold001`, `Object: Gold001`';
 
 /**
- * The compiler's words for what is written unlike Papyrus, said as what to write: the line each names, read from the project's
- * source. Eval round 149's activator runs spent 20 builds on five such lines — `If x Then`, `MiscObjectProperty Gold001 Auto`,
- * `Player.AddItem(…)`, a FormID in a call, a script whose file had another name — told only "required (...)+ loop did not match
+ * The compiler's words for what is written unlike Papyrus, said as what to write: the line they name, read from the project's
+ * source; undefined where they name nothing it knows. Either compiler's words: the Creation Kit's, and russo-2025's on Linux
+ * (eval round 157). Eval round 149's activator runs spent 20 builds on five such lines — `If x Then`,
+ * `MiscObjectProperty Gold001 Auto`, `Player.AddItem(…)`, a FormID in a call, a script whose file had another name — told only "required (...)+ loop did not match
  * anything at input 'Then'", "mismatched input '\n' expecting STATE" or "variable Player is undefined"; eval round 144's message
  * and storymanager runs wrote `#` comments and `Message WelcomeMessage Auto`.
  */
-function writingHints(problems: readonly string[], scriptsDir: string): string[] {
-    const hints: string[] = [];
+function writingHint(problem: string, scriptsDir: string, vanilla: string): string | undefined {
     const project = path.basename(path.dirname(scriptsDir));
-    for (const problem of problems) {
-        const at = /^(.+?\.psc)\((\d+),\d+\):\s*(.*)$/i.exec(problem);
-        if (!at) continue;
-        const [, file, lineNumber, message] = at;
-        const script = path.isAbsolute(file) ? file : path.join(scriptsDir, path.basename(file));
-        const name = path.basename(script);
-        const source = fs.existsSync(script) ? fs.readFileSync(script, 'latin1') : '';
-        const line = (source.split(/\r?\n/)[Number(lineNumber) - 1] ?? '').trim();
-        const where = `line ${lineNumber} of ${name}, \`${line}\``;
-        const renamed = /filename does not match script name:\s*(\w+)/i.exec(message);
-        if (renamed) {
-            const declared = /^\s*Scriptname\s+(\w+)/im.exec(source)?.[1] ?? renamed[1];
-            const twin = fs.existsSync(scriptsDir) ? fs.readdirSync(scriptsDir).find(f => f.toLowerCase() === `${declared.toLowerCase()}.psc`) : undefined;
-            const remove = `deleteRecord {"project": ${JSON.stringify(project)}, "record": ${JSON.stringify(script.split(path.sep).join('/'))}}`;
-            hints.push(twin
-                ? `${name} declares \`ScriptName ${declared}\`, as ${twin} does, and a script's file is named as its ScriptName: ${twin} holds ` +
-                  `that script, and ${name} is left over — ${remove}`
-                : `${name} declares \`ScriptName ${declared}\`, and a script's file is named as its ScriptName: write it as ${declared}.psc, ` +
-                  `then delete ${name} — ${remove}`);
-            continue;
-        }
-        // Eval round 153's activator+detailed #1 wrote `Scriptname StrangeLeverScript` and `extends Activator` on two lines, told
-        // "missing EOF at 'extends'" three builds; activator #3's edit put a property in place of its ScriptName line.
-        if (/missing EOF at 'extends'|missing SCRIPTNAME at/i.test(message)) {
-            const declared = /^\s*Scriptname\s+(\w+)/im.exec(source)?.[1] ?? path.basename(name, path.extname(name));
-            const parent = /\bextends\s+(\w+)/i.exec(source)?.[1];
-            const extended = !parent || /^Activator$/i.test(parent) ? 'ObjectReference' : parent;
-            hints.push(`${where}: a script's first line is its ScriptName and what it extends, on one line — \`ScriptName ${declared} extends ${extended}\`` +
-                (parent && extended !== parent ? ` (a script on a thing placed in a cell — a lever, a door, a chest — extends ObjectReference, whose event OnActivate is, not ${parent})` : ''));
-            continue;
-        }
-        const typeWord = /unknown type (integer|int32|int64|long|number|boolean|double|decimal|str|text)\b/i.exec(message)?.[1]?.toLowerCase();
-        if (typeWord) {
-            const papyrus = /^(integer|int32|int64|long|number)$/.test(typeWord) ? 'Int' : typeWord === 'boolean' ? 'Bool' : /^(double|decimal)$/.test(typeWord) ? 'Float' : 'String';
-            hints.push(`${where}: Papyrus has no type ${typeWord} — it is \`${papyrus}\` (Papyrus's types: Int, Float, Bool, String, and the game's, such as MiscObject)`);
-            continue;
-        }
-        if (/^(#|\/\/)/.test(line) || /\s(#|\/\/)\s/.test(line) && /no viable alternative at (character|input)|mismatched input '\/'/i.test(message)) {
-            hints.push(`${where}: a Papyrus comment starts with \`;\` — \`#\` and \`//\` are none`);
-            continue;
-        }
-        if (/^(Else)?If\b/i.test(line) && /\bThen\s*$/i.test(line)) {
-            hints.push(`${where}: Papyrus writes no \`Then\` — \`${line.replace(/\s+Then\s*$/i, '')}\` alone on its line, its block ended by \`EndIf\``);
-            continue;
-        }
-        const glued = /^(\w+?)Property\s+(\w+)(?:\s+Auto\b.*)?$/i.exec(line);
-        if (glued && glued[1].length > 0) {
-            hints.push(`${where}: a property is declared with its type and the word Property apart — \`${glued[1]} Property ${glued[2]} Auto\``);
-            continue;
-        }
-        const bare = /^Property\s+(\w+)(?:\s+Auto\b.*)?$/i.exec(line);
-        if (bare) {
-            hints.push(`${where}: ${PROPERTY_FILLED}`);
-            continue;
-        }
-        const keywordless = /^(\w+)\s+(\w+)\s+Auto\b/i.exec(line);
-        if (keywordless && !/\bProperty\b/i.test(line)) {
-            hints.push(`${where}: a property is declared with the word Property between its type and its name — \`${keywordless[1]} Property ${keywordless[2]} Auto\``);
-            continue;
-        }
-        if (/\b(variable Player is undefined|unknown type player)\b/i.test(message) || /^Player\s*\./.test(line) && /\bnone is not\b/i.test(message)) {
-            hints.push(`${where}: Papyrus has no Player — the player is \`Game.GetPlayer()\`, an Actor: \`Game.GetPlayer().AddItem(Gold001, 100)\`, ` +
-                'or `Actor player = Game.GetPlayer()` first');
-            continue;
-        }
-        if (/\(\s*[0-9A-Fa-f]{6,8}(?::[^,)]+)?\s*[,)]/.test(line)) {
-            hints.push(`${where}: a script names no record by its FormID — ${PROPERTY_FILLED}`);
-            continue;
-        }
-        // Functions a model makes up for what the game does otherwise: eval round 150's activator runs called AddGold and
-        // DisplayNotification on the player, and Debug as the player's property.
-        const madeUp = /(\w+) is not a function or does not exist/i.exec(message)?.[1];
-        if (madeUp && /^(Add|Give)(Gold|Money|Coins?|Septims?)$/i.test(madeUp)) {
-            hints.push(`${where}: Papyrus has no ${madeUp} — gold is an item, given as \`Game.GetPlayer().AddItem(Gold001, 100)\`; ${PROPERTY_FILLED}`);
-            continue;
-        }
-        if (madeUp && /^(Display|Show)?(Notification|Message|Text)$|^Print$/i.test(madeUp) || /the type name Debug cannot be used as a property/i.test(message)) {
-            hints.push(`${where}: a message on the screen is \`Debug.Notification("…")\`, Debug's own function, called by its name alone — not on the player`);
-            continue;
-        }
-        const undefinedName = /variable (\w+) is undefined/i.exec(message);
-        if (undefinedName) {
-            hints.push(`${where}: ${undefinedName[1]} is declared nowhere in the script — ${PROPERTY_FILLED}; a number of its own is a ` +
-                `variable, \`Int ${undefinedName[1]} = 100\``);
-        }
+    const at = compilerProblem(problem);
+    if (!at) return undefined;
+    const { message } = at;
+    const script = scriptFile(at.file, scriptsDir);
+    const name = path.basename(script);
+    const source = fs.existsSync(script) ? fs.readFileSync(script, 'latin1') : '';
+    const line = (source.split(/\r?\n/)[at.line - 1] ?? '').trim();
+    const where = `line ${at.line} of ${name}, \`${line}\``;
+    const renamed = /filename does not match script name:\s*(\w+)|script name `(\w+)` does not match file name/i.exec(message);
+    if (renamed) {
+        const declared = /^\s*Scriptname\s+(\w+)/im.exec(source)?.[1] ?? renamed[1] ?? renamed[2];
+        const twin = fs.existsSync(scriptsDir) ? fs.readdirSync(scriptsDir).find(f => f.toLowerCase() === `${declared.toLowerCase()}.psc`) : undefined;
+        const remove = `deleteRecord {"project": ${JSON.stringify(project)}, "record": ${JSON.stringify(script.split(path.sep).join('/'))}}`;
+        return twin
+            ? `${name} declares \`ScriptName ${declared}\`, as ${twin} does, and a script's file is named as its ScriptName: ${twin} holds ` +
+              `that script, and ${name} is left over — ${remove}`
+            : `${name} declares \`ScriptName ${declared}\`, and a script's file is named as its ScriptName: write it as ${declared}.psc, ` +
+              `then delete ${name} — ${remove}`;
     }
-    return [...new Set(hints)];
+    // Eval round 153's activator+detailed #1 wrote `Scriptname StrangeLeverScript` and `extends Activator` on two lines, told
+    // "missing EOF at 'extends'" three builds; activator #3's edit put a property in place of its ScriptName line.
+    if (/missing EOF at 'extends'|missing SCRIPTNAME at|expecting `scriptname`/i.test(message)) {
+        const declared = /^\s*Scriptname\s+(\w+)/im.exec(source)?.[1] ?? path.basename(name, path.extname(name));
+        const parent = /\bextends\s+(\w+)/i.exec(source)?.[1];
+        const extended = !parent || /^Activator$/i.test(parent) ? 'ObjectReference' : parent;
+        return `${where}: a script's first line is its ScriptName and what it extends, on one line — \`ScriptName ${declared} extends ${extended}\`` +
+            (parent && extended !== parent ? ` (a script on a thing placed in a cell — a lever, a door, a chest — extends ObjectReference, whose event OnActivate is, not ${parent})` : '');
+    }
+    const typeWord = /(?:unknown|undefined) type:?\s*`?(integer|int32|int64|long|number|boolean|double|decimal|str|text)\b/i.exec(message)?.[1]?.toLowerCase();
+    if (typeWord) {
+        const papyrus = /^(integer|int32|int64|long|number)$/.test(typeWord) ? 'Int' : typeWord === 'boolean' ? 'Bool' : /^(double|decimal)$/.test(typeWord) ? 'Float' : 'String';
+        return `${where}: Papyrus has no type ${typeWord} — it is \`${papyrus}\` (Papyrus's types: Int, Float, Bool, String, and the game's, such as MiscObject)`;
+    }
+    if (/^(#|\/\/)/.test(line) || /\s(#|\/\/)\s/.test(line) &&
+        /no viable alternative at (character|input)|mismatched input '\/'|invalid (character|token)|invalid right operand/i.test(message)) {
+        return `${where}: a Papyrus comment starts with \`;\` — \`#\` and \`//\` are none`;
+    }
+    if (/^(Else)?If\b/i.test(line) && /\bThen\s*$/i.test(line)) {
+        return `${where}: Papyrus writes no \`Then\` — \`${line.replace(/\s+Then\s*$/i, '')}\` alone on its line, its block ended by \`EndIf\``;
+    }
+    const glued = /^(\w+?)Property\s+(\w+)(?:\s+Auto\b.*)?$/i.exec(line);
+    if (glued && glued[1].length > 0) {
+        // Eval round 157's message+detailed #3 wrote `MessageObjectProperty`, after the record's `ScriptObjectProperty`: the
+        // game has no type MessageObject, but Message.
+        const plain = glued[1].replace(/Object$/i, '');
+        const type = plain !== glued[1] && !findCaseInsensitive(vanilla, `${glued[1]}.psc`) && findCaseInsensitive(vanilla, `${plain}.psc`) ? plain : glued[1];
+        return `${where}: a property is declared with its type and the word Property apart — \`${type} Property ${glued[2]} Auto\``;
+    }
+    const bare = /^Property\s+(\w+)(?:\s+Auto\b.*)?$/i.exec(line);
+    if (bare) {
+        return `${where}: ${PROPERTY_FILLED}`;
+    }
+    const keywordless = /^(\w+)\s+(\w+)\s+Auto\b/i.exec(line);
+    if (keywordless && !/\bProperty\b/i.test(line)) {
+        return `${where}: a property is declared with the word Property between its type and its name — \`${keywordless[1]} Property ${keywordless[2]} Auto\``;
+    }
+    if (/\b(variable Player is undefined|unknown type player)\b|undefined (identifier|type:?) `Player`/i.test(message) ||
+        /^Player\s*\./.test(line) && /\bnone is not\b/i.test(message)) {
+        return `${where}: Papyrus has no Player — the player is \`Game.GetPlayer()\`, an Actor: \`Game.GetPlayer().AddItem(Gold001, 100)\`, ` +
+            'or `Actor player = Game.GetPlayer()` first';
+    }
+    if (/\(\s*[0-9A-Fa-f]{6,8}(?::[^,)]+)?\s*[,)]/.test(line)) {
+        return `${where}: a script names no record by its FormID — ${PROPERTY_FILLED}`;
+    }
+    // Eval round 157's activator+detailed #1 called `Player.AddItem("Gold", 100)`, told "cannot convert type `String` to type `Form`".
+    if (/[(,]\s*"[^"]*"\s*[,)]/.test(line) &&
+        /cannot convert type `String` to type `(?!(Int|Float|Bool|String)`)\w+`|type mismatch on parameter/i.test(message)) {
+        return `${where}: a script names no record by its name in quotes — ${PROPERTY_FILLED}`;
+    }
+    // Functions a model makes up for what the game does otherwise: eval round 150's activator runs called AddGold and
+    // DisplayNotification on the player, and Debug as the player's property.
+    const madeUp = undefinedFunction(message);
+    if (madeUp && /^(Add|Give)(Gold|Money|Coins?|Septims?)$/i.test(madeUp)) {
+        return `${where}: Papyrus has no ${madeUp} — gold is an item, given as \`Game.GetPlayer().AddItem(Gold001, 100)\`; ${PROPERTY_FILLED}`;
+    }
+    // Eval round 157's activator+detailed #1 called `Player.GiveItem(ItemID.Gold, 100)` three builds.
+    if (madeUp && /^Give(Items?)?$/i.test(madeUp)) {
+        return `${where}: Papyrus has no ${madeUp} — an item is given with AddItem, as \`Game.GetPlayer().AddItem(Gold001, 100)\`; ${PROPERTY_FILLED}`;
+    }
+    if (madeUp && /^(Display|Show)?(Notification|Message|Text)$|^Print$/i.test(madeUp) ||
+        /the type name Debug cannot be used as a property|field or property `Debug` not found/i.test(message)) {
+        return `${where}: a message on the screen is \`Debug.Notification("…")\`, Debug's own function, called by its name alone — not on the player`;
+    }
+    const undefinedName = /variable (\w+) is undefined|undefined identifier `(\w+)`/i.exec(message)?.slice(1).find(Boolean);
+    if (undefinedName) {
+        return `${where}: ${undefinedName} is declared nowhere in the script — ${PROPERTY_FILLED}; a number of its own is a ` +
+            `variable, \`Int ${undefinedName} = 100\``;
+    }
+    return undefined;
 }
 
 /**
@@ -253,10 +303,12 @@ export async function papyrusCommand(options: CompileOptions): Promise<{ executa
             args: [scriptsDir, '-all', `-f=${flags}`, `-i=${[scriptsDir, ...modSources, vanilla].join(';')}`, `-o=${outputDir}`, '-quiet']
         };
     }
-    // russo-2025's compiler: the project's sources are the input, everything else is read as headers.
+    // russo-2025's compiler: the project's sources are the input, everything else is read as headers — searched from the last
+    // folder named to the first, so they are named in reverse: the vanilla sources first, the mod that wins last. Named in
+    // order, the vanilla Form.psc hid SKSE's, and eval round 157's storymanager #4 was refused SKSE's GetName.
     return {
         executable: compiler,
-        args: ['compile', '-nocache', '-i', scriptsDir, '-o', outputDir, ...[...modSources, vanilla].flatMap(dir => ['-h', dir])]
+        args: ['compile', '-nocache', '-i', scriptsDir, '-o', outputDir, ...[...modSources, vanilla].reverse().flatMap(dir => ['-h', dir])]
     };
 }
 
