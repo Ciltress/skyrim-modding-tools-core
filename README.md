@@ -83,7 +83,7 @@ plugins with [Mutagen](https://github.com/Mutagen-Modding/Mutagen)), and Skyrim 
 Amethyst.
 
 ```bash
-npm install --allow-git=all github:Ciltress/skyrim-modding-tools-core#v0.2.87
+npm install --allow-git=all github:Ciltress/skyrim-modding-tools-core#v0.2.88
 npm --prefix node_modules/skyrim-modding-tools-core run build:helper
 ```
 
