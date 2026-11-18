@@ -83,9 +83,11 @@ plugins with [Mutagen](https://github.com/Mutagen-Modding/Mutagen)), and Skyrim 
 Amethyst.
 
 ```bash
-npm install github:Ciltress/skyrim-modding-tools-core#v0.2.87
+npm install --allow-git=all github:Ciltress/skyrim-modding-tools-core#v0.2.87
 npm --prefix node_modules/skyrim-modding-tools-core run build:helper
 ```
+
+`--allow-git=all` lets npm 12 fetch a dependency from a git repository, which it no longer does by default; older npm needs none.
 
 Every tool is one call away:
 
