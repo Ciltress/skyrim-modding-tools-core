@@ -203,6 +203,44 @@ describe('papyrusHints', () => {
             .toEqual(['C:\\p\\scripts\\MyQuest.psc(3,1): no viable alternative at input \'Then\'', 'No output generated for MyQuest, compilation failed.']);
     });
 
+    // Eval round 158's activator runs: an `if` left open, its block in braces, 3 builds; a property typed with its record's name.
+    it('names the block a line left open, and a record\'s name written as a type', () => {
+        const { scripts, vanilla } = folders();
+        const file = path.join(scripts, 'GoldLeverScript.psc');
+        fs.writeFileSync(file, 'Scriptname GoldLeverScript extends ObjectReference\nconst GOLD_GRANT = 100\nGold001 Property Gold001 Auto\n\n' +
+            'Event OnActivate(ObjectReference akActionRef)\n    if (akActionRef == Game.GetPlayer())\n    {\n' +
+            '        Game.GetPlayer().AddItem(Gold001, 100) ; if only\n    }\nEndEvent\n');
+        const split = path.join(scripts, 'SplitScript.psc');
+        fs.writeFileSync(split, 'Scriptname SplitScript extends ObjectReference\nEvent OnActivate(ObjectReference akActionRef)\n    If akActionRef\n' +
+            '    else if akActionRef == None\n    EndIf\n    While False\n    EndWhile\nEndEvent\n\nFunction Give()\n    int i = 0\n' +
+            '    While i < 3\n        i += 1\nEndFunction\n\nEvent OnInit()\n');
+        const hints = papyrusHints([
+            `${file}:10:1: Parser error: unexpected \`endevent\`, expecting \`elseif\``,
+            `${file}:2:7: Checker error: undefined type: \`const\``,
+            `${file}:3:9: Checker error: undefined type: \`Gold001\``,
+            `${file}:8:34: Checker error: undefined type: \`Gold001\``,
+            `${split}:8:1: Parser error: unexpected \`endevent\`, expecting \`endif\``,
+            `${split}:14:1: Parser error: unexpected \`endfunction\`, expecting \`endwhile\``,
+            `${split}:17:1: Parser error: unexpected end of file`
+        ], scripts, vanilla);
+        const unclosedIf = 'line 10 of GoldLeverScript.psc, `EndEvent`: the If on line 6, `if (akActionRef == Game.GetPlayer())`, is never ' +
+            'closed — Papyrus ends an If with `EndIf` on a line of its own; Papyrus has no braces `{ }`: a block ends with its End word';
+        expect(hints).toEqual([
+            unclosedIf,
+            'line 2 of GoldLeverScript.psc, `const GOLD_GRANT = 100`: Papyrus has no `const` — a value of the script\'s own is a variable, ' +
+            'its type first: `Int GOLD_GRANT = 100`',
+            expect.stringMatching(/^line 3 of GoldLeverScript.psc, `Gold001 Property Gold001 Auto`: Gold001 is a record's name, no type — a record a script uses is a property, declared at its top — `MiscObject Property Gold001 Auto`/),
+            'line 8 of SplitScript.psc, `EndEvent`: the If on line 3, `If akActionRef`, is never closed — Papyrus ends an If with `EndIf` ' +
+            'on a line of its own; `else if` on line 4 opens a second If: Papyrus writes it as one word, `ElseIf`',
+            'line 14 of SplitScript.psc, `EndFunction`: the While on line 12, `While i < 3`, is never closed — Papyrus ends a While with ' +
+            '`EndWhile` on a line of its own',
+            'the end of SplitScript.psc: the Event on line 16, `Event OnInit()`, is never closed — Papyrus ends an Event with ' +
+            '`EndEvent` on a line of its own'
+        ]);
+        // The Creation Kit's words for an If left open.
+        expect(papyrusHints([`GoldLeverScript.psc(10,0): mismatched input 'EndEvent' expecting ENDIF`], scripts, vanilla)).toEqual([unclosedIf]);
+    });
+
     it('adds nothing for an error the sources do not explain', () => {
         const { scripts, vanilla } = folders();
         expect(papyrusHints(['C:\\p\\scripts\\X.psc(1,0): mismatched input', 'Compilation failed'], scripts, vanilla)).toEqual([]);

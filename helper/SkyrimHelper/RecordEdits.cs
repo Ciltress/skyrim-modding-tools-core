@@ -1349,9 +1349,22 @@ public static class RecordEdits
         return text[..start] + rendered + text[end..];
     }
 
-    /// <summary>A field's lines — its key's line and every line of its value — written anew.</summary>
-    private static string ReplaceField(string text, YamlScalarNode key, YamlNode value, List<string> lines) =>
-        ReplaceLines(text, Line(key.Start), FieldEnd(text, key, value), lines);
+    /// <summary>
+    /// A field's lines — its key's line and every line of its value — written anew. The first field of a list's item shares its
+    /// line with the item's dash, `- Text: OK`, and the dash stays before it: written from the key's column, the line lost it,
+    /// the list became a mapping, and the next call was told "MenuButtons has 0 item(s)" (eval round 158's message+detailed #3,
+    /// setting MenuButtons[0].Text).
+    /// </summary>
+    private static string ReplaceField(string text, YamlScalarNode key, YamlNode value, List<string> lines)
+    {
+        var first = Line(key.Start);
+        var line = text.Split('\n')[first];
+        var column = Column(key);
+        if (lines.Count > 0 && column <= line.Length && line[..column].Trim().Length > 0
+            && lines[0].Length >= column && lines[0][..column].Trim().Length == 0)
+            lines = [line[..column] + lines[0][column..], .. lines.Skip(1)];
+        return ReplaceLines(text, first, FieldEnd(text, key, value), lines);
+    }
 
     /// <summary>The last line of a field: its key's, for a value written empty — `Level:` — whose mark may sit on the next line.</summary>
     private static int FieldEnd(string text, YamlScalarNode key, YamlNode value) =>

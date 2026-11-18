@@ -163,6 +163,34 @@ function scriptFile(file: string, scriptsDir: string): string {
     return path.isAbsolute(file) ? file : path.join(scriptsDir, path.basename(file));
 }
 
+/** A block a script's line opens, and the word that closes it: `End` and its kind. */
+interface OpenBlock {
+    kind: 'If' | 'While' | 'Event' | 'Function' | 'State';
+    line: number;
+    text: string;
+}
+
+/** The blocks still open before a line of a script — If, While, Event, Function, State — the innermost last. */
+function openBlocks(source: string, before: number): OpenBlock[] {
+    const open: OpenBlock[] = [];
+    const lines = source.split(/\r?\n/);
+    for (let i = 0; i < Math.min(before - 1, lines.length); i++) {
+        const text = lines[i].replace(/;.*$/, '').trim();
+        const ends = /^End(If|While|Event|Function|State)\b/i.exec(text)?.[1];
+        if (ends) {
+            const kind = `${ends[0].toUpperCase()}${ends.slice(1).toLowerCase()}`;
+            const at = open.map(block => block.kind as string).lastIndexOf(kind);
+            if (at >= 0) open.splice(at);
+            continue;
+        }
+        // `else if` is an Else and an If inside it, which its one EndIf leaves open.
+        const opens = /^(?:Else\s+)?(If|While)\b/i.exec(text)?.[1] ?? /^(?:Auto\s+)?(State)\b/i.exec(text)?.[1]
+            ?? (/\bnative\b/i.test(text) ? undefined : /^(?:\w+(?:\[\])?\s+)?(Event|Function)\b/i.exec(text)?.[1]);
+        if (opens) open.push({ kind: `${opens[0].toUpperCase()}${opens.slice(1).toLowerCase()}` as OpenBlock['kind'], line: i + 1, text });
+    }
+    return open;
+}
+
 /** How a record a script uses is declared and given to it, said where a script wrote one otherwise. */
 const PROPERTY_FILLED = 'a record a script uses is a property, declared at its top — `MiscObject Property Gold001 Auto`, the record\'s type ' +
     'first (the game\'s gold, Gold001, is a MiscObject) — and given to it by the record the script is attached to, in its ' +
@@ -205,6 +233,36 @@ function writingHint(problem: string, scriptsDir: string, vanilla: string): stri
         const extended = !parent || /^Activator$/i.test(parent) ? 'ObjectReference' : parent;
         return `${where}: a script's first line is its ScriptName and what it extends, on one line — \`ScriptName ${declared} extends ${extended}\`` +
             (parent && extended !== parent ? ` (a script on a thing placed in a cell — a lever, a door, a chest — extends ObjectReference, whose event OnActivate is, not ${parent})` : '');
+    }
+    // A block left open: russo-2025's "unexpected `endevent`, expecting `elseif`", the Creation Kit's "expecting ENDIF". Eval round
+    // 158's activator+detailed #1 wrote its `if` with braces and no EndIf, 3 builds told only that.
+    const expected = /expecting `?(elseif|endif|endwhile|endevent|endfunction|endstate)\b|missing (endif|endwhile|endevent|endfunction|endstate)\b/i.exec(message);
+    if (expected || /unexpected end of file|invalid token: (event|function)\b/i.test(message)) {
+        const word = (expected?.[1] ?? expected?.[2])?.toLowerCase();
+        const kind = word === 'elseif' || word === 'endif' ? 'If' : word ? `${word[3].toUpperCase()}${word.slice(4)}` : undefined;
+        const blocks = openBlocks(source, at.line);
+        const open = kind ? blocks.filter(block => block.kind === kind).at(-1) : blocks.at(-1);
+        if (open) {
+            const lines = source.split(/\r?\n/);
+            const split = open.kind === 'If' ? lines.findIndex((text, i) => i > open.line - 1 && i < at.line - 1 && /^\s*else\s+if\b/i.test(text)) : -1;
+            const braces = lines.some(text => /^\s*[{}]\s*$|\{\s*$/.test(text.replace(/;.*$/, '')));
+            return `${line ? where : `the end of ${name}`}: the ${open.kind} on line ${open.line}, \`${open.text}\`, is never closed — Papyrus ends ` +
+                `${/^[AEIOU]/.test(open.kind) ? 'an' : 'a'} ${open.kind} with \`End${open.kind}\` on a line of its own` +
+                (split >= 0 ? `; \`else if\` on line ${split + 1} opens a second If: Papyrus writes it as one word, \`ElseIf\`` : '') +
+                (braces ? '; Papyrus has no braces `{ }`: a block ends with its End word' : '');
+        }
+    }
+    // A type Papyrus has not: a constant, and a record's name written as its property's type. Eval round 158's activator+detailed #1
+    // wrote `const GOLD_GRANT = 100`, and #3 `Gold001 Property Gold001 Auto`, told "undefined type: `Gold001`".
+    const unknownType = /(?:unknown|undefined) type:?\s*`?(\w+)`?/i.exec(message)?.[1];
+    const constant = unknownType && /^(const|var|let)$/i.test(unknownType) ? /^(?:const|var|let)\s+(\w+)\s*=\s*(.+)$/i.exec(line) : null;
+    if (constant) {
+        const type = /^-?\d+$/.test(constant[2].trim()) ? 'Int' : /^-?\d*\.\d+$/.test(constant[2].trim()) ? 'Float' : /^(true|false)$/i.test(constant[2].trim()) ? 'Bool' : 'String';
+        return `${where}: Papyrus has no \`${unknownType}\` — a value of the script's own is a variable, its type first: \`${type} ${constant[1]} = ${constant[2].trim()}\``;
+    }
+    const typedByName = unknownType ? new RegExp(`^${unknownType}\\s+Property\\s+(\\w+)`, 'i').exec(line) : null;
+    if (unknownType && typedByName && (typedByName[1].toLowerCase() === unknownType.toLowerCase() || /\d/.test(unknownType))) {
+        return `${where}: ${unknownType} is a record's name, no type — ${PROPERTY_FILLED}`;
     }
     const typeWord = /(?:unknown|undefined) type:?\s*`?(integer|int32|int64|long|number|boolean|double|decimal|str|text)\b/i.exec(message)?.[1]?.toLowerCase();
     if (typeWord) {

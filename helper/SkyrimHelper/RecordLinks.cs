@@ -750,9 +750,15 @@ public static class RecordLinks
         // The fields of the level above written here, named in one problem with what this part holds: told
         // "move it up" eight times, field by field, a model moved them all and back, build after build (round 13).
         var movedUp = new List<string>();
+        var shallow = path.Length > 0 && !type.IsInterface ? ShallowText(type, mapping) : null;
+        if (shallow is { } words)
+            problem($"{path} has no field {string.Join(", ", words.Lines)} — {(words.Lines.Count == 1 ? "it is a line" : "they are the lines")} of " +
+                $"{path}.{words.Text}, a text, written as deep as `{words.Text}:` itself: a text takes two lines indented below `{words.Text}:`, " +
+                $"two spaces deeper than it, `TargetLanguage: English` and `Value: {words.Said ?? "…"}`");
         foreach (var (keyNode, value) in mapping.Children)
         {
             if (keyNode is not YamlScalarNode { Value: { } key } || key == "MutagenObjectType") continue;
+            if (shallow?.Lines.Contains(key) == true) continue;
             // The most derived one, where a class redeclares a property of its base; an interface's own and those it inherits —
             // an armor's WorldModel is one, its Male and Female its getter's, and the lines below them went unread: `File:`
             // written straight under `Male:` built an armor with no male model (refusal probes of 2026-10-31, A02).
@@ -1030,6 +1036,31 @@ public static class RecordLinks
                     (RecordFiles.WhereIn(record, other!) is { } at ? $"{RecordFiles.Article(record.Name)}'s {other} is {at}"
                         : Priced(record, other!, words.Children[new YamlScalarNode(other!)], $"{field}.{other}", deleting) is { } priced ? priced
                         : $"delete `{other}`" + (deleting is null ? "" : $"; one call deletes it and builds again: {deleting($"{field}.{other}", "")}")));
+    }
+
+    /// <summary>
+    /// A text's two lines written as deep as its key — `- Text:`, then `TargetLanguage: English` and `Value: OK` at the item's
+    /// column — read as fields of the part: the text they belong to (the one written empty, or the part's one text), those of
+    /// the two the part has not, and the Value said; null where the part has no such lines, or no one text they can be. Told
+    /// "has no field TargetLanguage (delete it)" and "has no field Value (move it under Data, in each item of Conditions)",
+    /// eval round 158's message+detailed #1, #3 and #5 moved them back and forth until their turns ran out.
+    /// </summary>
+    private static (string Text, List<string> Lines, string? Said)? ShallowText(Type type, YamlMappingNode mapping)
+    {
+        const BindingFlags Public = BindingFlags.Public | BindingFlags.Instance;
+        var lines = mapping.Children.Keys.OfType<YamlScalarNode>().Select(k => k.Value!)
+            .Where(k => k is "TargetLanguage" or "Value" && type.GetProperty(k, Public) is null).ToList();
+        if (lines.Count == 0) return null;
+        var texts = type.GetProperties(Public)
+            .Where(p => typeof(ITranslatedStringGetter).IsAssignableFrom(Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType))
+            .Select(p => p.Name).ToList();
+        var empty = texts.Where(t => mapping.Children.TryGetValue(new YamlScalarNode(t), out var written)
+            && written is YamlScalarNode { Value: null or "" }).ToList();
+        var text = empty is [var one] ? one : texts is [var only] ? only : null;
+        if (text is null) return null;
+        var said = mapping.Children.TryGetValue(new YamlScalarNode("Value"), out var value) && value is YamlScalarNode { Value: { Length: > 0 } words }
+            ? words : null;
+        return (text, lines, said);
     }
 
     /// <summary>What a part of one for each sex holds — an armor's WorldModel an ArmorModel — or null for any other type.</summary>
