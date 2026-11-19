@@ -241,6 +241,31 @@ function writingHint(problem: string, scriptsDir: string, vanilla: string): stri
         return `${where}: a script's first line is its ScriptName and what it extends, on one line — \`ScriptName ${declared} extends ${extended}\`` +
             (parent && extended !== parent ? ` (a script on a thing placed in a cell — a lever, a door, a chest — extends ObjectReference, whose event OnActivate is, not ${parent})` : '');
     }
+    // The ScriptName line written as a field, `Scriptname: GoldLeverEffect`: russo-2025 says "invalid character `:`", and eval round
+    // 161's activator+detailed #4 wrote it again two builds. What it extends is kept where the game has that type.
+    const colon = /^Script\s*name\s*:\s*(\w+)?/i.exec(line);
+    if (colon && /invalid (character|token)|no viable alternative|mismatched|unexpected|missing|expect/i.test(message)) {
+        const declared = colon[1] ?? path.basename(name, path.extname(name));
+        const parent = /\bextends\s*:?\s*(\w+)/i.exec(source)?.[1];
+        const extended = parent && !/^Activator$/i.test(parent) && findCaseInsensitive(vanilla, `${parent}.psc`) ? parent : 'ObjectReference';
+        return `${where}: a script's first line names it with no colon — \`ScriptName ${declared} extends ${extended}\`, its name and what ` +
+            'it extends on one line' +
+            (parent && extended !== parent ? ` (a script on a thing placed in a cell — a lever, a door, a chest — extends ObjectReference, whose event OnActivate is; the game has no type ${parent})` : '');
+    }
+    // A property declared inside an Event or a Function: russo-2025 says "(block statement) invalid token: property". Eval round 161's
+    // activator+detailed #5 put `MiscObject Property Gold001 Auto` into its OnInit in place of a comment, told only that.
+    if (/^\w+(?:\[\])?\s+Property\s+\w+/i.test(line) && /invalid token: property|input 'property'|`property`/i.test(message)) {
+        const outer = openBlocks(source, at.line).find(block => block.kind === 'Event' || block.kind === 'Function');
+        const indented = /^\s/.test(source.split(/\r?\n/)[at.line - 1] ?? '');
+        if (outer && indented) {
+            return `${where}: a property is declared at the script's top, outside every Event and Function, and this line is inside the ` +
+                `${outer.kind} on line ${outer.line}, \`${outer.text}\` — move it up, below the ScriptName line`;
+        }
+        if (outer) {
+            return `${where}: the ${outer.kind} on line ${outer.line}, \`${outer.text}\`, is never closed before it — Papyrus ends ` +
+                `${/^[AEIOU]/.test(outer.kind) ? 'an' : 'a'} ${outer.kind} with \`End${outer.kind}\` on a line of its own, and a property is declared outside it`;
+        }
+    }
     // A property without Auto, which Papyrus reads as one written out in full: its Get and Set functions are to follow, then
     // EndProperty. russo-2025 says "unexpected `event`, expecting `function`" on the line after it, "invalid function name: oninit,
     // expected `get` or `set`" for a function there. Eval round 159's activator+detailed #5 wrote `Int Property Amount`, renamed
@@ -367,6 +392,15 @@ function writingHint(problem: string, scriptsDir: string, vanilla: string): stri
         return `${where}: a message on the screen is \`Debug.Notification("…")\`, Debug's own function, called by its name alone — not on the player`;
     }
     const undefinedName = /variable (\w+) is undefined|undefined identifier `(\w+)`/i.exec(message)?.slice(1).find(Boolean);
+    // Another language's words for no value and the script's own object: eval round 160's message #5 and round 161's
+    // activator+detailed #2 wrote `!= null`, told "null is declared nowhere in the script — a record a script uses is a property".
+    const papyrusWord = /^(null|nil|nullptr|undefined)$/i.test(undefinedName ?? '') ? 'None' : /^this$/i.test(undefinedName ?? '') ? 'Self' : undefined;
+    if (undefinedName && papyrusWord) {
+        const written = line.replace(new RegExp(`\\b${undefinedName}\\b`, 'g'), papyrusWord);
+        return `${where}: Papyrus has no ${undefinedName} — ` +
+            (papyrusWord === 'None' ? 'no value, a record or an object not there, is `None`' : 'the script\'s own object is `Self`') +
+            (written !== line ? `: \`${written}\`` : '');
+    }
     if (undefinedName) {
         return `${where}: ${undefinedName} is declared nowhere in the script — ${PROPERTY_FILLED}; a number of its own is a ` +
             `variable, \`Int ${undefinedName} = 100\``;

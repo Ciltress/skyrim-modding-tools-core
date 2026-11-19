@@ -304,6 +304,40 @@ describe('papyrusHints', () => {
         ]);
     });
 
+    // Eval round 161's activator+detailed #2, #4 and #5, with russo-2025's words.
+    it('names None for null, the ScriptName line written with a colon, and a property declared inside an event', () => {
+        const { scripts, vanilla } = folders();
+        const write = (name: string, text: string) => { fs.writeFileSync(path.join(scripts, `${name}.psc`), text); return path.join(scripts, `${name}.psc`); };
+        const nulled = write('NNull', 'ScriptName NNull extends ObjectReference\n\nEvent OnActivate(ObjectReference akActionRef)\n' +
+            '    Actor player = Game.GetPlayer()\n    if (player != null)\n        this.Disable()\n    EndIf\nEndEvent\n');
+        const colon = write('GoldLeverEffect', 'Scriptname: GoldLeverEffect\nextends Scripter\nclass GoldLeverEffect extends Scripter\n{\n}\n');
+        const quest = write('NQuest', 'ScriptName: NQuest extends Quest\n');
+        const inside = write('NInside', 'ScriptName NInside extends ObjectReference\n\nEvent OnInit()\n    MiscObject Property Gold001 Auto\nEndEvent\n');
+        const unclosed = write('NUnclosed', 'ScriptName NUnclosed extends ObjectReference\n\nEvent OnInit()\n    Debug.Notification("x")\n' +
+            'MiscObject Property Gold001 Auto\n');
+        expect(papyrusHints([
+            `${nulled}:5:19: Checker error: undefined identifier \`null\``,
+            `${nulled}:6:9: Checker error: undefined identifier \`this\``,
+            `${colon}:1:11: Scanner error: invalid character \`:\``,
+            `${quest}:1:11: Scanner error: invalid character \`:\``,
+            `${inside}:4:16: Parser error: (block statement) invalid token: property, Property`,
+            `${unclosed}:5:12: Parser error: (block statement) invalid token: property, Property`
+        ], scripts, vanilla)).toEqual([
+            'line 5 of NNull.psc, `if (player != null)`: Papyrus has no null — no value, a record or an object not there, is `None`: ' +
+            '`if (player != None)`',
+            'line 6 of NNull.psc, `this.Disable()`: Papyrus has no this — the script\'s own object is `Self`: `Self.Disable()`',
+            'line 1 of GoldLeverEffect.psc, `Scriptname: GoldLeverEffect`: a script\'s first line names it with no colon — ' +
+            '`ScriptName GoldLeverEffect extends ObjectReference`, its name and what it extends on one line (a script on a thing placed in a ' +
+            'cell — a lever, a door, a chest — extends ObjectReference, whose event OnActivate is; the game has no type Scripter)',
+            'line 1 of NQuest.psc, `ScriptName: NQuest extends Quest`: a script\'s first line names it with no colon — ' +
+            '`ScriptName NQuest extends Quest`, its name and what it extends on one line',
+            'line 4 of NInside.psc, `MiscObject Property Gold001 Auto`: a property is declared at the script\'s top, outside every Event ' +
+            'and Function, and this line is inside the Event on line 3, `Event OnInit()` — move it up, below the ScriptName line',
+            'line 5 of NUnclosed.psc, `MiscObject Property Gold001 Auto`: the Event on line 3, `Event OnInit()`, is never closed before ' +
+            'it — Papyrus ends an Event with `EndEvent` on a line of its own, and a property is declared outside it'
+        ]);
+    });
+
     it('adds nothing for an error the sources do not explain', () => {
         const { scripts, vanilla } = folders();
         expect(papyrusHints(['C:\\p\\scripts\\X.psc(1,0): mismatched input', 'Compilation failed'], scripts, vanilla)).toEqual([]);

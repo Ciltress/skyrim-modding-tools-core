@@ -12,7 +12,14 @@ namespace SkyrimHelper;
 public static class ScriptLines
 {
     /// <summary>The names a script's own name was written under, in an item of Scripts or beside it.</summary>
-    private static readonly string[] NameKeys = ["Name", "ScriptName", "Scriptname", "Script", "ScriptFile"];
+    internal static readonly string[] NameKeys = ["Name", "ScriptName", "Scriptname", "Script", "ScriptFile"];
+
+    /// <summary>
+    /// The names a script's name was written under in its item of Scripts, beyond those beside Scripts: `- EditorID: GoldLeverEffect`,
+    /// with `Script: GoldLeverEffect` below it, was told "move it: an Activator's EditorID is at the top level" and "delete it" (eval
+    /// round 161's activator+detailed #4).
+    /// </summary>
+    private static readonly string[] ItemNameKeys = [.. NameKeys.Skip(1), "EditorID", "EditorId"];
 
     /// <summary>
     /// The script block of each record file, written anew where a script was named as `Scripts: X`, as a list of names, as
@@ -23,10 +30,17 @@ public static class ScriptLines
     public static List<(string File, string Change)> Attached(string pluginDir)
     {
         var changes = new List<(string File, string Change)>();
-        foreach (var (file, relative, _) in RecordFiles.FlatRecords(pluginDir))
+        foreach (var (file, relative, type) in RecordFiles.FlatRecords(pluginDir))
         {
             var lines = File.ReadAllText(file).Replace("\r\n", "\n").Split('\n').ToList();
             var at = lines.FindIndex(l => Regex.IsMatch(l, @"^VirtualMachineAdapter:[ \t]*$"));
+            var said = new List<string>();
+            var margin = at < 0 ? AtMargin(lines, type, relative) : null;
+            if (margin is not null)
+            {
+                (lines, at) = (margin.Value.Lines, margin.Value.At);
+                said.Add(margin.Value.Said);
+            }
             if (at < 0) continue;
             var count = RecordFiles.BlockLength(lines, at);
             YamlNode? block;
@@ -39,19 +53,18 @@ public static class ScriptLines
             catch (Exception e) when (e is YamlException or InvalidCastException) { continue; }
             if (block is null || RecordEdits.FromYaml(block) is not JsonObject adapter) continue;
 
-            var said = new List<string>();
             // A script named beside Scripts, or in its place: `ScriptName: X` with no Scripts.
             if (adapter["Scripts"] is null && NameKeys.Skip(1).FirstOrDefault(k => adapter[k] is JsonValue) is { } beside)
             {
                 adapter["Scripts"] = adapter[beside]!.ToString();
                 adapter.Remove(beside);
-                said.Add($"`{beside}:` as its script");
+                if (margin is null) said.Add($"`{beside}:` as its script");
             }
             // One name, or a list of names.
             if (adapter["Scripts"] is JsonValue one && one.TryGetValue<string>(out var single))
             {
                 adapter["Scripts"] = new JsonArray(new JsonObject { ["Name"] = single });
-                said.Add($"`Scripts: {single}` as the one script it names, `- Name: {single}`");
+                said.Add(margin is null ? $"`Scripts: {single}` as the one script it names, `- Name: {single}`" : $"its item `- Name: {single}`");
             }
             else if (adapter["Scripts"] is JsonArray listed && listed.Any(s => s is JsonValue))
             {
@@ -59,15 +72,24 @@ public static class ScriptLines
                 said.Add("each script named alone as an item `- Name: <script>`");
             }
             if (adapter["Scripts"] is not JsonArray scripts) continue;
-            // An item's name under another key: Name first, as the build writes it.
+            // An item's name under another key: Name first, as the build writes it. Written under several keys, one name: all of
+            // them one Name. Names that differ: a script's own key taken, as before, an EditorID beside it left to the refusal.
             for (var i = 0; i < scripts.Count; i++)
             {
-                if (scripts[i] is not JsonObject script || script["Name"] is not null
-                    || NameKeys.Skip(1).FirstOrDefault(k => script[k] is JsonValue) is not { } other) continue;
-                var renamed = new JsonObject { ["Name"] = script[other]!.DeepClone() };
-                foreach (var (key, value) in script) if (key != other) renamed[key] = value?.DeepClone();
+                if (scripts[i] is not JsonObject script) continue;
+                var others = ItemNameKeys.Where(k => script[k] is JsonValue).ToList();
+                if (others.Count == 0) continue;
+                var name = script["Name"] is JsonValue written ? written.ToString() : null;
+                var same = others.Select(k => script[k]!.ToString()).Append(name).OfType<string>()
+                    .Distinct(StringComparer.OrdinalIgnoreCase).Count() == 1;
+                List<string> taken = same ? others
+                    : name is null && others.FirstOrDefault(k => !k.StartsWith("EditorI", StringComparison.Ordinal)) is { } own ? [own] : [];
+                if (taken.Count == 0) continue;
+                var renamed = new JsonObject { ["Name"] = (name is not null ? script["Name"] : script[taken[0]])!.DeepClone() };
+                foreach (var (key, value) in script) if (key != "Name" && !taken.Contains(key)) renamed[key] = value?.DeepClone();
                 scripts[i] = renamed;
-                said.Add($"`{other}:` of its script as `Name:`");
+                var keys = string.Join(" and ", taken.Select(k => $"`{k}:`"));
+                said.Add(name is null ? $"{keys} of its script as `Name:`" : $"{keys} of its script, the name its `Name:` has, left out");
             }
             // Properties beside Scripts, of its one script.
             if (adapter["Properties"] is JsonArray properties && scripts is [JsonObject only] && only["Properties"] is null)
@@ -100,6 +122,32 @@ public static class ScriptLines
                     "or ScriptStringProperty and `Data:` for a value — then `Name:`; its Papyrus type is the script's own line" : "")));
         }
         return changes;
+    }
+
+    /// <summary>
+    /// A script named at the margin of a record that attaches scripts — `Script: StrangeLeverScript`, `Scripts:` and its items — with
+    /// the Properties written there beside it, put under a `VirtualMachineAdapter:` line where the first of them was: an Activator's
+    /// `Script:` was told "delete it: an Activator has it nowhere", and eval round 161's activator+detailed #3 and #4 deleted it,
+    /// wrote it back, and built no lever with its script. Not in a record that is a lever written as another kind, which its
+    /// refusal sends into Activators/; null where the record names no script at its margin.
+    /// </summary>
+    private static (List<string> Lines, int At, string Said)? AtMargin(List<string> lines, Type type, string relative)
+    {
+        if (type.GetProperty("VirtualMachineAdapter") is null || RecordFiles.LeverWrittenAs(type, string.Join('\n', lines), relative)) return null;
+        bool Own(string key) => type.GetProperty(key) is not null;
+        var found = new List<(int At, int Count, string Key)>();
+        for (var i = 0; i < lines.Count; i++)
+            if (Regex.Match(lines[i], @"^(?<key>\w+)[ \t]*:") is { Success: true } m && !Own(m.Groups["key"].Value)
+                && (m.Groups["key"].Value == "Scripts" || NameKeys.Skip(1).Contains(m.Groups["key"].Value) || m.Groups["key"].Value == "Properties"))
+                found.Add((i, RecordFiles.BlockLength(lines, i), m.Groups["key"].Value));
+        if (!found.Any(f => f.Key != "Properties")) return null;
+        var block = new List<string> { "VirtualMachineAdapter:" };
+        foreach (var (start, count, _) in found) block.AddRange(lines.Skip(start).Take(count).Select(l => l.Trim().Length == 0 ? l : $"  {l}"));
+        var moved = lines.ToList();
+        foreach (var (start, count, _) in Enumerable.Reverse(found)) moved.RemoveRange(start, count);
+        var at = found[0].At;
+        moved.InsertRange(at, block);
+        return (moved, at, $"{string.Join(", ", found.Select(f => $"`{f.Key}:`"))} at the record's margin under `VirtualMachineAdapter:`");
     }
 
     /// <summary>The kinds of a script's property, as Mutagen names them.</summary>

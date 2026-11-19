@@ -670,6 +670,13 @@ public static class RecordFiles
                     // The cell the line named, in the readRecord call: `placed: WhiterunBreezehome`.
                     : hint == PlacedThere && value is { Length: > 0 } cell && Regex.IsMatch(cell, @"^[A-Za-z][A-Za-z0-9_]*$")
                         ? hint.Replace("<the cell's editor ID>", cell) : hint;
+        // A script named as the record's own field, where the build does not attach it itself — editRecord's path `Script` on a
+        // Quest was told only "a Quest has no field Script — its fields: …" (eval round 161's storymanager #2).
+        if (key == "Scripts" || ScriptLines.NameKeys.Skip(1).Contains(key, StringComparer.OrdinalIgnoreCase))
+            if (type.GetProperty("VirtualMachineAdapter") is not null)
+                return "a script is attached by its name as an item of Scripts under VirtualMachineAdapter — set the path " +
+                    $"VirtualMachineAdapter.Scripts to the list of it, [{{\"Name\": \"{(value is { Length: > 0 } ? value : "<the script>")}\"}}], " +
+                    $"written `VirtualMachineAdapter:`, `Scripts:`, `- Name: {(value is { Length: > 0 } ? value : "<the script>")}` in its file";
         if (FlagHint(type, key) is { } flag) return flag;
         if (known.FirstOrDefault(k => k.Equals(key + "s", StringComparison.OrdinalIgnoreCase) || k.Equals(key + "es", StringComparison.OrdinalIgnoreCase)
                 || key.EndsWith('s') && k.Equals(key[..^1], StringComparison.OrdinalIgnoreCase)) is { } number)
@@ -1098,6 +1105,10 @@ public static class RecordFiles
     /// </summary>
     private static readonly HashSet<string> LeverKinds = new(["MiscItem", "ObjectEffect", "Spell", "MagicEffect", "Weapon", "Book", "Key", "Scroll",
         "Ingestible", "Ingredient", "Armor"], StringComparer.Ordinal);
+
+    /// <summary>A record that is a lever written as another kind, with a script named at its margin: its refusal sends it into Activators/.</summary>
+    internal static bool LeverWrittenAs(Type type, string text, string relative) =>
+        LeverKinds.Contains(type.Name) && LeverLike(type, text, relative, ["Script"]);
 
     private static bool LeverLike(Type type, string text, string relative, IEnumerable<string> keys) =>
         MadeNotes.UsedWhereItStands.IsMatch($"{Identity(text).EditorId} {BlockOf(text, "Name")} {Path.GetFileNameWithoutExtension(relative)}")
