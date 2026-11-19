@@ -1,5 +1,4 @@
 {
-  "0": "Helper Files and Imports (2) (0)",
   "1": "SkyrimHelper",
   "2": "SkyrimBackend.ts",
   "3": "RecordFiles",
@@ -17,7 +16,6 @@
   "20": "backend/index.ts",
   "21": "MisplacedFields",
   "22": "buildProject refusals: field(s) cannot be built as written",
-  "23": "AGENTS.md (guidance for agents working on the core)",
   "24": "guides.test.ts",
   "25": "readPapyrusLog (what the game's scripts did wrong)",
   "26": "editRecord: a record changed field by field",
@@ -34,12 +32,10 @@
   "43": "generateNavmesh: a cell's navmesh made from the collision of what stands in it (outdoors the ground), edges linked with neighbours",
   "44": "skills.ts",
   "45": "KindParts.Notes",
-  "49": "papyrusReport.ts",
   "51": "Section 4: Golden paths, copy-pasteable workflows",
   "52": "SkyrimBackend",
   "54": "Conflicts",
   "57": "skyrim_cell.py",
-  "63": "skyrimBackend.test.ts",
   "64": "mo2Proton.test.ts",
   "67": "Magic workflow (look up SPEL, MGEF, ENCH, SCRL, SHOU, BOOK; resolve a spell's MGEFs; script effects into scripts/; done when something gives it to the player; diagnose with allVersions on spell and effects)",
   "69": "KindParts",
@@ -51,8 +47,6 @@
   "82": "compilerOptions",
   "86": "skyrim-modding-perks/REFERENCE.md",
   "87": "BaseHandler",
-  "89": "BuiltRecords.Parts",
   "92": "SkyrimHelper.csproj",
-  "95": "blender-mcp-no-stdin.py",
-  "100": "A new interior cell and the door to it"
+  "95": "blender-mcp-no-stdin.py"
 }
