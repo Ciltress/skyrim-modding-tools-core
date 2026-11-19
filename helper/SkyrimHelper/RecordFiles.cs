@@ -1109,7 +1109,7 @@ public static class RecordFiles
     /// an Activator's script or activation is written with (the MiscItem Synonyms), or a list of it names Activator. Not a script
     /// alone: a quest's misc item has one.
     /// </summary>
-    private static readonly HashSet<string> LeverKinds = new(["MiscItem", "ObjectEffect", "Spell", "MagicEffect", "Weapon", "Book", "Key", "Scroll",
+    private static readonly HashSet<string> LeverKinds = new(["MiscItem", "Container", "ObjectEffect", "Spell", "MagicEffect", "Weapon", "Book", "Key", "Scroll",
         "Ingestible", "Ingredient", "Armor"], StringComparer.Ordinal);
 
     /// <summary>A record that is a lever written as another kind, with a script named at its margin: its refusal sends it into Activators/.</summary>
@@ -2959,7 +2959,9 @@ public static class RecordFiles
 
     private static string CodeWritten(string[] lines, int length)
     {
-        var found = lines.Select((line, at) => (At: at, Match: Regex.Match(line.TrimEnd('\r'), @"^[ \t]*(?:-[ \t]+)?(?<key>[A-Za-z]\w*):[ \t]*(?<value>[^\s#'""]+)[ \t]*(?:#.*)?$")))
+        // A value with spaces too: eval round 163's storymanager #5 wrote its script's event line, `Event: OnStoryChangeLocation(ObjectReference
+        // akActor, …)`, 94 letters, and was refused four builds with no line named.
+        var found = lines.Select((line, at) => (At: at, Match: Regex.Match(line.TrimEnd('\r'), @"^[ \t]*(?:-[ \t]+)?(?<key>[A-Za-z]\w*):[ \t]*(?<value>[^\s#'""](?:[^#'""\r\n]*[^\s#'""])?)[ \t]*(?:#.*)?$")))
             .Where(l => l.Match.Success && l.Match.Groups["value"].Value.Length == length && CodeFields.Value.Contains(l.Match.Groups["key"].Value))
             .Take(3).ToList();
         if (found.Count == 0) return "";
@@ -2970,6 +2972,31 @@ public static class RecordFiles
                 ? ": a quest's `Event:` is its story manager event's code — CLOC for a change of location — never a node's or a quest's " +
                   "editor ID; the node names its quests itself"
                 : "") + ".";
+    }
+
+    /// <summary>The story manager's code of each event a quest's script is sent, by the event's name after `OnStory`.</summary>
+    private static readonly Dictionary<string, string> StoryEventCodes = new(StringComparer.OrdinalIgnoreCase) { ["ChangeLocation"] = "CLOC" };
+
+    /// <summary>
+    /// A quest's `Event:` written as its script's event — `Event: OnStoryChangeLocation(ObjectReference akActor, …)` — as the event's code,
+    /// `Event: CLOC`: the line can mean that alone. Eval round 163's storymanager #5 was refused for it four builds, "Type String not expected
+    /// length: 94 != 4", and answered unbuilt.
+    /// </summary>
+    public static List<(string File, string Change)> EventCodes(string pluginDir)
+    {
+        var changes = new List<(string File, string Change)>();
+        foreach (var (file, relative, type) in FlatRecords(pluginDir))
+        {
+            if (type != typeof(Quest)) continue;
+            var text = File.ReadAllText(file);
+            var line = Regex.Match(text, @"^Event:[ \t]*(?<written>OnStory(?<event>[A-Za-z]+)[^#\r\n]*?)[ \t]*(?<comment>#[^\r\n]*)?(?=\r?$)", RegexOptions.Multiline);
+            if (!line.Success || !StoryEventCodes.TryGetValue(line.Groups["event"].Value, out var code)) continue;
+            File.WriteAllText(file, text[..line.Index] + $"Event: {code}" + text[(line.Index + line.Length)..]);
+            changes.Add((relative, $"wrote `Event: {code}` for `Event: {line.Groups["written"].Value}` — a quest's Event is the code of the story " +
+                $"manager event it is started on, four letters, {code} for OnStory{line.Groups["event"].Value}; that event's line, with its " +
+                "parameters, is its script's own"));
+        }
+        return changes;
     }
 
     /// <summary>

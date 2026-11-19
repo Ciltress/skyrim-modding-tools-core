@@ -775,6 +775,7 @@ public sealed partial class Session : IDisposable
         // A list's items written as names, where each takes the name as its link's line; then a node's Event, into the quests it names.
         corrected.AddRange(MisplacedFields.NamesAsItems(dir));
         corrected.AddRange(MisplacedFields.EventToQuests(dir));
+        corrected.AddRange(RecordFiles.EventCodes(dir));
         // Before the moves: what is left of another record type may break the reader they use.
         corrected.AddRange(RecordFiles.DropOtherTypesFields(dir));
         // A part's field written among its Flags, and a flag written as a field, before the moves read the part's fields.
@@ -953,7 +954,8 @@ public sealed partial class Session : IDisposable
             .Concat(MadeNotes.NpcItems(mod, lookup, dir)).Concat(MadeNotes.ListEntries(mod, lookup, dir)).Concat(MadeNotes.KeywordsReplaced(mod, lookup, dir)).Concat(MadeNotes.Words(mod, dir))
             .Concat(MadeNotes.Unplayable(mod, dir)).Concat(MadeNotes.LightWorldspace(mod, dir)).Concat(MadeNotes.NotScrolls(mod, dir))
             .Concat(MadeNotes.Unused(mod, lookup, Index, dir)).Concat(MadeNotes.GameNamedInLists(mod, lookup, Index, dir))
-            .Concat(MadeNotes.MiscActivators(mod, dir)).Concat(MadeNotes.Ungiven(mod, lookup, Index, dir))
+            .Concat(MadeNotes.MiscActivators(mod, dir)).Concat(MadeNotes.Levers(mod, dir)).Concat(MadeNotes.WordlessMessages(mod, dir))
+            .Concat(MadeNotes.Ungiven(mod, lookup, Index, dir))
             .Concat(MadeNotes.GameLights(mod, dir)).Concat(MadeNotes.EmptyEffects(mod, dir)).Concat(MadeNotes.LightColors(mod, dir))
             .Concat(MadeNotes.EffectsByFormId(mod, Index, dir))
             .Concat(CellContents.PlacedNotes(mod, Contexts, Index, dir)).Concat(DialogContents.Notes(mod, lookup, Index, dir)).Concat(DialogContents.StoryNotes(mod, lookup, dir)).Concat(GameSettings.Notes(mod, Index, dir))

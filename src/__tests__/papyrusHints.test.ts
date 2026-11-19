@@ -30,6 +30,9 @@ function folders(): { scripts: string; vanilla: string } {
 }
 
 describe('papyrusHints', () => {
+    const byUse = '`Message` for a message box, `MiscObject` for gold (`MiscObject Property Gold001 Auto`), `ObjectReference` for a ' +
+        'thing placed in a cell, `Actor` for an NPC placed, `Quest` for a quest';
+
     it('quotes the parent\'s declaration of an event written with other parameters', () => {
         const { scripts, vanilla } = folders();
         const hints = papyrusHints(['C:\\p\\scripts\\ArrivalScript.psc(3,0): the parameter types of function onstorychangelocation in the empty ' +
@@ -368,6 +371,65 @@ describe('papyrusHints', () => {
             'own function, called by its name alone — not on the player',
             'line 6 of CStop.psc, `Stop()`: Stop is a Quest\'s function, which ends a quest — this script extends ObjectReference, and ' +
             'its event ends by itself at its End line: delete this line'
+        ]);
+    });
+
+    // Eval round 163's activator #3 and message+detailed #5, with russo-2025's words.
+    it('names a property line with a word too many, and Object as a property\'s type', () => {
+        const { scripts, vanilla } = folders();
+        const write = (name: string, text: string) => { fs.writeFileSync(path.join(scripts, `${name}.psc`), text); return path.join(scripts, `${name}.psc`); };
+        const crowded = write('LeverScript', 'ScriptName LeverScript extends ObjectReference\n\nMiscObjectProperty GoldItem Property Gold001 Auto\n');
+        const vague = write('WelcomeMessageScript', 'ScriptName WelcomeMessageScript extends Quest\n\nObject Property WelcomeMessageBox Auto\n\n' +
+            'Event OnInit()\n    WelcomeMessageBox.Show()\nEndEvent\n');
+        expect(papyrusHints([
+            `${crowded}:3:29: Checker error: undefined type: \`GoldItem\``,
+            `${vague}:3:8: Checker error: undefined type: \`Object\``
+        ], scripts, vanilla)).toEqual([
+            'line 3 of LeverScript.psc, `MiscObjectProperty GoldItem Property Gold001 Auto`: a property\'s line is its type, the word Property ' +
+            'and its name, then Auto — `MiscObject Property Gold001 Auto`; GoldItem stands where none of them goes',
+            'line 3 of WelcomeMessageScript.psc, `Object Property WelcomeMessageBox Auto`: Papyrus has no type Object — a property is typed as ' +
+            'what it holds: `Message Property WelcomeMessageBox Auto` for this one; ' + byUse
+        ]);
+    });
+
+    // Eval round 163's activator #5 and activator+detailed #1, #3 and #5, with russo-2025's words.
+    it('names a type the game has not, a property\'s type after its name, and what a script reads off a reference', () => {
+        const { scripts, vanilla } = folders();
+        const write = (name: string, body: string) => {
+            fs.writeFileSync(path.join(scripts, `${name}.psc`), `ScriptName ${name} extends ObjectReference\n\n${body}`);
+            return path.join(scripts, `${name}.psc`);
+        };
+        const glued = write('TGlued', 'ItemProperty Gold001 Auto\n');
+        const item = write('TItem', 'Item Property Gold001 Auto\n');
+        const after = write('TAfter', 'Property GoldItem MiscObject Auto\n');
+        const reads = write('TReads', 'MiscObject Property Gold001 Auto\n\nEvent OnActivate(ObjectReference akActionRef)\n' +
+            '    Game.GetPlayer().AddItem(Gold001, Gold001.Value)\n    if (akActionRef.IsPlayer())\n        akActionRef.Game.GetPlayer()\n' +
+            '        Actor player = akActionRef.GetActor()\n    endif\nEndEvent\n');
+        expect(papyrusHints([
+            `${glued}:3:1: Checker error: undefined type: \`ItemProperty\``,
+            `${item}:3:1: Checker error: undefined type: \`Item\``,
+            `${after}:3:19: Parser error: unexpected name \`MiscObject\`, expecting \`function\``,
+            `${reads}:6:47: Checker error: field or property \`Value\` not found`,
+            `${reads}:7:21: Checker error: undefined function \`IsPlayer\``,
+            `${reads}:8:25: Checker error: field or property \`Game\` not found`,
+            `${reads}:9:36: Checker error: undefined function \`GetActor\``
+        ], scripts, vanilla)).toEqual([
+            'line 3 of TGlued.psc, `ItemProperty Gold001 Auto`: a property is declared with its type and the word Property apart, and the game ' +
+            'has no type Item — a property is typed as what it holds: `MiscObject Property Gold001 Auto` for this one; ' + byUse,
+            'line 3 of TItem.psc, `Item Property Gold001 Auto`: Papyrus has no type Item — a property is typed as what it holds: ' +
+            '`MiscObject Property Gold001 Auto` for this one; ' + byUse,
+            'line 3 of TAfter.psc, `Property GoldItem MiscObject Auto`: a property\'s line is its type first, then the word Property and its ' +
+            'name — `MiscObject Property GoldItem Auto`',
+            'line 6 of TReads.psc, `Game.GetPlayer().AddItem(Gold001, Gold001.Value)`: Papyrus reads no Value of Gold001 — an amount of the ' +
+            'script\'s own is a number, `Game.GetPlayer().AddItem(Gold001, 100)` for 100, or an Int property of its own; what an item is ' +
+            'worth is `Gold001.GetGoldValue()`',
+            'line 7 of TReads.psc, `if (akActionRef.IsPlayer())`: Papyrus has no IsPlayer — whether the player did it is the reference ' +
+            'compared with the player: `if (akActionRef == Game.GetPlayer())`',
+            'line 8 of TReads.psc, `akActionRef.Game.GetPlayer()`: Game is a script of its own, its functions called by its name alone — ' +
+            '`Game.GetPlayer()`, not on akActionRef',
+            'line 9 of TReads.psc, `Actor player = akActionRef.GetActor()`: Papyrus has no GetActor on akActionRef — akActionRef is the one ' +
+            'who activated it, an ObjectReference; as an Actor it is `akActionRef as Actor`, as in `Actor player = akActionRef as Actor`, and ' +
+            'the player is `Game.GetPlayer()`'
         ]);
     });
 

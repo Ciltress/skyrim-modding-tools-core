@@ -523,10 +523,17 @@ public static class RecordEdits
     // An interface no class of its assembly takes as it is — IGenderedItem<ArmorModel>, whose GenderedItem<> is open — is its own kind.
     private static IEnumerable<Type> Kinds(Type type)
     {
-        if (!type.IsAbstract) return [type];
-        var kinds = type.Assembly.GetTypes().Where(t => !t.IsAbstract && !t.IsInterface && type.IsAssignableFrom(t)).ToList();
+        if (!Kinded(type)) return [type];
+        var kinds = type.Assembly.GetTypes().Where(t => !t.IsAbstract && !t.IsInterface && t != type && type.IsAssignableFrom(t)).ToList();
         return kinds.Count > 0 ? kinds : [type];
     }
+
+    /// <summary>
+    /// A part of several kinds, its `MutagenObjectType:` naming the one written: an abstract part, and a script's property, whose class
+    /// is no abstract one — `Properties[0].Object` was refused, "its fields: Flags, Name", with a hint for a quest's conditions, where the
+    /// property was a ScriptObjectProperty (eval round 163's storymanager #5 and message+detailed #5).
+    /// </summary>
+    private static bool Kinded(Type type) => type.IsAbstract || type == typeof(Mutagen.Bethesda.Skyrim.ScriptProperty);
 
     private static IEnumerable<string> Fields(Type type) =>
         Kinds(type).SelectMany(t => t.GetProperties(Public)).Where(p => p.CanWrite).Select(p => p.Name).Distinct().Order(StringComparer.Ordinal);
@@ -889,7 +896,7 @@ public static class RecordEdits
             var fields = (JsonObject)FromYaml(mapping)!;
             var keys = fields.Select(f => f.Key).Where(k => k != "MutagenObjectType").ToList();
             if (keys.Count == 0 || keys.Any(k => Property(part, k) is null)) return null;
-            if (part.IsAbstract && !fields.ContainsKey("MutagenObjectType")
+            if (Kinded(part) && !fields.ContainsKey("MutagenObjectType")
                 && Kinds(part).Where(k => !k.IsInterface && keys.All(key => k.GetProperty(key, Public) is not null)).ToList() is [var kind])
                 fields["MutagenObjectType"] = kind.Name;
             return new JsonObject(KindFirst(fields).Select(f => KeyValuePair.Create(f.Key, f.Value?.DeepClone()))).ToJsonString();
@@ -1073,7 +1080,7 @@ public static class RecordEdits
     /// </summary>
     private static string Rekinded(string text, List<Step> part, Type group, List<string> changes)
     {
-        if (!group.IsAbstract || At(text, part) is not YamlMappingNode there || Field(there, "MutagenObjectType") is not { } named
+        if (!Kinded(group) || At(text, part) is not YamlMappingNode there || Field(there, "MutagenObjectType") is not { } named
             || RecordFiles.KindOf(group, named) is not { } kind)
             return text;
         var lacking = there.Children.Keys.OfType<YamlScalarNode>().Select(k => k.Value ?? "")
@@ -1128,11 +1135,22 @@ public static class RecordEdits
                 // A field the part's written kind has not, refused before writing: an NPC's Level, a PcLevelMult, took
                 // `Configuration.Level.Level` — an NpcLevel's field, which a level of any kind is checked for (eval round 112's
                 // npc+detailed #3).
-                if (i > 0 && types[i - 1].IsAbstract && Field(mapping, "MutagenObjectType") is { } named
+                if (i > 0 && Kinded(types[i - 1]) && Field(mapping, "MutagenObjectType") is { } named
                     && RecordFiles.KindOf(types[i - 1], named) is { } kind && kind.GetProperty(step.Key, Public) is null)
                     throw new HelperException("badRequest", $"{path}: {Upto(steps, i)} is {RecordFiles.Article(kind.Name)}, which has no field " +
                         $"{step.Key}{RecordFiles.HintFor(kind, step.Key).Replace(RecordFiles.NpcLevel, NpcLevel)} — its fields: " +
                         $"{string.Join(", ", Fields(kind))}. Nothing was written.");
+                // One written with no kind, the field one of its kinds': set whole, its kind first, as the reader takes it.
+                if (i > 0 && Kinded(types[i - 1]) && Field(mapping, "MutagenObjectType") is null && types[i - 1].GetProperty(step.Key, Public) is null
+                    && Kinds(types[i - 1]).Where(k => k.GetProperty(step.Key, Public) is not null).ToList() is { Count: > 0 } having)
+                {
+                    var example = new JsonObject { ["MutagenObjectType"] = having[0].Name };
+                    if (Field(mapping, "Name") is { } ownName) example["Name"] = ownName;
+                    example[step.Key] = value?.DeepClone();
+                    throw new HelperException("badRequest", $"{path}: {Upto(steps, i)} is written with no `MutagenObjectType:`, the kind its fields " +
+                        $"follow — {step.Key} is a field of {string.Join(" or ", having.Select(k => k.Name))}: set it whole, its kind first, " +
+                        $"{{\"path\": \"{Upto(steps, i)}\", \"value\": {example.ToJsonString()}}}. Nothing was written.");
+                }
                 var whole = Nest(steps.Skip(i).ToList(), types.Skip(i).ToList(), value);
                 // A part written in braces on its line — `Level: {MutagenObjectType: PcLevelMult, LevelMult: 1}`, as the build
                 // writes a level — takes a new field with its fields written as lines: below the braces, the new line left YAML
@@ -1324,7 +1342,7 @@ public static class RecordEdits
         {
             var part = new JsonObject();
             // A part of several kinds names the one whose field this is: an NPC's Level with Level is an NpcLevel.
-            if (types[i - 1].IsAbstract && Kinds(types[i - 1]).Where(k => !k.IsInterface && k.GetProperty(steps[i].Key, Public) is not null).ToList() is [var kind])
+            if (Kinded(types[i - 1]) && Kinds(types[i - 1]).Where(k => !k.IsInterface && k.GetProperty(steps[i].Key, Public) is not null).ToList() is [var kind])
                 part["MutagenObjectType"] = kind.Name;
             part[steps[i].Key] = inner;
             inner = part;

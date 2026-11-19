@@ -198,6 +198,20 @@ function openBlocks(source: string, before: number): OpenBlock[] {
     return open;
 }
 
+/** Words a model types a property with that are no type of the game's: `Item Property Gold001 Auto`, `Object Property …`. */
+const VAGUE_TYPE = /^(Object|Record|Item|Items|Reference|Ref|Thing|Entity|Any|Var|Gold|Coin|Coins|Money)$/i;
+
+/** The types a property most often holds, said where it was typed otherwise. */
+const TYPES_BY_USE = '`Message` for a message box, `MiscObject` for gold (`MiscObject Property Gold001 Auto`), `ObjectReference` for a thing ' +
+    'placed in a cell, `Actor` for an NPC placed, `Quest` for a quest';
+
+/** The type a property's name and use say it holds, where they say one: gold a MiscObject, a message shown a Message. */
+function heldType(name: string, source: string): string | undefined {
+    if (/gold|coin|septim/i.test(name)) return 'MiscObject';
+    if (new RegExp(`\\b${name}\\s*\\.\\s*Show\\s*\\(`, 'i').test(source) || /message|msg/i.test(name)) return 'Message';
+    return undefined;
+}
+
 /** How a record a script uses is declared and given to it, said where a script wrote one otherwise. */
 const PROPERTY_FILLED = 'a record a script uses is a property, declared at its top — `MiscObject Property Gold001 Auto`, the record\'s type ' +
     'first (the game\'s gold, Gold001, is a MiscObject) — and given to it by the record the script is attached to, in its ' +
@@ -336,6 +350,20 @@ function writingHint(problem: string, scriptsDir: string, vanilla: string): stri
     if (unknownType && typedByName && (typedByName[1].toLowerCase() === unknownType.toLowerCase() || /\d/.test(unknownType))) {
         return `${where}: ${unknownType} is a record's name, no type — ${PROPERTY_FILLED}`;
     }
+    // A property's line with a word too many: eval round 163's activator #3 wrote `MiscObjectProperty GoldItem Property Gold001 Auto`, told
+    // "undefined type: `GoldItem`" twice. Its type is the first word, its name the word after the last Property.
+    const crowded = unknownType ? /^(\w+?)(?:Property)?\s+(?:\w+\s+)+?Property\s+(\w+)(?:\s*=\s*[^;]+?)?(?:\s+Auto(?:ReadOnly)?\b.*)?$/i.exec(line) : null;
+    if (unknownType && crowded && new RegExp(`\\b${unknownType}\\s+Property\\b`, 'i').test(line) && crowded[1].toLowerCase() !== unknownType.toLowerCase()) {
+        return `${where}: a property's line is its type, the word Property and its name, then Auto — \`${crowded[1]} Property ${crowded[2]} Auto\`; ` +
+            `${unknownType} stands where none of them goes`;
+    }
+    // `Object Property WelcomeMessageBox Auto`: told "undefined type: `Object`", round 163's message+detailed #5 answered unbuilt.
+    const vague = unknownType && VAGUE_TYPE.test(unknownType) ? new RegExp(`^${unknownType}\\s+Property\\s+(\\w+)`, 'i').exec(line) : null;
+    if (vague) {
+        const held = heldType(vague[1], source);
+        return `${where}: Papyrus has no type ${unknownType} — a property is typed as what it holds` +
+            (held ? `: \`${held} Property ${vague[1]} Auto\` for this one; ` : ': ') + TYPES_BY_USE;
+    }
     const typeWord = /(?:unknown|undefined) type:?\s*`?(integer|int32|int64|long|number|boolean|double|decimal|str|text)\b/i.exec(message)?.[1]?.toLowerCase();
     if (typeWord) {
         const papyrus = /^(integer|int32|int64|long|number)$/.test(typeWord) ? 'Int' : typeWord === 'boolean' ? 'Bool' : /^(double|decimal)$/.test(typeWord) ? 'Float' : 'String';
@@ -359,9 +387,21 @@ function writingHint(problem: string, scriptsDir: string, vanilla: string): stri
         // game has no type MessageObject, but Message.
         const plain = glued[1].replace(/Object$/i, '');
         const type = plain !== glued[1] && !findCaseInsensitive(vanilla, `${glued[1]}.psc`) && findCaseInsensitive(vanilla, `${plain}.psc`) ? plain : glued[1];
+        // Eval round 163's activator #5 wrote `ItemProperty Gold001 Auto`, was told `Item Property Gold001 Auto`, wrote it, and was refused
+        // for "undefined type: `Item`": the game has no type Item.
+        if (VAGUE_TYPE.test(type)) {
+            const held = heldType(glued[2], source);
+            return `${where}: a property is declared with its type and the word Property apart, and the game has no type ${type} — a property ` +
+                `is typed as what it holds${held ? `: \`${held} Property ${glued[2]} Auto\` for this one; ` : ': '}${TYPES_BY_USE}`;
+        }
         return `${where}: a property is declared with its type and the word Property apart — \`${type} Property ${glued[2]} Auto\``;
     }
-    const bare = /^Property\s+(\w+)(?:\s+Auto\b.*)?$/i.exec(line);
+    // Its type written after its name: round 163's activator+detailed #5 wrote `Property GoldItem MiscObject Auto`, told only "unexpected
+    // name `MiscObject`, expecting `function`".
+    const bare = /^Property\s+(\w+)(?:\s+(\w+))?(?:\s+Auto\b.*)?$/i.exec(line);
+    if (bare && bare[2] && !/^Auto(ReadOnly)?$/i.test(bare[2])) {
+        return `${where}: a property's line is its type first, then the word Property and its name — \`${bare[2]} Property ${bare[1]} Auto\``;
+    }
     if (bare) {
         return `${where}: ${PROPERTY_FILLED}`;
     }
@@ -404,10 +444,32 @@ function writingHint(problem: string, scriptsDir: string, vanilla: string): stri
         return `${where}: Stop is a Quest's function, which ends a quest — this script extends ${scriptParent}, and its event ends by itself at ` +
             'its End line: delete this line';
     }
+    // Eval round 163's activator+detailed #3 asked `akActionRef.IsPlayer()`, then `akActionRef.GetActor()`.
+    if (madeUp && /^IsPlayer$/i.test(madeUp)) {
+        const asked = line.replace(/(\w+)\s*\.\s*IsPlayer\s*\(\s*\)/i, '$1 == Game.GetPlayer()');
+        return `${where}: Papyrus has no IsPlayer — whether the player did it is the reference compared with the player` +
+            (asked !== line ? `: \`${asked}\`` : ', `akActionRef == Game.GetPlayer()`');
+    }
+    const reference = madeUp && /^Get(Actor|Activator|Player)$/i.test(madeUp) ? /\b(\w+)\s*\.\s*Get(?:Actor|Activator|Player)\s*\(/i.exec(line)?.[1] : undefined;
+    if (reference && !/^Game$/i.test(reference)) {
+        return `${where}: Papyrus has no ${madeUp} on ${reference} — ${reference} is the one who activated it, an ObjectReference; as an Actor it is ` +
+            `\`${reference} as Actor\`, as in \`Actor player = ${reference} as Actor\`, and the player is \`Game.GetPlayer()\``;
+    }
     // Round 162's activator #5 called AddMessage.
     if (madeUp && /^(Display|Show|Add|Send|Post)?(Notification|Message|Text)$|^Print$/i.test(madeUp) ||
         /the type name Debug cannot be used as a property|field or property `Debug` not found/i.test(message)) {
         return `${where}: a message on the screen is \`Debug.Notification("…")\`, Debug's own function, called by its name alone — not on the player`;
+    }
+    // Fields a script reads off a record or a reference that Papyrus has not: eval round 163's activator+detailed #1 gave
+    // `AddItem(Gold001, Gold001.Value)`, and #3 called `akActionRef.Game.GetPlayer()`.
+    const field = /field or property `(\w+)` not found|(\w+) is not a (?:property|variable) on/i.exec(message)?.slice(1).find(Boolean);
+    const owner = field ? new RegExp(`\\b(\\w+)\\s*\\.\\s*${field}\\b`, 'i').exec(line)?.[1] : undefined;
+    if (field && owner && /^Game$/i.test(field)) {
+        return `${where}: Game is a script of its own, its functions called by its name alone — \`Game.GetPlayer()\`, not on ${owner}`;
+    }
+    if (field && owner && /^(Value|Amount|Count|Gold|Worth|Price)$/i.test(field)) {
+        return `${where}: Papyrus reads no ${field} of ${owner} — an amount of the script's own is a number, \`Game.GetPlayer().AddItem(${owner}, 100)\` ` +
+            `for 100, or an Int property of its own; what an item is worth is \`${owner}.GetGoldValue()\``;
     }
     const undefinedName = /variable (\w+) is undefined|undefined identifier `(\w+)`/i.exec(message)?.slice(1).find(Boolean);
     // Another language's words for no value and the script's own object: eval round 160's message #5 and round 161's

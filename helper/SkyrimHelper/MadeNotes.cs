@@ -829,6 +829,67 @@ internal static class MadeNotes
     }
 
     /// <summary>
+    /// A new lever, switch or button of the project's that is a Container or Furniture, and a new Activator so named that has no script:
+    /// asked for a lever that gives gold when pulled, eval round 163's activator #2 built it as a Container, a chest, and round 162's
+    /// activator #1 as an Activator with no script; both answered it made.
+    /// </summary>
+    public static List<string> Levers(ISkyrimModGetter mod, string pluginDir)
+    {
+        var files = EffectCasting.Files(pluginDir);
+        var notes = new List<string>();
+        string Named(IMajorRecordGetter record, string? name) =>
+            $"{record.EditorID ?? Session.FormKeyText(record.FormKey)}{(name is { Length: > 0 } ? $" \"{name}\"" : "")}";
+        string Move(string file, string folder) => file.StartsWith($"{folder}/", StringComparison.Ordinal)
+            ? $"one call moves this file there, {ToolCalls.Move(pluginDir, file, $"Activators/{file[(folder.Length + 1)..]}")}, and its reference in a cell keeps its Base; then"
+            : "move this file there with moveRecord, then";
+        const string Activator = "A lever, a button, a switch — a thing used where it stands, that does something when pulled or pressed — is an " +
+            "Activator, in Activators/, as the game's NorLever01 has it (readRecord {\"record\": \"NorLever01\"}: its Model, its Name, its script by " +
+            "its VirtualMachineAdapter)";
+        var others = mod.Containers.Where(c => c.FormKey.ModKey == mod.ModKey).Select(c => ((IMajorRecordGetter)c, c.Name?.String, "Container", "Containers",
+                "a chest the player opens and takes from: activating one opens it"))
+            .Concat(mod.Furniture.Where(f => f.FormKey.ModKey == mod.ModKey).Select(f => ((IMajorRecordGetter)f, f.Name?.String, "Furniture", "Furniture",
+                "a thing the player sits, lies or works at: activating one plays its animation")));
+        foreach (var (record, name, kind, folder, what) in others)
+        {
+            if (!UsedWhereItStands.IsMatch($"{name} {record.EditorID}") || RecordFiles.Seat.IsMatch($"{name} {record.EditorID}")) continue;
+            var file = files.GetValueOrDefault(record.FormKey) ?? Named(record, null);
+            notes.Add($"{file}: {Named(record, name)} is {(kind == "Furniture" ? "Furniture" : $"a {kind}")} — {what}. {Activator}: {Move(file, folder)} " +
+                $"write it with an Activator's fields, as NorLever01's. Where {(kind == "Furniture" ? "Furniture" : $"a {kind}")} was meant, nothing to " +
+                "change, and this warning stays");
+        }
+        foreach (var activator in mod.Activators.Where(a => a.FormKey.ModKey == mod.ModKey))
+        {
+            if (activator.VirtualMachineAdapter?.Scripts is { Count: > 0 } || !UsedWhereItStands.IsMatch($"{activator.Name?.String} {activator.EditorID}")) continue;
+            var file = files.GetValueOrDefault(activator.FormKey) ?? Named(activator, null);
+            notes.Add($"{file}: {Named(activator, activator.Name?.String)}, named a lever, a switch or a button, has no script: pulled in game, it " +
+                "does nothing — what a lever does is its script's `Event OnActivate(ObjectReference akActionRef)`, the script attached under " +
+                "`VirtualMachineAdapter:`, `Scripts:`, `- Name: <the script>`, with the Properties it fills. Where a lever that does nothing was " +
+                "meant, nothing to change, and this warning stays");
+        }
+        return notes;
+    }
+
+    /// <summary>
+    /// A new Message of the project's shown as a box with no Description: the box shows its Description, so it opens with no words.
+    /// Eval round 163's message+detailed #4 wrote "Welcome Message" as its Name, no Description, and answered the welcome made.
+    /// </summary>
+    public static List<string> WordlessMessages(ISkyrimModGetter mod, string pluginDir)
+    {
+        var files = EffectCasting.Files(pluginDir);
+        var notes = new List<string>();
+        foreach (var message in mod.Messages.Where(m => m.FormKey.ModKey == mod.ModKey))
+        {
+            if (!message.Flags.HasFlag(Message.Flag.MessageBox) || !string.IsNullOrWhiteSpace(message.Description?.String)) continue;
+            var id = message.EditorID ?? Session.FormKeyText(message.FormKey);
+            var file = files.GetValueOrDefault(message.FormKey) ?? id;
+            notes.Add($"{file}: {id}, a message box, has no Description — the box shows its Description, its Name only its title, so in game " +
+                "it opens with no words: write them as its Description, `Description:` with `TargetLanguage: English` and `Value: <the words>` " +
+                "two spaces deeper below it, as the game's HelpSprintLong has it");
+        }
+        return notes;
+    }
+
+    /// <summary>
     /// An effect of the project's ingredient, potion, spell, enchantment or scroll that names no magic effect — written `000000`, or
     /// a link that resolved to none: in game it does nothing. Eval round 151's ingredient+detailed #2 wrote two of its four
     /// effects `000000:Skyrim.esm`, and its build answered "no effect magnitude 20" in `built` alone.

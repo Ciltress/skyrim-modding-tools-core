@@ -172,8 +172,14 @@ public static class ScriptLines
     private static (JsonObject Property, string Said)? Kinded(JsonObject property)
     {
         var written = property["MutagenObjectType"] is JsonValue k ? k.ToString() : null;
-        if (written is not null && PropertyKinds.Contains(written)) return null;
-        var name = property["Name"]?.DeepClone();
+        // `- MessageProperty: WelcomeMessageBox` with `Object:` below it: the script's line `Message Property WelcomeMessageBox Auto` written
+        // as a field, the property's name its value — told to delete it, eval round 163's message+detailed #5 was then told its property
+        // "has no field Object" and answered unbuilt.
+        var typed = property["Name"] is null
+            ? property.FirstOrDefault(f => f.Key != "MutagenObjectType" && Regex.IsMatch(f.Key, @"^\w*Property$") && f.Value is JsonValue v && v.TryGetValue<string>(out _)).Key
+            : null;
+        if (written is not null && PropertyKinds.Contains(written) && typed is null) return null;
+        var name = typed is not null ? property[typed]!.DeepClone() : property["Name"]?.DeepClone();
         var rest = property.Where(f => !PropertyFields.Contains(f.Key)).ToList();
         JsonNode? held = null;
         var from = "";
@@ -203,16 +209,17 @@ public static class ScriptLines
         else if (scalar.TryGetValue<double>(out _)) kind = "ScriptFloatProperty";
         else kind = "ScriptObjectProperty";
         var field = kind switch { "ScriptObjectProperty" => "Object", "ScriptObjectListProperty" => "Objects", _ => "Data" };
-        if (kind == written && field == from) return null;
+        if (kind == written && field == from && typed is null) return null;
 
         var mended = new JsonObject { ["MutagenObjectType"] = kind };
         if (name is not null) mended["Name"] = name;
         if (property["Flags"] is { } flags) mended["Flags"] = flags.DeepClone();
         mended[field] = held.DeepClone();
         foreach (var (key, value) in property)
-            if (key is not ("MutagenObjectType" or "Name" or "Flags") && key != from) mended[key] = value?.DeepClone();
+            if (key is not ("MutagenObjectType" or "Name" or "Flags") && key != from && key != typed) mended[key] = value?.DeepClone();
         var shown = name?.ToString() ?? "a";
-        return (mended, $"{(written is null ? "no kind" : $"`MutagenObjectType: {written}`")} of {shown} property as `MutagenObjectType: {kind}`" +
+        return (mended, (kind == written ? $"{shown} property's" : $"{(written is null ? "no kind" : $"`MutagenObjectType: {written}`")} of {shown} property as `MutagenObjectType: {kind}`") +
+            (typed is not null ? $"{(kind == written ? "" : ",")} `{typed}: {shown}` as `Name: {shown}`" : "") +
             (from == field ? "" : from == name?.ToString() ? $", `{from}: …` as `Name: {from}` and `{field}:`" : $", its `{from}:` as `{field}:`"));
     }
 }
