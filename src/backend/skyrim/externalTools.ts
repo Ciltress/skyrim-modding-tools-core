@@ -261,6 +261,25 @@ function writingHint(problem: string, scriptsDir: string, vanilla: string): stri
                 (event ? `; ${event} is an event the game sends, written \`Event ${event}(…)\` and ended by \`EndEvent\`` : '');
         }
     }
+    // An End word that closes nothing: one Papyrus has not, `EndScript` (russo-2025: "[Parser.parserBugCheck] compiler bug"), and an
+    // EndIf, EndEvent… with no such block open ("unexpected `endif`, expecting `endevent`", "(top statement) invalid token:
+    // endevent"), which the block answer below would read as the Event left open. Eval round 160's message #3 ended its script
+    // with `EndScript` and wrote it again three builds, told only "compiler bug".
+    const ending = /^End(\w*)$/i.exec(line.replace(/;.*$/, '').trim());
+    if (ending && /compiler bug|invalid token|unexpected|mismatched|missing|no viable|expect/i.test(message)) {
+        const kinds: Record<string, OpenBlock['kind']> = { if: 'If', while: 'While', event: 'Event', function: 'Function', state: 'State', property: 'Property' };
+        const kind = kinds[ending[1].toLowerCase()];
+        if (!kind) {
+            return `${where}: Papyrus has no \`${ending[0]}\` — a script ends with its last block's End word, and nothing closes the script ` +
+                'itself: delete this line';
+        }
+        if (!openBlocks(source, at.line).some(block => block.kind === kind)) {
+            const closer = new RegExp(`^\\s*End${kind}\\b`, 'i');
+            const ended = source.split(/\r?\n/).slice(0, at.line - 1).map(text => closer.test(text)).lastIndexOf(true);
+            return `${where}: no ${kind} is open here for \`End${kind}\` to end — ` +
+                (ended >= 0 ? `the ${kind} before it was already ended on line ${ended + 1}` : `no ${kind} comes before it`) + ': delete this line';
+        }
+    }
     // A block left open: russo-2025's "unexpected `endevent`, expecting `elseif`", the Creation Kit's "expecting ENDIF"; a property
     // written out in full that is never ended, "expecting `function`" after its last function. Eval round 158's activator+detailed
     // #1 wrote its `if` with braces and no EndIf, 3 builds told only that.

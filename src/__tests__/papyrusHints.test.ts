@@ -280,6 +280,30 @@ describe('papyrusHints', () => {
         ]);
     });
 
+    // Eval round 160's message #3 ended its script with `EndScript`, told "compiler bug" three builds. russo-2025's words as it writes them.
+    it('names an End word that closes nothing', () => {
+        const { scripts, vanilla } = folders();
+        const write = (name: string, text: string) => { fs.writeFileSync(path.join(scripts, `${name}.psc`), `ScriptName ${name} extends Quest\n\n${text}`); return path.join(scripts, `${name}.psc`); };
+        const script = write('EScript', 'Message Property WelcomeMessageBox Auto\n\nEvent OnInit()\n    WelcomeMessageBox.Show()\n    Stop()\nEndEvent\nEndScript\n');
+        const twice = write('ETwice', 'Event OnInit()\n    Stop()\nEndEvent\nEndEvent\n');
+        const stray = write('EStray', 'Event OnInit()\n    Stop()\n    EndIf\nEndEvent\n');
+        const bare = write('EBare', 'Event OnInit()\nEndEvent\nEnd\n');
+        expect(papyrusHints([
+            `${script}:9:1: Parser error: [Parser.parserBugCheck] compiler bug`,
+            `${twice}:6:1: Parser error: (top statement) invalid token: endevent, EndEvent`,
+            `${stray}:5:5: Parser error: unexpected \`endif\`, expecting \`endevent\``,
+            `${bare}:5:1: Parser error: [Parser.parserBugCheck] compiler bug`
+        ], scripts, vanilla)).toEqual([
+            'line 9 of EScript.psc, `EndScript`: Papyrus has no `EndScript` — a script ends with its last block\'s End word, and nothing ' +
+            'closes the script itself: delete this line',
+            'line 6 of ETwice.psc, `EndEvent`: no Event is open here for `EndEvent` to end — the Event before it was already ended on ' +
+            'line 5: delete this line',
+            'line 5 of EStray.psc, `EndIf`: no If is open here for `EndIf` to end — no If comes before it: delete this line',
+            'line 5 of EBare.psc, `End`: Papyrus has no `End` — a script ends with its last block\'s End word, and nothing closes the ' +
+            'script itself: delete this line'
+        ]);
+    });
+
     it('adds nothing for an error the sources do not explain', () => {
         const { scripts, vanilla } = folders();
         expect(papyrusHints(['C:\\p\\scripts\\X.psc(1,0): mismatched input', 'Compilation failed'], scripts, vanilla)).toEqual([]);
