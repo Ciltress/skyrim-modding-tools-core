@@ -338,6 +338,39 @@ describe('papyrusHints', () => {
         ]);
     });
 
+    // Eval round 162's activator #3 and #5, with russo-2025's words.
+    it('names a comment in C\'s way, HasItem, AddMessage, and a Quest\'s Stop in an object\'s script', () => {
+        const { scripts, vanilla } = folders();
+        fs.writeFileSync(path.join(vanilla, 'Debug.psc'), 'Scriptname Debug Hidden\n\nFunction Notification(string asNotificationText) native global\n');
+        const write = (name: string, parent: string, body: string) => {
+            fs.writeFileSync(path.join(scripts, `${name}.psc`), `ScriptName ${name} extends ${parent}\n\nMiscObject Property Gold001 Auto\n\n` +
+                `Event OnActivate(ObjectReference akActionRef)\n${body}EndEvent\n`);
+            return path.join(scripts, `${name}.psc`);
+        };
+        const comment = write('CComment', 'ObjectReference', '    /* Gives the player gold when pulled */\n');
+        const has = write('CHas', 'ObjectReference', '    if Game.GetPlayer().HasItem(Gold001)\n    EndIf\n');
+        const message = write('CMessage', 'ObjectReference', '    Debug.AddMessage("You got gold")\n');
+        const stop = write('CStop', 'ObjectReference', '    Stop()\n');
+        const quest = write('CQuest', 'Quest', '    Stop()\n');
+        expect(papyrusHints([
+            `${comment}:6:5: Parser error: (block statement) invalid token: /,`,
+            `${has}:6:25: Checker error: undefined function \`HasItem\``,
+            `${message}:6:5: Checker error: undefined identifier \`Debug\``,
+            `${message}:6:11: Checker error: undefined function \`AddMessage\``,
+            `${stop}:6:5: Checker error: undefined function \`Stop\``,
+            `${quest}:6:5: Checker error: undefined function \`Stop\``
+        ], scripts, vanilla)).toEqual([
+            'line 6 of CComment.psc, `/* Gives the player gold when pulled */`: a Papyrus comment starts with `;`, and one of several ' +
+            'lines is written `;/ … /;` — `/* … */` is none',
+            'line 6 of CHas.psc, `if Game.GetPlayer().HasItem(Gold001)`: Papyrus has no HasItem — how many of an item one holds is ' +
+            'GetItemCount: `if Game.GetPlayer().GetItemCount(Gold001) > 0`',
+            'line 6 of CMessage.psc, `Debug.AddMessage("You got gold")`: a message on the screen is `Debug.Notification("…")`, Debug\'s ' +
+            'own function, called by its name alone — not on the player',
+            'line 6 of CStop.psc, `Stop()`: Stop is a Quest\'s function, which ends a quest — this script extends ObjectReference, and ' +
+            'its event ends by itself at its End line: delete this line'
+        ]);
+    });
+
     it('adds nothing for an error the sources do not explain', () => {
         const { scripts, vanilla } = folders();
         expect(papyrusHints(['C:\\p\\scripts\\X.psc(1,0): mismatched input', 'Compilation failed'], scripts, vanilla)).toEqual([]);

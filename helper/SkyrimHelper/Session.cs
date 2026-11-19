@@ -819,8 +819,14 @@ public sealed partial class Session : IDisposable
         }
         catch (HelperException e) when (corrected.Count > 0)
         {
+            // The delete of a copy nothing names before its first fault, the links' too: eval round 162's stand-in gold, refused for
+            // three keywords by the links alone, had its delete only among the corrections, and the run copied the game's gold in instead.
+            var message = e.Message;
+            foreach (var (file, note) in unneeded)
+                if (!message.Contains(note, StringComparison.Ordinal) && message.IndexOf($"{file}: ", StringComparison.OrdinalIgnoreCase) is >= 0 and var at)
+                    message = message[..(at + file.Length + 2)] + note + message[(at + file.Length + 2)..];
             throw new HelperException(e.Code,
-                $"{e.Message} Corrected in the files already: {string.Join("; ", corrected.Select(c => $"{c.File}: {c.Change}"))}.");
+                $"{message} Corrected in the files already: {string.Join("; ", corrected.Select(c => $"{c.File}: {c.Change}"))}.");
         }
         // Each note's fix beside the notes, as the build gives its own.
         var fixes = ToolCalls.CollectFixes();

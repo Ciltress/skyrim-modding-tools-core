@@ -677,6 +677,12 @@ public static class RecordFiles
                 return "a script is attached by its name as an item of Scripts under VirtualMachineAdapter — set the path " +
                     $"VirtualMachineAdapter.Scripts to the list of it, [{{\"Name\": \"{(value is { Length: > 0 } ? value : "<the script>")}\"}}], " +
                     $"written `VirtualMachineAdapter:`, `Scripts:`, `- Name: {(value is { Length: > 0 } ? value : "<the script>")}` in its file";
+        // A script's properties as the record's own field: editRecord's path `ScriptProperties.Gold001` on an Activator was told only
+        // "an Activator has no field ScriptProperties — its fields: …", and eval round 162's activator+detailed #2 ran out of turns.
+        if (key is "ScriptProperties" or "ScriptProperty" or "Properties" or "Property" or "PapyrusProperties" && type.GetProperty("VirtualMachineAdapter") is not null)
+            return "a script's properties are given in its item of Scripts under VirtualMachineAdapter, below its `Name:` — the path " +
+                "VirtualMachineAdapter.Scripts[0].Properties, set to the list of them, each the kind Mutagen names, the property's name " +
+                "in the script and what it holds: [{\"MutagenObjectType\": \"ScriptObjectProperty\", \"Name\": \"Gold001\", \"Object\": \"Gold001\"}]";
         if (FlagHint(type, key) is { } flag) return flag;
         if (known.FirstOrDefault(k => k.Equals(key + "s", StringComparison.OrdinalIgnoreCase) || k.Equals(key + "es", StringComparison.OrdinalIgnoreCase)
                 || key.EndsWith('s') && k.Equals(key[..^1], StringComparison.OrdinalIgnoreCase)) is { } number)
@@ -2001,7 +2007,9 @@ public static class RecordFiles
         if (unneeded is { Count: > 0 })
         {
             string? Copy(string problem) => unneeded.Keys.FirstOrDefault(k => problem.StartsWith($"{k}:", StringComparison.OrdinalIgnoreCase));
-            problems = problems.Select(p => Copy(p) is { } k ? $"{k}: {unneeded[k]}{p[(k.Length + 1)..].TrimStart()}" : p)
+            // Said once a file, before its first fault, not again before each of the others: eval round 162's stand-in gold had three.
+            var said = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            problems = problems.Select(p => Copy(p) is { } k && said.Add(k) ? $"{k}: {unneeded[k]}{p[(k.Length + 1)..].TrimStart()}" : p)
                 .OrderByDescending(p => Copy(p) is not null).ToList();
         }
         return (records, problems, leftOut);
@@ -2771,11 +2779,23 @@ public static class RecordFiles
                 unneeded[relative.Replace('\\', '/')] = $"a second {entry.Type} the game holds for nothing — {linker} names {editorId}, " +
                     $"{key.ModKey.FileName}'s, and nothing of the project names this one: delete it rather than fix it, " +
                     $"{ToolCalls.Delete(pluginDir, relative, build: true)}; only where this one was meant — then name {name} in {linker} — fix it: ";
+            // Nothing names it either: a stand-in for the game's own. Offered "copy it in with addPatch" to change that one instead,
+            // eval round 162's activator+detailed #5, whose lever's script gives gold, wrote its own Gold001, copied the game's gold
+            // in for that and set its Name and its Value to 100 — every coin of the game changed.
+            else if (unneeded is not null)
+                unneeded[relative.Replace('\\', '/')] = $"a {entry.Type} of the mod's own under {key.ModKey.FileName}'s editor ID {editorId}, " +
+                    $"renamed {name}, and nothing of the project names it — where the game's {editorId} was meant, to give it or to name " +
+                    $"it in a script's property, it is in the game already, named as it is, and needs no file: delete this one rather " +
+                    $"than fix it, {ToolCalls.Delete(pluginDir, relative, build: true)}; only where a {entry.Type} of the mod's own " +
+                    $"was meant — then name {name} where it is used — fix it: ";
             changes.Add((relative,$"wrote `EditorID: {name}` for `EditorID: {editorId}` — {editorId} is {key.ModKey.FileName}'s " +
                 $"{entry.Type} ({Session.FormKeyText(key)}), and this file, " +
                 (identity.FormKey is { } mine ? $"{Session.FormKeyText(mine)}, " : "with no FormKey line, ") + "is a new record of its own; a link by " +
                 $"{editorId} names {key.ModKey.FileName}'s. " + (linker is null
-                    ? "To change that one instead, copy it in with addPatch and write this file empty"
+                    ? $"Nothing of the project names this one: where the game's {editorId} was meant, it needs no file — one call " +
+                        $"deletes this one: {ToolCalls.Delete(pluginDir, relative)}; where a {entry.Type} of the mod's own was meant, " +
+                        $"name {name} where it is used. Only where the user asked for the game's {editorId} itself to change, " +
+                        "everywhere the game has it, copy that one in with addPatch and write this file empty"
                     : $"{linker} names {editorId}, so it has {key.ModKey.FileName}'s, and nothing has this one: where the game's " +
                         $"{editorId} was meant, this file is a second {entry.Type} the game holds for nothing — one call deletes it: " +
                         $"{ToolCalls.Delete(pluginDir, relative)}; where this one was meant, name {name} there")));

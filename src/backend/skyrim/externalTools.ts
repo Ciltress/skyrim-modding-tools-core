@@ -341,6 +341,11 @@ function writingHint(problem: string, scriptsDir: string, vanilla: string): stri
         const papyrus = /^(integer|int32|int64|long|number)$/.test(typeWord) ? 'Int' : typeWord === 'boolean' ? 'Bool' : /^(double|decimal)$/.test(typeWord) ? 'Float' : 'String';
         return `${where}: Papyrus has no type ${typeWord} — it is \`${papyrus}\` (Papyrus's types: Int, Float, Bool, String, and the game's, such as MiscObject)`;
     }
+    // A comment of several lines in C's way, `/* … */`: russo-2025 says "(block statement) invalid token: /" (eval round 162's activator #3).
+    if (/^\/\*/.test(line) || /\s\/\*/.test(line) &&
+        /no viable alternative at (character|input)|mismatched input '\/'|invalid (character|token)|invalid right operand/i.test(message)) {
+        return `${where}: a Papyrus comment starts with \`;\`, and one of several lines is written \`;/ … /;\` — \`/* … */\` is none`;
+    }
     if (/^(#|\/\/)/.test(line) || /\s(#|\/\/)\s/.test(line) &&
         /no viable alternative at (character|input)|mismatched input '\/'|invalid (character|token)|invalid right operand/i.test(message)) {
         return `${where}: a Papyrus comment starts with \`;\` — \`#\` and \`//\` are none`;
@@ -387,7 +392,20 @@ function writingHint(problem: string, scriptsDir: string, vanilla: string): stri
     if (madeUp && /^Give(Items?)?$/i.test(madeUp)) {
         return `${where}: Papyrus has no ${madeUp} — an item is given with AddItem, as \`Game.GetPlayer().AddItem(Gold001, 100)\`; ${PROPERTY_FILLED}`;
     }
-    if (madeUp && /^(Display|Show)?(Notification|Message|Text)$|^Print$/i.test(madeUp) ||
+    // Eval round 162's activator #3 asked `Game.GetPlayer().HasItem(Gold001)`.
+    if (madeUp && /^Has(Item|Items)$/i.test(madeUp)) {
+        const counted = line.replace(/\.HasItems?\s*\(([^()]*)\)/i, '.GetItemCount($1) > 0');
+        return `${where}: Papyrus has no ${madeUp} — how many of an item one holds is GetItemCount` +
+            (counted !== line ? `: \`${counted}\`` : ', as `Game.GetPlayer().GetItemCount(Gold001) > 0`');
+    }
+    // Eval round 162's activator #5 called `Stop()` in its lever's script: a Quest's function, which ends a quest.
+    const scriptParent = /^\s*Scriptname\s+\w+\s+extends\s+(\w+)/im.exec(source)?.[1];
+    if (madeUp && /^Stop$/i.test(madeUp) && scriptParent && !/^Quest$/i.test(scriptParent) && /^(?:Self\s*\.\s*)?Stop\s*\(\s*\)$/i.test(line)) {
+        return `${where}: Stop is a Quest's function, which ends a quest — this script extends ${scriptParent}, and its event ends by itself at ` +
+            'its End line: delete this line';
+    }
+    // Round 162's activator #5 called AddMessage.
+    if (madeUp && /^(Display|Show|Add|Send|Post)?(Notification|Message|Text)$|^Print$/i.test(madeUp) ||
         /the type name Debug cannot be used as a property|field or property `Debug` not found/i.test(message)) {
         return `${where}: a message on the screen is \`Debug.Notification("…")\`, Debug's own function, called by its name alone — not on the player`;
     }
@@ -401,7 +419,9 @@ function writingHint(problem: string, scriptsDir: string, vanilla: string): stri
             (papyrusWord === 'None' ? 'no value, a record or an object not there, is `None`' : 'the script\'s own object is `Self`') +
             (written !== line ? `: \`${written}\`` : '');
     }
-    if (undefinedName) {
+    // Not a game script's name: russo-2025 says "undefined identifier `Debug`" beside "undefined function `AddMessage`" for
+    // `Debug.AddMessage(…)`, the function the fault, and Debug is no property to declare.
+    if (undefinedName && !findCaseInsensitive(vanilla, `${undefinedName}.psc`)) {
         return `${where}: ${undefinedName} is declared nowhere in the script — ${PROPERTY_FILLED}; a number of its own is a ` +
             `variable, \`Int ${undefinedName} = 100\``;
     }
