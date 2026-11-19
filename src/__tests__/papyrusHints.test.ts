@@ -241,6 +241,45 @@ describe('papyrusHints', () => {
         expect(papyrusHints([`GoldLeverScript.psc(10,0): mismatched input 'EndEvent' expecting ENDIF`], scripts, vanilla)).toEqual([unclosedIf]);
     });
 
+    // Eval round 159's activator+detailed #5: `Int Property Amount` without Auto, then its event renamed a function for russo-2025's
+    // "expecting `function`", and the block hint sent it to that function's EndFunction. russo-2025's words as it writes them.
+    it('names a property without Auto, and one written out in full never ended', () => {
+        const { scripts, vanilla } = folders();
+        const write = (name: string, text: string) => { fs.writeFileSync(path.join(scripts, `${name}.psc`), `ScriptName ${name} extends ObjectReference\n\n${text}`); return path.join(scripts, `${name}.psc`); };
+        const event = write('PEvent', 'ObjectReference Property GoldRef Auto\nInt Property Amount ; how much\n\nEvent OnInit()\n    Debug.Notification("x")\nEndEvent\n');
+        const renamed = write('PRenamed', 'Int Property Amount\n\nFunction OnInit()\nEndEvent\n');
+        const called = write('PCalled', 'Int Property Amount\n\nfunction OnActivate(ObjectReference akActionRef)\nEndFunction\n');
+        const last = write('PLast', 'MiscObject Property Gold001 Hidden\n');
+        const valued = write('PValued', 'Int Property Amount = 100\n\nEvent OnActivate(ObjectReference akActionRef)\nEndEvent\n');
+        const full = write('PFull', 'Int Property Amount\n    Int Function Get()\n        return 5\n    EndFunction\n\nEvent OnInit()\nEndEvent\n');
+        const noAuto = 'has no `Auto` — Papyrus reads a property without it as one written out in full, its own Get and Set functions to follow ' +
+            'and `EndProperty` to end it, so it expects a function next. End its line with Auto: ';
+        const amount = 'the Property on line 3, `Int Property Amount`, ' + noAuto + '`Int Property Amount Auto`, or `Int Property Amount = 100 Auto` to give it a value in the script';
+        expect(papyrusHints([
+            `${event}:6:1: Parser error: unexpected \`event\`, expecting \`function\``,
+            `${renamed}:6:1: Parser error: unexpected \`endevent\`, expecting \`endfunction\``,
+            `${called}:5:1: Parser error: invalid function name: onactivate, expected \`get\` or \`set\``,
+            `${last}:4:1: Parser error: unexpected \`eof\`, expecting \`function\``,
+            `${valued}:5:1: Parser error: unexpected \`event\`, expecting \`function\``,
+            `${full}:8:1: Parser error: unexpected \`event\`, expecting \`function\``
+        ], scripts, vanilla)).toEqual([
+            'line 6 of PEvent.psc, `Event OnInit()`: the Property on line 4, `Int Property Amount`, ' + noAuto +
+            '`Int Property Amount Auto`, or `Int Property Amount = 100 Auto` to give it a value in the script',
+            'line 6 of PRenamed.psc, `EndEvent`: ' + amount + '; OnInit is an event the game sends, written `Event OnInit(…)` and ended by `EndEvent`',
+            'line 5 of PCalled.psc, `function OnActivate(ObjectReference akActionRef)`: ' + amount +
+            '; OnActivate is an event the game sends, written `Event OnActivate(…)` and ended by `EndEvent`',
+            'the end of PLast.psc: the Property on line 3, `MiscObject Property Gold001 Hidden`, ' + noAuto + '`MiscObject Property Gold001 Auto Hidden`',
+            'line 5 of PValued.psc, `Event OnActivate(ObjectReference akActionRef)`: the Property on line 3, `Int Property Amount = 100`, ' + noAuto +
+            '`Int Property Amount = 100 Auto`',
+            'line 8 of PFull.psc, `Event OnInit()`: the Property on line 3, `Int Property Amount`, is never closed — Papyrus ends a Property ' +
+            'with `EndProperty` on a line of its own'
+        ]);
+        // ANTLR's words, which the Creation Kit's compiler writes.
+        expect(papyrusHints([`PEvent.psc(6,0): mismatched input 'Event' expecting FUNCTION`], scripts, vanilla)).toEqual([
+            expect.stringMatching(/^line 6 of PEvent.psc, `Event OnInit\(\)`: the Property on line 4, `Int Property Amount`, has no `Auto`/)
+        ]);
+    });
+
     it('adds nothing for an error the sources do not explain', () => {
         const { scripts, vanilla } = folders();
         expect(papyrusHints(['C:\\p\\scripts\\X.psc(1,0): mismatched input', 'Compilation failed'], scripts, vanilla)).toEqual([]);

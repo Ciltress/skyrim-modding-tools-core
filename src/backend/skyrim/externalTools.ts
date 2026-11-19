@@ -165,18 +165,25 @@ function scriptFile(file: string, scriptsDir: string): string {
 
 /** A block a script's line opens, and the word that closes it: `End` and its kind. */
 interface OpenBlock {
-    kind: 'If' | 'While' | 'Event' | 'Function' | 'State';
+    kind: 'If' | 'While' | 'Event' | 'Function' | 'State' | 'Property';
     line: number;
     text: string;
 }
 
-/** The blocks still open before a line of a script — If, While, Event, Function, State — the innermost last. */
+/**
+ * The blocks still open before a line of a script — If, While, Event, Function, State, and a property without `Auto`, which
+ * Papyrus reads as one written out in full, up to its EndProperty — the innermost last.
+ */
 function openBlocks(source: string, before: number): OpenBlock[] {
     const open: OpenBlock[] = [];
     const lines = source.split(/\r?\n/);
     for (let i = 0; i < Math.min(before - 1, lines.length); i++) {
         const text = lines[i].replace(/;.*$/, '').trim();
-        const ends = /^End(If|While|Event|Function|State)\b/i.exec(text)?.[1];
+        if (/^\w+(?:\[\])?\s+Property\s+\w+/i.test(text) && !/\bAuto(?:ReadOnly)?\b/i.test(text)) {
+            open.push({ kind: 'Property', line: i + 1, text });
+            continue;
+        }
+        const ends = /^End(If|While|Event|Function|State|Property)\b/i.exec(text)?.[1];
         if (ends) {
             const kind = `${ends[0].toUpperCase()}${ends.slice(1).toLowerCase()}`;
             const at = open.map(block => block.kind as string).lastIndexOf(kind);
@@ -234,12 +241,33 @@ function writingHint(problem: string, scriptsDir: string, vanilla: string): stri
         return `${where}: a script's first line is its ScriptName and what it extends, on one line — \`ScriptName ${declared} extends ${extended}\`` +
             (parent && extended !== parent ? ` (a script on a thing placed in a cell — a lever, a door, a chest — extends ObjectReference, whose event OnActivate is, not ${parent})` : '');
     }
-    // A block left open: russo-2025's "unexpected `endevent`, expecting `elseif`", the Creation Kit's "expecting ENDIF". Eval round
-    // 158's activator+detailed #1 wrote its `if` with braces and no EndIf, 3 builds told only that.
-    const expected = /expecting `?(elseif|endif|endwhile|endevent|endfunction|endstate)\b|missing (endif|endwhile|endevent|endfunction|endstate)\b/i.exec(message);
+    // A property without Auto, which Papyrus reads as one written out in full: its Get and Set functions are to follow, then
+    // EndProperty. russo-2025 says "unexpected `event`, expecting `function`" on the line after it, "invalid function name: oninit,
+    // expected `get` or `set`" for a function there. Eval round 159's activator+detailed #5 wrote `Int Property Amount`, renamed
+    // its event OnInit a function for that, and the block hint below then sent it to that function's EndFunction.
+    const property = openBlocks(source, at.line + 1).filter(block => block.kind === 'Property').at(-1);
+    if (property && /expect|missing|mismatched|no viable|invalid function name|unexpected/i.test(message)) {
+        const body = source.split(/\r?\n/).slice(property.line, at.line).map(text => text.replace(/;.*$/, '').trim());
+        if (!body.some(text => /^(?:\w+(?:\[\])?\s+)?Function\s+(Get|Set)\s*\(/i.test(text))) {
+            const [, declared, flags] = /^(.*?)(\s+(?:Hidden|Conditional)\b.*)?$/i.exec(property.text)!;
+            const [, type, array] = /^(\w+)(\[\])?/.exec(declared)!;
+            const values: Record<string, string> = { int: '100', float: '1.0', bool: 'true', string: '"…"' };
+            const value = declared.includes('=') || array ? undefined : values[type.toLowerCase()];
+            const event = body.map(text => /^(?:\w+\s+)?Function\s+(\w+)\s*\(/i.exec(text)?.[1]).find(fn => fn && /^On[A-Z]/.test(fn));
+            return `${line ? where : `the end of ${name}`}: the Property on line ${property.line}, \`${property.text}\`, has no \`Auto\` — ` +
+                'Papyrus reads a property without it as one written out in full, its own Get and Set functions to follow and ' +
+                `\`EndProperty\` to end it, so it expects a function next. End its line with Auto: \`${declared} Auto${flags ?? ''}\`` +
+                (value ? `, or \`${declared} = ${value} Auto${flags ?? ''}\` to give it a value in the script` : '') +
+                (event ? `; ${event} is an event the game sends, written \`Event ${event}(…)\` and ended by \`EndEvent\`` : '');
+        }
+    }
+    // A block left open: russo-2025's "unexpected `endevent`, expecting `elseif`", the Creation Kit's "expecting ENDIF"; a property
+    // written out in full that is never ended, "expecting `function`" after its last function. Eval round 158's activator+detailed
+    // #1 wrote its `if` with braces and no EndIf, 3 builds told only that.
+    const expected = /expecting `?(elseif|endif|endwhile|endevent|endfunction|endstate|endproperty|function)\b|missing (endif|endwhile|endevent|endfunction|endstate|endproperty)\b/i.exec(message);
     if (expected || /unexpected end of file|invalid token: (event|function)\b/i.test(message)) {
         const word = (expected?.[1] ?? expected?.[2])?.toLowerCase();
-        const kind = word === 'elseif' || word === 'endif' ? 'If' : word ? `${word[3].toUpperCase()}${word.slice(4)}` : undefined;
+        const kind = word === 'elseif' || word === 'endif' ? 'If' : word === 'function' ? 'Property' : word ? `${word[3].toUpperCase()}${word.slice(4)}` : undefined;
         const blocks = openBlocks(source, at.line);
         const open = kind ? blocks.filter(block => block.kind === kind).at(-1) : blocks.at(-1);
         if (open) {
