@@ -501,7 +501,7 @@ internal static class MadeNotes
                 var cell = cells is [var only] ? $" — the project's cell {only.EditorID ?? Session.FormKeyText(only.FormKey)} is one" : "";
                 notes.Add($"{file}: {id}{(npc.Name?.String is { Length: > 0 } name ? $" \"{name}\"" : "")}, a new NPC, is placed in no cell, and nothing in " +
                     $"the plugin names {id} — no leveled list, quest alias or script property — so the game never shows {id}. " +
-                    GameNpcNamed(npc.Name?.String, lookup, index, mod.ModKey, pluginDir, file) + $"Where the user asked " +
+                    GameNpcNamed(npc.Name?.String, lookup, index, mod.ModKey, pluginDir, file, npc.Race.IsNull ? null : npc.Race.FormKey) + $"Where the user asked " +
                     $"for {id} somewhere, an inn or a house, a PlacedNpc file in that cell's Temporary/ folder places {id}{cell}: readRecord of the " +
                     $"cell answers `newReference`, the path and the lines to write, with `MutagenObjectType: PlacedNpc` first and `Base: {id}`. " +
                     "Where the NPC record alone was asked for, nothing to change, and this warning stays");
@@ -1321,11 +1321,29 @@ internal static class MadeNotes
     /// also be ice wolves, all 8 failed plain leveled-npc runs of eval rounds 144 and 149 wrote an "Ice Wolf" of their own,
     /// placed nowhere, where the game has EncWolfIce and its wolves come from LCharWolf.
     /// </summary>
-    private static string GameNpcNamed(string? named, ILinkCache lookup, RecordIndex index, Mutagen.Bethesda.Plugins.ModKey own, string pluginDir, string file)
+    private static string GameNpcNamed(string? named, ILinkCache lookup, RecordIndex index, Mutagen.Bethesda.Plugins.ModKey own, string pluginDir, string file,
+        Mutagen.Bethesda.Plugins.FormKey? raceOfNew = null)
     {
         if (named is not { Length: > 0 } name) return "";
         var twins = index.ByFormKey.Values.Where(e => e.Type == "Npc" && e.FormKey.ModKey != own && e.EditorId is not null
             && string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase)).OrderBy(e => e.FormKey.ModKey.FileName == "Skyrim.esm" ? 0 : 1).ToList();
+        // A game NPC's name with words of the mod's around it — "Ice Wolf Alpha", the game's EncWolfIce copied and renamed (eval
+        // round 177's leveled-npc #1 and #2) — of the new NPC's race: the longest such name, of two words or more or the one the new
+        // name begins with, so "Brenna the Hunter" is no game Hunter.
+        var within = false;
+        if (twins.Count == 0 && raceOfNew is { } newRace)
+        {
+            var named2 = index.ByFormKey.Values.Where(e => e.Type == "Npc" && e.FormKey.ModKey != own && e.EditorId is not null && e.Name is { Length: > 2 } n
+                    && Regex.IsMatch(name, $@"(?<![A-Za-z]){Regex.Escape(n)}(?![A-Za-z])", RegexOptions.IgnoreCase)
+                    && (n.Contains(' ') || name.StartsWith(n + " ", StringComparison.OrdinalIgnoreCase)))
+                .Where(e => lookup.TryResolve<INpcGetter>(e.FormKey, out var g) && g.Race.FormKey == newRace)
+                .GroupBy(e => e.Name!.ToLowerInvariant()).OrderByDescending(g => g.Key.Length).FirstOrDefault();
+            if (named2 is not null)
+            {
+                twins = named2.OrderBy(e => e.FormKey.ModKey.FileName == "Skyrim.esm" ? 0 : 1).ToList();
+                within = true;
+            }
+        }
         // A unique one — Hulda, Lydia — is no NPC a leveled list brings, and a new NPC of a person's name is a person of the mod's own.
         if (twins.Count is 0 or > 3 || !lookup.TryResolve<INpcGetter>(twins[0].FormKey, out var twin)
             || twin.Configuration.Flags.HasFlag(NpcConfiguration.Flag.Unique)) return "";
@@ -1346,8 +1364,11 @@ internal static class MadeNotes
         if (shown.Count == 0) return "";
         var twinId = twins[0].EditorId!;
         var project = ToolCalls.ProjectOf(pluginDir);
-        var said = $"The game has an NPC of that name already: {string.Join(", ", twins.Select(t => $"{t.EditorId} ({Session.FormKeyText(t.FormKey)})"))}" +
-            $"{(raceId is null ? "" : $", {RecordFiles.Article(raceId)}")}. Where the user asked for the game's {name} to turn up — among those a " +
+        var gameName = within ? twins[0].Name! : name;
+        var said = (within
+                ? $"Its name holds a game NPC's, {gameName}: {string.Join(", ", twins.Select(t => $"{t.EditorId} ({Session.FormKeyText(t.FormKey)})"))}"
+                : $"The game has an NPC of that name already: {string.Join(", ", twins.Select(t => $"{t.EditorId} ({Session.FormKeyText(t.FormKey)})"))}") +
+            $"{(raceId is null ? "" : $", {RecordFiles.Article(raceId)}")}. Where the user asked for the game's {gameName} to turn up — among those a " +
             $"leveled list brings, as the game's animals and enemies come from one — that list is to hold {twinId}, not a new NPC: ";
         var first = shown[0].Entry;
         var copy = $"LeveledNpcs/{first.EditorId} - {Session.FormKeyText(first.FormKey).Replace(':', '_')}.yaml";
