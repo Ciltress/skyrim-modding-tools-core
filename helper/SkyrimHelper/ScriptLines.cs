@@ -59,7 +59,16 @@ public static class ScriptLines
                 block = ((YamlMappingNode)stream.Documents[0].RootNode).Children.Values.FirstOrDefault();
             }
             catch (Exception e) when (e is YamlException or InvalidCastException) { continue; }
-            if (block is null || RecordEdits.FromYaml(block) is not JsonObject adapter) continue;
+            if (block is null) continue;
+            // The scripts written as the adapter itself, `VirtualMachineAdapter:` then `- Name: GoldLeverScript`, with no `Scripts:` between:
+            // eval round 168's activator+detailed #3 was told "an Activator has no field Scripts" three builds so.
+            var read = RecordEdits.FromYaml(block);
+            if (read is JsonArray listed0 && listed0.Count > 0 && listed0.All(s => s is JsonValue || s is JsonObject o && o["Name"] is not null))
+            {
+                read = new JsonObject { ["Scripts"] = listed0.DeepClone() };
+                said.Add("its list of scripts under `Scripts:`");
+            }
+            if (read is not JsonObject adapter) continue;
 
             // A script named beside Scripts, or in its place: `ScriptName: X` with no Scripts.
             if (adapter["Scripts"] is null && NameKeys.Skip(1).FirstOrDefault(k => adapter[k] is JsonValue) is { } beside)

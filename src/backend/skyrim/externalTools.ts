@@ -365,6 +365,17 @@ function writingHint(problem: string, scriptsDir: string, vanilla: string): stri
     if (unknownType && typedByName && (typedByName[1].toLowerCase() === unknownType.toLowerCase() || /\d/.test(unknownType))) {
         return `${where}: ${unknownType} is a record's name, no type — ${PROPERTY_FILLED}`;
     }
+    // The name the script uses written where the type goes, the record's editor ID as the name: eval round 168's activator #2 wrote
+    // `ItemToGive Property Gold001 Auto` and called `AddItem(ItemToGive, 100)`, refused four builds.
+    const swapped = unknownType && !VAGUE_TYPE.test(unknownType) && !FUNCTIONS_ONLY.test(unknownType)
+        ? new RegExp(`^${unknownType}\\s+Property\\s+(\\w+)`, 'i').exec(line) : null;
+    const usedElsewhere = (name: string) => new RegExp(`\\b${name}\\b`, 'i').test(source.split(/\r?\n/).filter((_, i) => i !== at.line - 1).join('\n'));
+    if (unknownType && swapped && usedElsewhere(unknownType)) {
+        const held = heldType(swapped[1], source) ?? heldType(unknownType, source);
+        return `${where}: ${unknownType} is the name the script uses, and a property's line is its type, the word Property, then that name — ` +
+            `\`${held ?? '<the type of what it holds>'} Property ${unknownType} Auto\`; ${swapped[1]}, the record it holds, is given to it by the record ` +
+            `the script is attached to, in its VirtualMachineAdapter's Properties: \`Name: ${unknownType}\`, \`Object: ${swapped[1]}\``;
+    }
     // A property's line with a word too many: eval round 163's activator #3 wrote `MiscObjectProperty GoldItem Property Gold001 Auto`, told
     // "undefined type: `GoldItem`" twice. Its type is the first word, its name the word after the last Property.
     const crowded = unknownType ? /^(\w+?)(?:Property)?\s+(?:\w+\s+)+?Property\s+(\w+)(?:\s*=\s*[^;]+?)?(?:\s+Auto(?:ReadOnly)?\b.*)?$/i.exec(line) : null;
@@ -514,7 +525,8 @@ function writingHint(problem: string, scriptsDir: string, vanilla: string): stri
     }
     // Not a game script's name: russo-2025 says "undefined identifier `Debug`" beside "undefined function `AddMessage`" for
     // `Debug.AddMessage(…)`, the function the fault, and Debug is no property to declare.
-    if (undefinedName && !findCaseInsensitive(vanilla, `${undefinedName}.psc`)) {
+    if (undefinedName && !findCaseInsensitive(vanilla, `${undefinedName}.psc`)
+        && !new RegExp(`^\\s*${undefinedName}\\s+Property\\s+\\w+`, 'im').test(source)) {
         return `${where}: ${undefinedName} is declared nowhere in the script — ${PROPERTY_FILLED}; a number of its own is a ` +
             `variable, \`Int ${undefinedName} = 100\``;
     }

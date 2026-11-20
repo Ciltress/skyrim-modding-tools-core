@@ -470,6 +470,22 @@ describe('papyrusHints', () => {
         ]);
     });
 
+    // Eval round 168's activator #2, with russo-2025's words.
+    it('names a property whose name is written where its type goes', () => {
+        const { scripts, vanilla } = folders();
+        const file = path.join(scripts, 'GoldLeverScript.psc');
+        fs.writeFileSync(file, 'ScriptName GoldLeverScript extends ObjectReference\n\nItemToGive Property Gold001 Auto\n\nEvent OnActivate(ObjectReference akActionRef)\n' +
+            '    if (Game.GetPlayer())\n        Game.GetPlayer().AddItem(ItemToGive, 100)\n    EndIf\nEndEvent\n');
+        expect(papyrusHints([
+            `${file}:3:12: Checker error: undefined type: \`ItemToGive\``,
+            `${file}:7:34: Checker error: undefined identifier \`ItemToGive\``
+        ], scripts, vanilla)).toEqual([
+            'line 3 of GoldLeverScript.psc, `ItemToGive Property Gold001 Auto`: ItemToGive is the name the script uses, and a property\'s line is ' +
+            'its type, the word Property, then that name — `MiscObject Property ItemToGive Auto`; Gold001, the record it holds, is given to it ' +
+            'by the record the script is attached to, in its VirtualMachineAdapter\'s Properties: `Name: ItemToGive`, `Object: Gold001`'
+        ]);
+    });
+
     it('adds nothing for an error the sources do not explain', () => {
         const { scripts, vanilla } = folders();
         expect(papyrusHints(['C:\\p\\scripts\\X.psc(1,0): mismatched input', 'Compilation failed'], scripts, vanilla)).toEqual([]);

@@ -1160,8 +1160,10 @@ public static class RecordEdits
             var key = mapping.Children.Keys.OfType<YamlScalarNode>().FirstOrDefault(k => k.Value == step.Key);
             if (key is null)
             {
-                // Missing from here on: written whole, below the fields the mapping has.
-                if (steps.Skip(i).Any(s => s.Index is not null))
+                // Missing from here on: written whole, below the fields the mapping has — a list's first item too, the list made with it:
+                // `VirtualMachineAdapter.Scripts[0].Name` on a record with no script was told "set VirtualMachineAdapter whole, as a list",
+                // which it is not, and eval round 168's activator #3 and #5 spent their turns so.
+                if (steps.Skip(i).Any(s => s.Index is not null and not 0))
                     throw new HelperException("badRequest", $"{path}: there is no {step.Key} to take an item of — set {Upto(steps, i + 1).Split('[')[0]} whole, as a list. Nothing was written.");
                 // A field the part's written kind has not, refused before writing: an NPC's Level, a PcLevelMult, took
                 // `Configuration.Level.Level` — an NpcLevel's field, which a level of any kind is checked for (eval round 112's
@@ -1375,10 +1377,10 @@ public static class RecordEdits
             // A part of several kinds names the one whose field this is: an NPC's Level with Level is an NpcLevel.
             if (Kinded(types[i - 1]) && Kinds(types[i - 1]).Where(k => !k.IsInterface && k.GetProperty(steps[i].Key, Public) is not null).ToList() is [var kind])
                 part["MutagenObjectType"] = kind.Name;
-            part[steps[i].Key] = inner;
+            part[steps[i].Key] = steps[i].Index == 0 ? new JsonArray(inner) : inner;
             inner = part;
         }
-        return inner;
+        return steps[0].Index == 0 ? new JsonArray(inner) : inner;
     }
 
     // ---------------------------------------------------------------- text
