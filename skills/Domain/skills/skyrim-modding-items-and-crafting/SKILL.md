@@ -25,6 +25,9 @@ The loop in `skyrim-modding-basics` — look up, get the text, edit, build, depl
   no item: a chest is a Container (`CONT`, in `Containers/`) — never a recipe (`COBJ`) or a misc item — and its lock
   is the reference's that places it in a cell, `Lock:` with `Level:` and `Key:` below it. Both are in the
   `skyrim-modding-world` skill: read it.
+- **A lever, a switch, a button** — a thing used where it stands, that does something when pulled — is no item either:
+  it is an Activator (`ACTI`, in `Activators/`), from the game's `SimpleLever`, what it does a script of its own in its
+  `VirtualMachineAdapter`. Never a misc item, which the player picks up: the `skyrim-modding-world` skill: read it.
 - **Done** when the item is built with every keyword its kind needs (REFERENCE, *Keywords carry the
   gameplay*) and a route brings it to the player (REFERENCE, *How an item reaches the player*).
 - **A keyword the game checks** — a weapon that counts as silver, an item a merchant buys — is one line in its
