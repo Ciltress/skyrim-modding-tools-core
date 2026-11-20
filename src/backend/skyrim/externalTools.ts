@@ -216,6 +216,9 @@ const OWNERS = ['Message', 'Quest', 'Actor', 'ObjectReference', 'MiscObject', 'L
 /** The game's scripts of functions alone, called by their names, which no property holds: `Game Property GoldReward Auto`. */
 const FUNCTIONS_ONLY = /^(Game|Debug|Utility|Math|Input|UI|StringUtil)$/i;
 
+/** The kinds a record's VirtualMachineAdapter names its properties by, Mutagen's, written as a Papyrus type: `ScriptObjectProperty`. */
+const MUTAGEN_KIND = /^Script(Object|Int|Float|Bool|String)?(List)?(Property)?$/i;
+
 /** The types a property most often holds, said where it was typed otherwise. */
 const TYPES_BY_USE = '`Message` for a message box, `MiscObject` for gold (`MiscObject Property Gold001 Auto`), `ObjectReference` for a thing ' +
     'placed in a cell, `Actor` for an NPC placed, `Quest` for a quest';
@@ -384,6 +387,12 @@ function writingHint(problem: string, scriptsDir: string, vanilla: string): stri
             `${unknownType} stands where none of them goes`;
     }
     // `Object Property WelcomeMessageBox Auto`: told "undefined type: `Object`", round 163's message+detailed #5 answered unbuilt.
+    const kinded = unknownType && MUTAGEN_KIND.test(unknownType) ? new RegExp(`^${unknownType}\\s+Property\\s+(\\w+)`, 'i').exec(line) : null;
+    if (kinded) {
+        const held = heldType(kinded[1], source);
+        return `${where}: ${unknownType} is no Papyrus type — ScriptObjectProperty is the kind the record's VirtualMachineAdapter names a ` +
+            `property by; in the script, a property is typed as what it holds${held ? `: \`${held} Property ${kinded[1]} Auto\` for this one; ` : ': '}${TYPES_BY_USE}`;
+    }
     const vague = unknownType && VAGUE_TYPE.test(unknownType) ? new RegExp(`^${unknownType}\\s+Property\\s+(\\w+)`, 'i').exec(line) : null;
     if (vague) {
         const held = heldType(vague[1], source);
@@ -417,6 +426,18 @@ function writingHint(problem: string, scriptsDir: string, vanilla: string): stri
         // for "undefined type: `Item`": the game has no type Item.
         // Round 167's activator #3 wrote `GameProperty GoldReward Auto`, was told `Game Property GoldReward Auto`, and was refused three
         // builds for "cannot convert type `Game` to type `Form`": Game is a script of functions, which no property holds.
+        // Eval round 170's message+detailed #4 wrote `ScriptObjectProperty WelcomeMessage Auto`, the record's kind for it, then
+        // `ScriptObject Property …`, six builds in all.
+        if (MUTAGEN_KIND.test(glued[1]) || MUTAGEN_KIND.test(type)) {
+            const held = heldType(glued[2], source);
+            return `${where}: ${glued[1]}Property is the kind the record's VirtualMachineAdapter names the property by, no Papyrus type — in the ` +
+                `script, a property is typed as what it holds${held ? `: \`${held} Property ${glued[2]} Auto\` for this one; ` : ': '}${TYPES_BY_USE}`;
+        }
+        // Round 170's activator+detailed #2 wrote `PlayerProperty …`: the game has no type Player, the player is an Actor.
+        if (/^Player$/i.test(type)) {
+            return `${where}: Papyrus has no type Player — the player is an Actor, \`Game.GetPlayer()\`, and a property for the player is ` +
+                `\`Actor Property ${glued[2]} Auto\`, filled with the game's PlayerRef`;
+        }
         if (FUNCTIONS_ONLY.test(type)) {
             const held = heldType(glued[2], source);
             return `${where}: a property is declared with its type and the word Property apart, and ${type} is no type a property holds — ` +

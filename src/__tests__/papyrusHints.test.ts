@@ -486,6 +486,32 @@ describe('papyrusHints', () => {
         ]);
     });
 
+    // Eval round 170's message+detailed #4 and activator+detailed #2, with russo-2025's words.
+    it('names a Mutagen kind and Player written as a property\'s type', () => {
+        const { scripts, vanilla } = folders();
+        const write = (name: string, body: string) => {
+            fs.writeFileSync(path.join(scripts, `${name}.psc`), `ScriptName ${name} extends Quest\n\n${body}`);
+            return path.join(scripts, `${name}.psc`);
+        };
+        const glued = write('KGlued', 'ScriptObjectProperty WelcomeMessage Auto\n\nEvent OnInit()\n    WelcomeMessage.Show()\nEndEvent\n');
+        const bare = write('KBare', 'ScriptObject Property WelcomeMessage Auto\n\nEvent OnInit()\n    WelcomeMessage.Show()\nEndEvent\n');
+        const player = write('KPlayer', 'PlayerProperty PlayerRef Auto\n');
+        expect(papyrusHints([
+            `${glued}:3:22: Checker error: undefined type: \`ScriptObjectProperty\``,
+            `${bare}:3:14: Checker error: undefined type: \`ScriptObject\``,
+            `${player}:3:16: Checker error: undefined type: \`PlayerProperty\``
+        ], scripts, vanilla)).toEqual([
+            'line 3 of KGlued.psc, `ScriptObjectProperty WelcomeMessage Auto`: ScriptObjectProperty is the kind the record\'s VirtualMachineAdapter ' +
+            'names the property by, no Papyrus type — in the script, a property is typed as what it holds: `Message Property WelcomeMessage Auto` ' +
+            'for this one; ' + byUse,
+            'line 3 of KBare.psc, `ScriptObject Property WelcomeMessage Auto`: ScriptObject is no Papyrus type — ScriptObjectProperty is the kind ' +
+            'the record\'s VirtualMachineAdapter names a property by; in the script, a property is typed as what it holds: `Message Property ' +
+            'WelcomeMessage Auto` for this one; ' + byUse,
+            'line 3 of KPlayer.psc, `PlayerProperty PlayerRef Auto`: Papyrus has no type Player — the player is an Actor, `Game.GetPlayer()`, and ' +
+            'a property for the player is `Actor Property PlayerRef Auto`, filled with the game\'s PlayerRef'
+        ]);
+    });
+
     it('adds nothing for an error the sources do not explain', () => {
         const { scripts, vanilla } = folders();
         expect(papyrusHints(['C:\\p\\scripts\\X.psc(1,0): mismatched input', 'Compilation failed'], scripts, vanilla)).toEqual([]);

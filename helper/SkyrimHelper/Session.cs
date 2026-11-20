@@ -790,6 +790,7 @@ public sealed partial class Session : IDisposable
         corrected.AddRange(FlagLines.IntoFlags(dir));
         corrected.AddRange(FlagLines.NoneOutOfFlags(dir));
         corrected.AddRange(FlagLines.TruthsInFlags(dir));
+        corrected.AddRange(FlagLines.EventsOutOfFlags(dir));
         // A quest's Event as its code, once a field among its Flags is at the margin.
         corrected.AddRange(RecordFiles.EventCodes(dir));
         // A list item's fields that are one part's of it, under that part: a leveled list's Level, Reference and Count, under Data.

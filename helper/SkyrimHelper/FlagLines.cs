@@ -54,6 +54,37 @@ internal static class FlagLines
     /// </summary>
     public static List<(string File, string Change)> TruthsInFlags(string pluginDir) => EachFile(pluginDir, Truthed);
 
+    /// <summary>
+    /// A quest's story event written among its Flags — `- EventStoryChangeLocation` — taken out, and the quest's `Event: CLOC` written where
+    /// it has none: refused "Flags has EventStoryChangeLocation", eval round 170's storymanager #3 set its Flags without it and its quest
+    /// was started on no event until a later build.
+    /// </summary>
+    public static List<(string File, string Change)> EventsOutOfFlags(string pluginDir) => EachFile(pluginDir, EventOut);
+
+    private static (string Text, string Change)? EventOut(string text, Type type)
+    {
+        if (type != typeof(Quest)) return null;
+        var lines = text.Split('\n').ToList();
+        var at = lines.FindIndex(l => System.Text.RegularExpressions.Regex.IsMatch(l, @"^Flags:[ \t]*\r?$"));
+        if (at < 0) return null;
+        var flags = Enum.GetNames(typeof(Quest.Flag));
+        for (var i = at + 1; i < lines.Count && (lines[i].StartsWith(' ') || lines[i].StartsWith('-') || lines[i].Trim().Length == 0); i++)
+        {
+            if (System.Text.RegularExpressions.Regex.Match(lines[i], @"^[ \t]*-[ \t]+(?<name>\w*ChangeLocation\w*)[ \t]*\r?$",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase) is not { Success: true } item
+                || flags.Contains(item.Groups["name"].Value, StringComparer.OrdinalIgnoreCase)) continue;
+            var name = item.Groups["name"].Value;
+            lines.RemoveAt(i);
+            var hasEvent = lines.Any(l => System.Text.RegularExpressions.Regex.IsMatch(l, @"^Event:"));
+            if (!hasEvent) lines.Insert(at, "Event: CLOC");
+            if (!lines.Skip(at + (hasEvent ? 1 : 2)).TakeWhile(l => l.StartsWith(' ') || l.StartsWith('-')).Any(l => l.TrimStart().StartsWith('-')))
+                lines[at + (hasEvent ? 0 : 1)] = "Flags: []";
+            return (string.Join('\n', lines), $"took `{name}` out of Flags{(hasEvent ? "" : " and wrote `Event: CLOC`")} — a quest's story event is its " +
+                "Event line, CLOC for a change of location, and none of its Flags");
+        }
+        return null;
+    }
+
     private static (string Text, string Change)? Truthed(string text, Type type)
     {
         if (type.GetProperty("Flags", Public)?.PropertyType is not { } flagsType || (Nullable.GetUnderlyingType(flagsType) ?? flagsType) is not { IsEnum: true } kind) return null;
