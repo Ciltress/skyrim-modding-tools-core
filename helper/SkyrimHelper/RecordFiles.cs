@@ -1227,7 +1227,10 @@ public static class RecordFiles
     /// </summary>
     private static string? LockHint(Type type, string key, string text, string pluginDir)
     {
-        if (!LockField.IsMatch(key) || typeof(IPlaced).IsAssignableFrom(type)) return null;
+        // Or a field of another name with a lock below it: `Containers:` and `Lock:` under it, told "delete it", eval round 177's
+        // key #4 did and built a chest with no lock.
+        if (typeof(IPlaced).IsAssignableFrom(type)
+            || !LockField.IsMatch(key) && !Regex.IsMatch(BlockOf(text, key), @"^[ \t]+Lock:", RegexOptions.Multiline)) return null;
         var (level, opener) = LockOf(text, key);
         var editorId = Identity(text).EditorId;
         // The project's references placing this record: a key places nothing, and a chest's references name it as their Base.
