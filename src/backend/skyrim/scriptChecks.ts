@@ -32,6 +32,8 @@ export interface PapyrusSource {
     name: string;
     extends?: string;
     events: string[];
+    /** Each event's parameters as its line declares them, by the event's name in lower case: `ObjectReference akActionRef`. */
+    eventParams?: Record<string, string>;
     properties: { name: string; type: string; auto: boolean; valued: boolean }[];
     /** The script's own variables, outside its functions and events, and whether each is given a value there. */
     variables: { name: string; type: string; valued: boolean }[];
@@ -97,6 +99,7 @@ export function readPapyrus(text: string): PapyrusSource {
     const lines = code.split(/\r?\n/);
     const head = lines.map(line => /^[ \t]*ScriptName[ \t]+(\w+)(?:[ \t]+extends[ \t]+(\w+))?/i.exec(line)).find(Boolean);
     const events: string[] = [];
+    const eventParams: Record<string, string> = {};
     const properties: PapyrusSource['properties'] = [];
     const variables: PapyrusSource['variables'] = [];
     const calls = new Set<string>();
@@ -105,7 +108,11 @@ export function readPapyrus(text: string): PapyrusSource {
     for (const line of lines) {
         const event = /^[ \t]*Event[ \t]+(\w+)[ \t]*\(/i.exec(line);
         const fn = /^[ \t]*(?:\w+(?:\[\])?[ \t]+)?Function[ \t]+(\w+)[ \t]*\(/i.exec(line);
-        if (event) events.push(event[1]);
+        if (event) {
+            events.push(event[1]);
+            const params = /^[ \t]*Event[ \t]+\w+[ \t]*\(([^)]*)\)/i.exec(line);
+            if (params) eventParams[event[1].toLowerCase()] = params[1].trim().replace(/\s+/g, ' ');
+        }
         const property = /^[ \t]*(\w+(?:\[\])?)[ \t]+Property[ \t]+(\w+)(.*)$/i.exec(line);
         if (property) {
             properties.push({
@@ -125,7 +132,7 @@ export function readPapyrus(text: string): PapyrusSource {
         if ((event || fn) && !/\bnative\b/i.test(line)) depth++;
         if (/^[ \t]*End(?:Event|Function)\b/i.test(line)) depth = Math.max(0, depth - 1);
     }
-    return { name: head?.[1] ?? '', extends: head?.[2], events, properties, variables, strings, calls: [...calls], body: body.join('\n') };
+    return { name: head?.[1] ?? '', extends: head?.[2], events, eventParams, properties, variables, strings, calls: [...calls], body: body.join('\n') };
 }
 
 /** Where the checks read sources: the project's scripts folder first, then each folder the compiler imports. */
@@ -164,6 +171,13 @@ export class PapyrusSources {
 }
 
 /** Levenshtein's distance, case-blind: the event meant, for one a letter or a word off. */
+/** Whether two parameter lists take the same types in the same order — their names and default values aside. */
+function sameParameters(a: string, b: string): boolean {
+    const types = (list: string) => list.split(',').map(p => p.trim()).filter(Boolean).map(p => p.split(/\s+/)[0].toLowerCase());
+    const [x, y] = [types(a), types(b)];
+    return x.length === y.length && x.every((t, i) => t === y[i]);
+}
+
 function distance(a: string, b: string): number {
     const x = a.toLowerCase(), y = b.toLowerCase();
     let row = Array.from({ length: y.length + 1 }, (_, i) => i);
@@ -278,6 +292,19 @@ export function scriptWarnings(records: readonly ScriptedRecord[], context: Scri
                     const named = new Set(own.strings.map(s => s.toLowerCase()));
                     for (const event of own.events) {
                         const key = event.toLowerCase();
+                        // Declared, with other parameters than the game's: eval round 175's activator #1 wrote `Event OnActivate()`, which
+                        // russo-2025 compiled and the Creation Kit's compiler refuses ("do not match the parent script"); the game sends
+                        // OnActivate with its activator, and calls no event of that name written otherwise.
+                        const parent = declared.has(key) ? chain.find(c => c.source!.eventParams?.[key] !== undefined) : undefined;
+                        const theirs = parent?.source!.eventParams![key];
+                        const mine = own.eventParams?.[key];
+                        if (parent && theirs !== undefined && mine !== undefined && !sameParameters(mine, theirs)) {
+                            const name = parent.source!.events.find(e => e.toLowerCase() === key) ?? event;
+                            warnings.push(`${scriptFile(script.name)}: \`Event ${event}(${mine})\` is written with other parameters than ${parent.name} ` +
+                                `declares it with, \`Event ${name}(${theirs})\` — the game sends ${name} with those, and calls no event of that name ` +
+                                `written otherwise, so what it does never happens (the Creation Kit's compiler refuses it). Write \`Event ${name}(${theirs})\` ` +
+                                'in its place, and build again.');
+                        }
                         if (declared.has(key) || named.has(key) || own.calls.includes(key)) continue;
                         const offered = [...declared].map(e => ({ e, d: distance(e, key) })).sort((a, b) => a.d - b.d)[0];
                         // Or the declared event whose verb the name holds, a word put in front of it: OnObjectActivate is OnActivate
@@ -297,6 +324,15 @@ export function scriptWarnings(records: readonly ScriptedRecord[], context: Scri
                                 : meant ? `Where ${meant} was meant, write \`Event ${meant}(\` with its parameters in its place, and build again.`
                                     : `The events it can have are those ${chain.map(c => c.name).join(' and ')} declare, and OnInit.`));
                     }
+                }
+                // A lever's script that does its work when it loads, not when it is used: eval round 175's activator+detailed #2 gave its
+                // gold in OnInit, and the build said nothing.
+                if (record.type === 'Activator' && own.events.length > 0 && !own.events.some(e => /^onactivate$/i.test(e))
+                    && own.events.every(e => /^(oninit|onload|oncellattach|oncellload)$/i.test(e))) {
+                    warnings.push(`${scriptFile(script.name)}: ${script.name}, on ${record.editorId}, an activator, has no OnActivate — the game sends a ` +
+                        `lever, a button or a switch \`Event OnActivate(ObjectReference akActionRef)\` when it is used, and ${own.events.join(' and ')} ` +
+                        'when it loads, so what it does happens without anyone using it. Where it is to happen when it is used, write it in ' +
+                        '`Event OnActivate(ObjectReference akActionRef)` in its place, and build again.');
                 }
             }
 

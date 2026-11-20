@@ -84,6 +84,32 @@ describe('scriptWarnings', () => {
         expect(warning).toContain('Where OnActivate was meant, write `Event OnActivate(ObjectReference akActionRef)` in its place');
     });
 
+    it('names an event the game declares written with other parameters, with the game\'s line (round 175\'s activator #1)', () => {
+        fs.writeFileSync(path.join(vanilla, 'ObjectReference.psc'), 'Scriptname ObjectReference extends Form Hidden\n\n' +
+            'Event OnActivate(ObjectReference akActionRef)\nEndEvent\n');
+        const lever: ScriptedRecord = { file: 'Activators/GoldLever.yaml', editorId: 'GoldLever', type: 'Activator',
+            scripts: [{ name: 'StarterGoldScript', properties: [{ name: 'Gold001', kind: 'Object', filled: true }] }] };
+        const head = 'Scriptname StarterGoldScript extends ObjectReference\n\nMiscObject Property Gold001 Auto\n\n';
+        expect(warn([lever], head + 'Event OnActivate()\n    Game.GetPlayer().AddItem(Gold001, 100)\nEndEvent\n')).toEqual([
+            expect.stringMatching(/`Event OnActivate\(\)` is written with other parameters than ObjectReference declares it with, `Event OnActivate\(ObjectReference akActionRef\)` — .* Write `Event OnActivate\(ObjectReference akActionRef\)` in its place/)
+        ]);
+        // Another parameter name is the same event.
+        expect(warn([lever], head + 'Event OnActivate(ObjectReference akTarget)\n    Game.GetPlayer().AddItem(Gold001, 100)\nEndEvent\n')).toEqual([]);
+    });
+
+    it('names a lever\'s script that does its work when it loads, with no OnActivate (round 175\'s activator+detailed #2)', () => {
+        fs.writeFileSync(path.join(vanilla, 'ObjectReference.psc'), 'Scriptname ObjectReference extends Form Hidden\n\n' +
+            'Event OnActivate(ObjectReference akActionRef)\nEndEvent\n\nEvent OnLoad()\nEndEvent\n');
+        const on = (type: string): ScriptedRecord => ({ file: `${type}s/StrangeLever.yaml`, editorId: 'StrangeLever', type,
+            scripts: [{ name: 'StarterGoldScript', properties: [{ name: 'Gold001', kind: 'Object', filled: true }] }] });
+        const script = 'Scriptname StarterGoldScript extends ObjectReference\n\nMiscObject Property Gold001 Auto\n\n' +
+            'Event OnInit()\n    Game.GetPlayer().AddItem(Gold001, 100)\nEndEvent\n';
+        expect(warn([on('Activator')], script)).toEqual([
+            expect.stringMatching(/StarterGoldScript, on StrangeLever, an activator, has no OnActivate — .* `Event OnActivate\(ObjectReference akActionRef\)` in its place/)
+        ]);
+        expect(warn([on('MiscItem')], script)).toEqual([]);
+    });
+
     it('takes the events the parents declare, Papyrus\'s own, and one the script registers for by name', () => {
         const script = GOOD.replace('EndEvent\n', 'EndEvent\n\nEvent OnUpdate()\nEndEvent\n\nState Busy\n  Event OnBeginState()\n  EndEvent\nEndState\n\n' +
             'Event OnMyModEvent(string eventName, string strArg, float numArg, Form sender)\nEndEvent\n')
