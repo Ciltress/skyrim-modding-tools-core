@@ -894,6 +894,47 @@ internal static class MadeNotes
         return notes;
     }
 
+    /// <summary>
+    /// A new item of the project's that merchants deal in — a `VendorItem…` keyword — worth nothing: its `Value` is 0, so it sells
+    /// for no gold. Asked for an ingredient worth 40, eval round 177's ingredient+detailed #3 and #5 wrote `IngredientValue: 40`,
+    /// a field of the ingredient's effects, and misc #1 a locket "worth 120 gold" with no Value; each built a success.
+    /// </summary>
+    public static List<string> Unpriced(ISkyrimModGetter mod, RecordIndex index, string pluginDir)
+    {
+        var items = mod.EnumerateMajorRecords().Where(r => r.FormKey.ModKey == mod.ModKey).Select(r => r switch
+        {
+            IMiscItemGetter m => (Record: r, Value: (long)m.Value, Keywords: m.Keywords, Spare: 0L),
+            IIngredientGetter i => (Record: r, Value: (long)i.Value, Keywords: i.Keywords, Spare: (long)i.IngredientValue),
+            IBookGetter b => (Record: r, Value: (long)b.Value, Keywords: b.Keywords, Spare: 0L),
+            IIngestibleGetter g => (Record: r, Value: (long)g.Value, Keywords: g.Keywords, Spare: 0L),
+            ISoulGemGetter s => (Record: r, Value: (long)s.Value, Keywords: s.Keywords, Spare: 0L),
+            _ => (Record: (IMajorRecordGetter?)null, Value: 0L, Keywords: (IReadOnlyList<Mutagen.Bethesda.Plugins.IFormLinkGetter<IKeywordGetter>>?)null, Spare: 0L)
+        }).Where(x => x.Record is not null && x.Value == 0).ToList();
+        if (items.Count == 0) return [];
+        var files = EffectCasting.Files(pluginDir);
+        var project = ToolCalls.ProjectOf(pluginDir);
+        var notes = new List<string>();
+        foreach (var (record, _, keywords, spare) in items)
+        {
+            var vendor = (keywords ?? []).Select(k => index.ByFormKey.TryGetValue(k.FormKey, out var e) ? e.EditorId : null)
+                .FirstOrDefault(id => id is not null && id.StartsWith("VendorItem", StringComparison.OrdinalIgnoreCase)
+                    && !id.Equals("VendorNoSale", StringComparison.OrdinalIgnoreCase));
+            if (vendor is null) continue;
+            var id = record!.EditorID ?? Session.FormKeyText(record.FormKey);
+            var file = files.GetValueOrDefault(record.FormKey) ?? id;
+            var shown = (record as ITranslatedNamedGetter)?.Name?.String is { Length: > 0 } name ? $" \"{name}\"" : "";
+            var head = $"{file}: {id}{shown} has no Value, so merchants buy and sell it for no gold, though its {vendor} keyword has them " +
+                "deal in it.";
+            notes.Add(spare > 0
+                ? head + $" Its IngredientValue, {spare}, is no price: an item's price is its `Value`. One call sets it and builds — " +
+                  ToolCalls.Fix(project, file, $"{{\"path\": \"Value\", \"value\": {spare}}}") + ". Where it was to be worth nothing, nothing to " +
+                  "change, and this warning stays"
+                : head + $" Where the user named its worth, set it: {ToolCalls.Edit(project, file, "{\"path\": \"Value\", \"value\": <its gold>}", build: true)}. " +
+                  "Where it was to be worth nothing, nothing to change, and this warning stays");
+        }
+        return notes;
+    }
+
     /// <summary>The conditions every tempering recipe of the game carries: the item not enchanted, or the Arcane Blacksmith perk.</summary>
     private const string TemperingConditions =
         "[{\"MutagenObjectType\": \"ConditionFloat\", \"CompareOperator\": \"NotEqualTo\", \"Flags\": [\"OR\"], " +

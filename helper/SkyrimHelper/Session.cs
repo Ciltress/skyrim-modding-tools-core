@@ -999,7 +999,7 @@ public sealed partial class Session : IDisposable
             .Concat(MadeNotes.Unused(mod, lookup, Index, dir)).Concat(MadeNotes.GameNamedInLists(mod, lookup, Index, dir))
             .Concat(MadeNotes.MiscActivators(mod, dir)).Concat(MadeNotes.Levers(mod, dir)).Concat(MadeNotes.WordlessMessages(mod, dir)).Concat(MadeNotes.ScriptedOverrides(mod, lookup, dir))
             .Concat(MadeNotes.Ungiven(mod, lookup, Index, dir))
-            .Concat(MadeNotes.Seatless(mod, lookup, Index, dir)).Concat(MadeNotes.TomesOfCopies(mod, lookup, Index, dir)).Concat(MadeNotes.Tempering(mod, Index, dir))
+            .Concat(MadeNotes.Seatless(mod, lookup, Index, dir)).Concat(MadeNotes.TomesOfCopies(mod, lookup, Index, dir)).Concat(MadeNotes.Tempering(mod, Index, dir)).Concat(MadeNotes.Unpriced(mod, Index, dir))
             .Concat(MadeNotes.GameLights(mod, dir)).Concat(MadeNotes.EmptyEffects(mod, dir)).Concat(MadeNotes.LightColors(mod, dir))
             .Concat(MadeNotes.EffectsByFormId(mod, Index, dir))
             .Concat(CellContents.PlacedNotes(mod, Contexts, Index, dir)).Concat(DialogContents.Notes(mod, lookup, Index, dir)).Concat(DialogContents.StoryNotes(mod, lookup, dir)).Concat(GameSettings.Notes(mod, Index, dir))
