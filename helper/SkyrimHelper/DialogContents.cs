@@ -213,6 +213,28 @@ internal static class DialogContents
                     ToolCalls.Edit(project, file, $"{{\"path\": \"Event\", \"value\": \"{code ?? "<the event's code, as CLOC>"}\"}}", build: true));
             }
         }
+        // A quest node of the game's copied to start a quest of the mod's own: eval round 174's storymanager #2 added its quest to the
+        // game's DA09ChangeLocationSharesEvent with addPatch, made no node of its own, and built without a word. The copy changes the
+        // game's node itself, and another mod that changes that node takes the quest back out; a node of the mod's own, under the same
+        // branch, starts it beside the game's.
+        foreach (var node in mod.StoryManagerQuestNodes.Where(n => n.FormKey.ModKey != mod.ModKey))
+        {
+            var quests = node.Quests.Select(q => q.Quest).Where(l => !l.IsNull && l.FormKey.ModKey == mod.ModKey).Select(l => l.FormKey).Distinct()
+                .Select(key => mod.Quests.FirstOrDefault(q => q.FormKey == key)).OfType<IQuestGetter>()
+                .Select(q => q.EditorID ?? Session.FormKeyText(q.FormKey)).ToList();
+            if (quests.Count == 0) continue;
+            var nodeName = node.EditorID ?? Session.FormKeyText(node.FormKey);
+            var file = files.GetValueOrDefault(node.FormKey) ?? nodeName;
+            var parent = node.Parent.IsNull ? "QuestNode"
+                : Node(node.Parent.FormKey) is { EditorID: { } id } ? id : Session.FormKeyText(node.Parent.FormKey);
+            var own = Regex.Replace($"{quests[0]}Node", "[^A-Za-z0-9_]", "");
+            notes.Add($"{file}: overrides {nodeName} of {node.FormKey.ModKey.FileName}, a story manager node of the game's, to start " +
+                $"{string.Join(" and ", quests)} — that changes the game's node itself, and another mod that changes {nodeName} takes " +
+                $"{(quests.Count == 1 ? "the quest" : "them")} back out. A quest of the mod's own is started by a node of its own, beside the " +
+                $"game's: write StoryManagerQuestNodes/{own}.yaml with `EditorID: {own}`, `Parent: {parent}` and `Quests:` with " +
+                $"{string.Join(" and ", quests.Select(q => $"`- Quest: {q}`"))} below it, then delete this copy — {ToolCalls.Delete(pluginDir, file, build: true)}. " +
+                $"Where the user asked for the game's node itself to start it, nothing to change, and this warning stays");
+        }
         return notes;
     }
 

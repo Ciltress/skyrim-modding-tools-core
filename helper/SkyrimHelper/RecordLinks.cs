@@ -338,6 +338,27 @@ public static class RecordLinks
                             return;
                         }
                     }
+                    // A script property's Object written as a Papyrus type or as a script's name, no record: eval round 174's activator
+                    // #1 declared OnActivate's parameter akActionRef a property, `Object: ObjectReference`, and activator+detailed #2 gave
+                    // its property its script's name. Offered the records closest to the name (dummyObject, sObjectFade…), both ran out
+                    // of turns.
+                    if (PropertyObject.Match(field) is { Success: true } property
+                        && (PapyrusTypes.Contains(editorId) || ScriptOf(pluginDir, text, editorId)))
+                    {
+                        var name = PropertyName(text, value);
+                        var parameter = name is not null && EventParameter.IsMatch(name);
+                        var path = $"VirtualMachineAdapter.Scripts[{property.Groups["script"].Value}].Properties[{property.Groups["property"].Value}]";
+                        problems.Add($"{relative}: {field} names {editorId}, " +
+                            (PapyrusTypes.Contains(editorId) ? "a Papyrus type" : "a script") + ", and no record — a property's Object is the " +
+                            "record the script gets in it, by its EditorID or FormID: `Object: Gold001` for the game's gold, a MiscItem, and the " +
+                            "script's line types it so, `MiscObject Property Gold001 Auto`" +
+                            (parameter
+                                ? $". {name} is an event's parameter, which the game hands the event, and no property: delete it here — " +
+                                  ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, "", ToolCalls.Quoted(path), build: true) +
+                                  $" — and its `Property` line from the script"
+                                : ""));
+                        return;
+                    }
                     // The game's gold by another name: offered the coin purses closest to `GoldCoin`, eval round 151's activator+detailed
                     // #1 wrote a gold coin of its own, a misc item worth 1.
                     if (GoldWord.IsMatch(editorId) && index.ByEditorId.TryGetValue("Gold001", out var gold)
@@ -1246,6 +1267,62 @@ public static class RecordLinks
     /// <summary>An editor ID a model gave the game's gold, Gold001: Gold, GoldCoin, Septims, Coins…</summary>
     private static readonly Regex GoldWord = new(@"^(?:Gold|Coins?|Septims?)(?:_?(?:Coins?|Septims?|Pieces?|Item|Misc|01))?$|^(?:Misc|Item)_?Gold$",
         RegexOptions.IgnoreCase, TimeSpan.FromSeconds(5));
+
+    /// <summary>A script property's Object, as a link field's path names it: the script's and the property's numbers.</summary>
+    private static readonly Regex PropertyObject = new(@"^VirtualMachineAdapter\.Scripts\[(?<script>\d+)\]\.Properties\[(?<property>\d+)\]\.Object$",
+        RegexOptions.None, TimeSpan.FromSeconds(5));
+
+    /// <summary>An event's parameter as Papyrus names one — akActionRef, akTarget, aiCount, asName: two letters of its kind, then its name.</summary>
+    private static readonly Regex EventParameter = new(@"^a[kifsb][A-Z]\w*$", RegexOptions.None, TimeSpan.FromSeconds(5));
+
+    /// <summary>The Papyrus types a property is typed with, and the scripts of functions alone: never a record's editor ID.</summary>
+    private static readonly HashSet<string> PapyrusTypes = new([
+        "Form", "ObjectReference", "Actor", "ActorBase", "MiscObject", "Message", "Quest", "Weapon", "Armor", "Book", "Key", "Spell",
+        "Scroll", "Ingredient", "Potion", "Ammo", "SoulGem", "Location", "GlobalVariable", "Activator", "Container", "Door", "Furniture",
+        "Flora", "Light", "Static", "Keyword", "FormList", "Faction", "Perk", "Shout", "WordOfPower", "MagicEffect", "Enchantment",
+        "Race", "Outfit", "Cell", "WorldSpace", "Scene", "Topic", "TopicInfo", "Package", "LeveledItem", "LeveledActor", "Sound",
+        "Alias", "ReferenceAlias", "LocationAlias", "EncounterZone", "Idle", "Game", "Debug", "Utility", "Math", "Input", "UI"
+    ], StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Whether a name is a script's, no record's: one of the project's scripts, or one this record's adapter attaches.
+    /// </summary>
+    private static bool ScriptOf(string pluginDir, string text, string name) =>
+        File.Exists(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(pluginDir)) ?? pluginDir, "scripts", $"{name}.psc"))
+        || Regex.IsMatch(text, $@"^[ \t]*-[ \t]+Name:[ \t]*{Regex.Escape(name)}[ \t]*\r?$", RegexOptions.Multiline, TimeSpan.FromSeconds(5))
+           && Regex.IsMatch(text, $@"^[ \t]*Scripts:", RegexOptions.Multiline, TimeSpan.FromSeconds(5)) && name.EndsWith("Script", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The Name of the list item a value is written in — a script property's — read from the lines at the value's own column above
+    /// and below it, up to the item's dash; null where it has none.
+    /// </summary>
+    private static string? PropertyName(string text, YamlScalarNode value)
+    {
+        var lines = text.Replace("\r\n", "\n").Split('\n');
+        var at = (int)value.Start.Line - 1;
+        if (at < 0 || at >= lines.Length) return null;
+        var column = lines[at].Length - lines[at].TrimStart().Length;
+        if (lines[at].TrimStart().StartsWith("- ", StringComparison.Ordinal)) column += 2;
+        static string? NameIn(string line) => Regex.Match(line, @"^[ \t]*(?:-[ \t]+)?Name:[ \t]*(?<name>\S+)") is { Success: true } m ? m.Groups["name"].Value : null;
+        for (var i = at; i >= 0; i--)
+        {
+            var line = lines[i];
+            var indent = line.Length - line.TrimStart().Length;
+            if (line.Trim().Length == 0) continue;
+            if (indent == column - 2 && line.TrimStart().StartsWith("- ", StringComparison.Ordinal)) return NameIn(line);
+            if (indent < column) return null;
+            if (indent == column && NameIn(line) is { } name) return name;
+        }
+        for (var i = at + 1; i < lines.Length; i++)
+        {
+            var line = lines[i];
+            var indent = line.Length - line.TrimStart().Length;
+            if (line.Trim().Length == 0) continue;
+            if (indent < column || line.TrimStart().StartsWith("- ", StringComparison.Ordinal)) return null;
+            if (indent == column && NameIn(line) is { } name) return name;
+        }
+        return null;
+    }
 
     private static readonly Regex CommentName = new(@"^[ \t]+#[ \t]*(?<id>[A-Za-z0-9_]+)[ \t]*(?:\([^()\n]*\)[ \t]*)?\r?$", RegexOptions.None, TimeSpan.FromSeconds(5));
 

@@ -207,6 +207,17 @@ function openBlocks(source: string, before: number): OpenBlock[] {
     return open;
 }
 
+/** The letters to add, take out or change to make one word the other. */
+function editDistance(a: string, b: string): number {
+    let row = Array.from({ length: b.length + 1 }, (_, i) => i);
+    for (let i = 1; i <= a.length; i++) {
+        const next = [i];
+        for (let j = 1; j <= b.length; j++) next[j] = Math.min(row[j] + 1, next[j - 1] + 1, row[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+        row = next;
+    }
+    return row[b.length];
+}
+
 /** Words a model types a property with that are no type of the game's: `Item Property Gold001 Auto`, `Object Property …`. */
 const VAGUE_TYPE = /^(Object|Record|Item|Items|Reference|Ref|Thing|Entity|Any|Var|Gold|Coin|Coins|Money)$/i;
 
@@ -552,6 +563,26 @@ function writingHint(problem: string, scriptsDir: string, vanilla: string): stri
         && !new RegExp(`^\\s*${undefinedName}\\s+Property\\s+\\w+`, 'im').test(source)) {
         return `${where}: ${undefinedName} is declared nowhere in the script — ${PROPERTY_FILLED}; a number of its own is a ` +
             `variable, \`Int ${undefinedName} = 100\``;
+    }
+    // A function a script of functions alone has not: russo-2025 says "undefined identifier `Game`" and "undefined function
+    // `GetItemByName`" for `Game.GetItemByName("Gold")`. Eval round 174's activator+detailed #4 was told only that, twice, and answered
+    // that it was blocked. A record got by its name or ID is a property; any other is named with the script's functions nearest it.
+    // Answered on the function's own problem, not the owner's "undefined identifier", which a hint above may answer otherwise.
+    const missing = /undefined function `?(\w+)`?|(\w+) is not a function or does not exist/i.exec(message)?.slice(1).find(Boolean);
+    const scripted = missing ? [...line.matchAll(/\b(\w+)\s*\.\s*(\w+)\s*\(/g)]
+        .find(([, owner, fn]) => FUNCTIONS_ONLY.test(owner) && fn.toLowerCase() === missing.toLowerCase()) : undefined;
+    if (scripted) {
+        const [, owner, called] = scripted;
+        const declared = vanillaSource(vanilla, owner);
+        const functions = declared ? [...declared.text.matchAll(/^\s*(?:\w+(?:\[\])?\s+)?Function\s+(\w+)\s*\(/gim)].map(m => m[1]) : [];
+        if (declared && !functions.some(fn => fn.toLowerCase() === called.toLowerCase())) {
+            if (/By(Name|ID|EditorID|FormID)|^(Get|Find|Lookup)(Item|Form|Object|Record|Ref|Gold)/i.test(called)) {
+                return `${where}: ${owner} has no ${called} — a script gets no record by its name or ID: ${PROPERTY_FILLED}`;
+            }
+            const nearest = functions.map(fn => ({ fn, d: editDistance(fn.toLowerCase(), called.toLowerCase()) }))
+                .sort((a, b) => a.d - b.d).slice(0, 6).map(n => n.fn);
+            return `${where}: ${owner} has no ${called} — ${owner}'s functions nearest it are ${nearest.join(', ')} (${declared.file} of the game's sources)`;
+        }
     }
     return undefined;
 }

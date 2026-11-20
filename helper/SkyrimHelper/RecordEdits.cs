@@ -53,6 +53,7 @@ public static class RecordEdits
                 $"{RecordLinks.YamlBreak(text, broken, type, pluginDir, relative)}. Write that right in the file with your file tools, " +
                 "then call editRecord again.");
         var changes = found is null ? new List<string>() : [found];
+        (set, remove) = OneScriptsProperties(text, set, remove, changes);
         text = Apply(text, type, set, remove, changes, new Context(pluginDir, relative, index));
         // A change that left no YAML is this tool's fault, never written.
         if (Root(text) is null)
@@ -370,6 +371,36 @@ public static class RecordEdits
             $"project — addPatch {{\"project\": {ToolCalls.Quoted(project)}, \"records\": [\"{Session.FormKeyText(first.FormKey)}\"]}} — " +
             "then send this edit to the file its answer names. For a record of the mod's own made from it, write a new file with an " +
             "EditorID of its own instead. Nothing was changed.";
+    }
+
+    /// <summary>A path below the script adapter itself to a script's own field: `VirtualMachineAdapter.Properties[0].Name`.</summary>
+    private static readonly Regex AdapterProperties = new(@"^\s*VirtualMachineAdapter\s*\.\s*Properties(?=\s*$|\s*[\[.])", RegexOptions.None, TimeSpan.FromSeconds(5));
+
+    /// <summary>
+    /// The paths of <paramref name="set"/> and <paramref name="remove"/> below the script adapter itself — VirtualMachineAdapter.Properties —
+    /// read as its one script's, VirtualMachineAdapter.Scripts[0].Properties, where the file's adapter has one script, said in
+    /// <paramref name="changes"/>; else as they were sent. A property is its script's: told "VirtualMachineAdapter has no field Properties
+    /// (move it in each item of Scripts)", eval round 174's activator+detailed #4 sent the same path again, and its script never got its gold.
+    /// </summary>
+    private static (JsonObject? Set, JsonArray? Remove) OneScriptsProperties(string text, JsonObject? set, JsonArray? remove, List<string> changes)
+    {
+        static bool Below(string? path) => path is not null && AdapterProperties.IsMatch(path);
+        if (!(set?.Any(f => Below(f.Key)) ?? false) && !(remove?.Any(r => Below(r?.GetValue<string>())) ?? false)) return (set, remove);
+        if (At(text, Parse("VirtualMachineAdapter.Scripts")) is not YamlSequenceNode { Children.Count: 1 } scripts) return (set, remove);
+        static string Moved(string path) => AdapterProperties.Replace(path, "VirtualMachineAdapter.Scripts[0].Properties", 1);
+        JsonObject? movedSet = null;
+        if (set is not null)
+        {
+            movedSet = new JsonObject();
+            foreach (var (key, value) in set) movedSet[Below(key) ? Moved(key) : key] = value?.DeepClone();
+        }
+        var movedRemove = remove is null ? null : new JsonArray(remove.Select(r => r?.GetValue<string>() is { } path
+            ? (JsonNode)JsonValue.Create(Below(path) ? Moved(path) : path) : r?.DeepClone()).ToArray());
+        var script = scripts.Children[0] is YamlMappingNode item && item.Children.TryGetValue(new YamlScalarNode("Name"), out var named)
+            && named is YamlScalarNode { Value: { Length: > 0 } name } ? name : "its one script";
+        changes.Add($"read VirtualMachineAdapter.Properties as VirtualMachineAdapter.Scripts[0].Properties: a property is its script's, " +
+            $"in that script's item of Scripts, and the record's one script is {script}");
+        return (movedSet, movedRemove);
     }
 
     private static List<Step> Parse(string path)

@@ -374,6 +374,29 @@ describe('papyrusHints', () => {
         ]);
     });
 
+    // Eval round 174's activator+detailed #4, with russo-2025's words: told only that Game and GetItemByName were undefined, twice.
+    it('names a function Game has not: a record got by name as a property, any other with the functions nearest it', () => {
+        const { scripts, vanilla } = folders();
+        fs.writeFileSync(path.join(vanilla, 'Game.psc'), 'Scriptname Game Hidden\n\nActor Function GetPlayer() global native\n' +
+            'Form Function GetForm(int aiFormID) global native\nFunction QuitToMainMenu() global native\nint Function GetGameSettingInt(string asSetting) global native\n');
+        const write = (name: string, body: string) => {
+            fs.writeFileSync(path.join(scripts, `${name}.psc`), `ScriptName ${name} extends ObjectReference\n\nEvent OnActivate(ObjectReference akTarget)\n` +
+                `    Actor player = Game.GetPlayer()\n    if (player)\n${body}    endif\nEndEvent\n`);
+            return `GoldLever/scripts/${name}.psc`;
+        };
+        const byName = write('ByName', '        player.AddItem(Game.GetItemByName("Gold"), 100)\n');
+        const other = write('Other', '        Game.GetPlayerr().AddItem(Gold001, 100)\n');
+        const hints = papyrusHints([
+            `${byName}:6:24: Checker error: undefined identifier \`Game\``,
+            `${byName}:6:29: Checker error: undefined function \`GetItemByName\``,
+            `${other}:6:14: Checker error: undefined function \`GetPlayerr\``
+        ], scripts, vanilla);
+        expect(hints).toEqual([
+            expect.stringMatching(/^line 6 of ByName\.psc, `player\.AddItem\(Game\.GetItemByName\("Gold"\), 100\)`: Game has no GetItemByName — a script gets no record by its name or ID: a record a script uses is a property, declared at its top — `MiscObject Property Gold001 Auto`/),
+            expect.stringMatching(/^line 6 of Other\.psc, `Game\.GetPlayerr\(\)\.AddItem\(Gold001, 100\)`: Game has no GetPlayerr — Game's functions nearest it are GetPlayer, /)
+        ]);
+    });
+
     // Eval round 173's activator+detailed #1, with russo-2025's words: told only the comma its first `--` line held.
     it('names a comment in Lua\'s way', () => {
         const { scripts, vanilla } = folders();

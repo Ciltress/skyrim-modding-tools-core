@@ -747,6 +747,24 @@ describe('the Skyrim backend', () => {
             .rejects.toThrow(/like "Cells\/0\/6\/Whiterun - 0165A8_Skyrim\.esm\/CellarKey\.yaml"/);
     });
 
+    it('moves a reference sent into `<cell>/Temporary/` into that cell\'s folder, and names the copy to make where there is none', async () => {
+        // Eval round 174's activator #1 moved its reference to `WhiterunBreezehome/Temporary/` before copying the cell: two refused builds.
+        const { backend, fixture } = makeBackend();
+        await backend.newProject({ project: 'GoldLever' });
+        const plugin = path.join(fixture.projects, 'GoldLever', 'plugin');
+        write(path.join(plugin, 'Activators', 'Temporary', 'GoldLeverRef.yaml'), 'MutagenObjectType: PlacedObject\nEditorID: GoldLeverRef\n');
+
+        await expect(backend.moveRecord({ project: 'GoldLever', from: 'Activators/Temporary/GoldLeverRef.yaml', to: 'WhiterunBreezehome/Temporary/GoldLeverRef.yaml' }))
+            .rejects.toThrow(new RegExp("'WhiterunBreezehome/Temporary/GoldLeverRef.yaml' is no folder the build reads.*" +
+                escape('addPatch {"project": "GoldLever", "records": ["WhiterunBreezehome"]}')));
+        expect(fs.existsSync(path.join(plugin, 'WhiterunBreezehome'))).toBe(false);
+
+        const cell = 'Cells/0/6/WhiterunBreezehome - 0165A8_Skyrim.esm';
+        write(path.join(plugin, ...cell.split('/'), 'RecordData.yaml'), 'EditorID: WhiterunBreezehome\n');
+        expect((await backend.moveRecord({ project: 'GoldLever', from: 'Activators/Temporary/GoldLeverRef.yaml', to: 'WhiterunBreezehome/Temporary/GoldLeverRef.yaml' }))
+            .moved.to).toBe(path.join(plugin, ...cell.split('/'), 'Temporary', 'GoldLeverRef.yaml'));
+    });
+
     it('takes a `to` that names the plugin folder first as that path in it, not a folder plugin inside it', async () => {
         // Eval round 173's activator+detailed #4 sent `to` `plugin/Cells/…/Temporary/StrangeLeverRef.yaml`: the reference went to
         // plugin/plugin/Cells/…, and a refused build and one more move undid it.

@@ -461,6 +461,25 @@ function moveTarget(projectsDir: string, paths: ProjectPaths, to: string): strin
     return [path.resolve(paths.root, given), path.resolve(projectsDir, given)].find(inside) ?? inPlugin;
 }
 
+/** The project's cell folders — each a folder under Cells/ or Worldspaces/ holding its cell's RecordData.yaml — as full paths. */
+function cellFolders(plugin: string): string[] {
+    const found: string[] = [];
+    const walk = (dir: string, depth: number) => {
+        let entries: fs.Dirent[];
+        try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+        for (const entry of entries.filter(e => e.isDirectory())) {
+            const full = path.join(dir, entry.name);
+            if (fs.existsSync(path.join(full, 'RecordData.yaml')) && / - [0-9A-F]{6}_/i.test(entry.name)) found.push(full);
+            if (depth < 6 && !/^(temporary|persistent)$/i.test(entry.name)) walk(full, depth + 1);
+        }
+    };
+    for (const group of ['Cells', 'Worldspaces']) {
+        const top = fs.readdirSync(plugin, { withFileTypes: true }).find(e => e.isDirectory() && e.name.toLowerCase() === group.toLowerCase());
+        if (top) walk(path.join(plugin, top.name), 0);
+    }
+    return found;
+}
+
 /** Moves a record file into the project's plugin folder, its group folder made when there is none. */
 export function moveRecordFile(projectsDir: string, paths: ProjectPaths, from: string, to: string): { from: string; to: string } {
     const target = moveTarget(projectsDir, paths, to);
@@ -486,6 +505,19 @@ export function moveRecordFile(projectsDir: string, paths: ProjectPaths, from: s
         throw new ProjectError(`'${to}' is not in ${paths.plugin}: give where the file goes as its path there, like "Weapons/FlameBlade.yaml".`);
     }
     const parts = inPlugin.split(path.sep);
+    // A reference sent into `<the cell's editor ID>/Temporary/`, no folder the build reads: that cell's own folder where the project has
+    // its copy, else refused with the copy to make first. Eval round 174's activator #1 moved its reference to
+    // `WhiterunBreezehome/Temporary/` before it copied the cell, and spent two refused builds and one more move on it.
+    const placing = parts.findIndex(part => /^(temporary|persistent)$/i.test(part));
+    if (placing >= 1 && !/^(cells|worldspaces)$/i.test(parts[0])) {
+        const cell = parts[placing - 1];
+        const folder = cellFolders(paths.plugin).find(dir => path.basename(dir).toLowerCase().startsWith(`${cell.toLowerCase()} - `));
+        if (folder) return moveRecordFile(projectsDir, paths, path.relative(paths.plugin, source), path.relative(paths.plugin, path.join(folder, ...parts.slice(placing))));
+        throw new ProjectError(`'${to}' is no folder the build reads: a placed reference goes into the ${parts[placing]}/ folder of its cell's own ` +
+            `folder, Cells/…/<cell> - <FormID>_<plugin>/, which only the project's copy of the cell has. Copy ${cell} in first — addPatch ` +
+            `{"project": ${JSON.stringify(path.basename(paths.root))}, "records": [${JSON.stringify(cell)}]} — then move this file into the ` +
+            `${parts[placing]}/ folder of the cell's folder its answer names.`);
+    }
     // A folder sent as where the file goes — the cell's own, `Cells/0/6/WhiterunBreezehome - 0165A8_Skyrim.esm` — is the file
     // into it, a reference into the cell's Temporary/; one in it already is no move. Answered "like …_Skyrim.yaml", a name made
     // from the folder's, eval round 146's key #1 ran out of turns.
