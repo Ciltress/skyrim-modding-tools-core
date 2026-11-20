@@ -508,6 +508,14 @@ describe("newCell's door", () => {
         expect(said).toContain('one call adds the door pair, standing it by a wall there: newCell {"project": "BreezehomeCellar", "cell": ' +
             '"BreezehomeCellar", "like": "MorthalAlvasHouseCellar", "door": {"in": "<the cell the player comes from, by editor ID>"}}');
     });
+
+    // Asked for a zone of the mod's own set on EmbershardMine01, all five detailed runs of eval mini-round 178 made a new room
+    // like it first.
+    it('says the cell copied stays as the game has it, with the call that copies it where it was to change', async () => {
+        const { said } = await made({});
+        expect(said).toContain('It is a room apart from MorthalAlvasHouseCellar, which stays as the game has it');
+        expect(said).toContain('copy it with addPatch {"project": "BreezehomeCellar", "records": ["MorthalAlvasHouseCellar"]}');
+    });
 });
 
 describe('a build refused as the one before says so', () => {

@@ -559,8 +559,26 @@ internal static class MadeNotes
                 var kind = RecordIndex.TypeName(record);
                 var cell = cells is [var only] ? $" — the project's cell {only.EditorID ?? Session.FormKeyText(only.FormKey)} is one" : "";
                 var shown = (record as ITranslatedNamedGetter)?.Name?.String is { Length: > 0 } name ? $" \"{name}\"" : "";
+                // A reference of the project's placing a game record of that kind where the mod's own was meant: eval mini-round 178's
+                // light+detailed #1 placed the game's Torch01 in Breezehome beside its own light, warned twice, and answered.
+                Type getter = record switch
+                {
+                    ILightGetter => typeof(ILightGetter), IFurnitureGetter => typeof(IFurnitureGetter), IStaticGetter => typeof(IStaticGetter),
+                    IMoveableStaticGetter => typeof(IMoveableStaticGetter), IFloraGetter => typeof(IFloraGetter), ITreeGetter => typeof(ITreeGetter),
+                    _ => typeof(IDoorGetter)
+                };
+                var standIns = GameActivatorsPlaced(pluginDir, index, mod.ModKey, getter);
+                var instead = standIns switch
+                {
+                    [var (refFile, refId, baseId)] => $" The project's reference {refId} places {baseId}, the game's {kind}, in its place: one call " +
+                        $"places {id} there instead and builds — " +
+                        ToolCalls.Edit(project, refFile, $"{{\"path\": \"Base\", \"value\": {ToolCalls.Quoted(id)}}}", build: true) + ".",
+                    [_, ..] => $" The project's references {string.Join(", ", standIns.Select(s => $"{s.RefId} ({s.File})"))} place the game's " +
+                        $"{string.Join(", ", standIns.Select(s => s.BaseId).Distinct())}: where {id} was meant, its Base is `Base: {id}`.",
+                    _ => ""
+                };
                 notes.Add($"{file}: {id}{shown}, a new {kind}, is placed in no cell, and nothing in the plugin names {id}, so the game never " +
-                    $"shows it. Where the user asked for it somewhere, a house or a room, a PlacedObject file in that cell's Temporary/ folder " +
+                    $"shows it.{instead} Where the user asked for it somewhere, a house or a room, a PlacedObject file in that cell's Temporary/ folder " +
                     $"places it{cell}: readRecord of the cell answers `newReference`, the path and the lines to write, with `Base: {id}`. Where " +
                     $"the {kind} record alone was asked for, nothing to change, and this warning stays");
                 continue;
@@ -1125,8 +1143,10 @@ internal static class MadeNotes
     /// The project's placed references whose Base is an activator of another plugin — the game's lever where the mod's own was meant —
     /// each with its file, its editor ID and the base's.
     /// </summary>
-    private static List<(string File, string RefId, string BaseId)> GameActivatorsPlaced(string pluginDir, RecordIndex index, Mutagen.Bethesda.Plugins.ModKey own)
+    private static List<(string File, string RefId, string BaseId)> GameActivatorsPlaced(string pluginDir, RecordIndex index, Mutagen.Bethesda.Plugins.ModKey own,
+        Type? kind = null)
     {
+        kind ??= typeof(IActivatorGetter);
         var found = new List<(string File, string RefId, string BaseId)>();
         foreach (var (path, relative, _) in RecordFiles.CellRecords(pluginDir))
         {
@@ -1138,7 +1158,7 @@ internal static class MadeNotes
             Mutagen.Bethesda.Plugins.FormKey? key = Mutagen.Bethesda.Plugins.FormKey.TryFactory(raw, out var formKey) ? formKey
                 : index.ByEditorId.TryGetValue(raw, out var byId) ? byId : null;
             if (key is not { } baseKey || baseKey.ModKey == own || !index.ByFormKey.TryGetValue(baseKey, out var entry)
-                || !typeof(IActivatorGetter).IsAssignableFrom(entry.GetterType)) continue;
+                || !kind.IsAssignableFrom(entry.GetterType)) continue;
             var refId = Regex.Match(text, @"^EditorID:[ \t]*(?<id>\S+)", RegexOptions.Multiline) is { Success: true } named ? named.Groups["id"].Value : relative;
             found.Add((relative, refId, entry.EditorId ?? raw));
         }

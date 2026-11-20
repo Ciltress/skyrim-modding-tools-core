@@ -959,7 +959,13 @@ export class ProjectsHandlers extends BaseHandler {
                                 ? ` Its door ${made.doors.roomDoor.editorId} and ${made.doors.entrance.editorId} at ${made.doors.entrance.at} in ` +
                                   `${made.doors.in} lead to each other.${found} Next: ${navmesh(made.cell)}, then ${navmesh(made.doors.in)} — the ` +
                                   `door there is new to its navmesh — then buildProject {"project": ${JSON.stringify(project)}}.`
-                                : ` It has no door yet: the player gets there with \`coc ${made.cell}\` alone. Where the player is to walk in ` +
+                                // A room copied from a game cell, where that cell was to change: asked for a zone of the mod's own
+                                // set on EmbershardMine01, all five detailed runs of eval mini-round 178 began with newCell like it.
+                                : ` It is a room apart from ${made.like}, which stays as the game has it — its enemies' levels, its ` +
+                                  `light, what stands there: where ${made.like} itself was to change, copy it with addPatch {"project": ` +
+                                  `${JSON.stringify(project)}, "records": [${JSON.stringify(made.like)}]} and change the copy, and this room is ` +
+                                  `not needed.` +
+                                  ` It has no door yet: the player gets there with \`coc ${made.cell}\` alone. Where the player is to walk in ` +
                                   `from another cell — a house above its cellar — one call adds the door pair, standing it by a wall there: ${addDoor}. ` +
                                   `Next: ${navmesh(made.cell)}, then buildProject {"project": ${JSON.stringify(project)}}.`) +
                             ' Change what stands in the room as in any cell: its references are files in its Temporary folder.'
