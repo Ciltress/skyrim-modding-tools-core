@@ -826,6 +826,9 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
         fs.writeFileSync(importScript, launcher(folder, 'import_cell'));
         fs.writeFileSync(exportScript, launcher(folder, 'export_layout'));
         const blend = await this.saveBlend(folder);
+        // cell.json stamped after Blender saved the cell, so importCell tells a cell.blend saved since — changes made — by its time.
+        const now = new Date();
+        fs.utimesSync(path.join(folder, 'cell.json'), now, now);
         return {
             project, cell: scene.cell.editorId ?? scene.cell.formId, folder,
             references: scene.references.length, meshes: found.length, textures: textureCount, missing, importScript, exportScript,
@@ -875,8 +878,20 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
         const folder = path.join(blender, name);
         const layoutFile = path.join(folder, 'layout.json');
         if (!fs.existsSync(layoutFile)) {
-            throw new ProjectError(`${folder} holds no layout.json yet: in Blender, run ${path.join(folder, 'export_layout.py')} — ` +
-                `the Scripting tab's Run Script, or its text sent through Blender's MCP server — then call importCell again.`);
+            const exportScript = path.join(folder, 'export_layout.py');
+            const blendFile = path.join(folder, 'cell.blend');
+            // cell.blend saved after the export: the changes are in it, and only the layout is to be written. Told to run the
+            // export script, eval mini-round 178's blender+detailed #5 ran its changes again with it: the strongbox moved twice
+            // and was copied twice.
+            const saved = fs.existsSync(blendFile) && fs.statSync(blendFile).mtimeMs > fs.statSync(path.join(folder, 'cell.json')).mtimeMs;
+            throw new ProjectError(saved
+                ? `${folder} holds no layout.json yet, and ${blendFile} was saved after the export, with the changes made in it: they ` +
+                  `are there, and only the layout is to be written. Run the export script alone on it — through Blender's MCP server, ` +
+                  `execute_blender_code_for_cli with blend_file ${JSON.stringify(blendFile)} and the code ` +
+                  `exec(open(${JSON.stringify(exportScript)}, encoding="utf-8").read()) — not the changes again: run a second time, ` +
+                  `they move each object twice and copy it twice. Then call importCell again.`
+                : `${folder} holds no layout.json yet: in Blender, run ${exportScript} — ` +
+                  `the Scripting tab's Run Script, or its text sent through Blender's MCP server — then call importCell again.`);
         }
         const scene = JSON.parse(fs.readFileSync(path.join(folder, 'cell.json'), 'utf8')) as CellSceneFile;
         const changes = layoutChanges(scene, JSON.parse(fs.readFileSync(layoutFile, 'utf8')) as LayoutFile);
