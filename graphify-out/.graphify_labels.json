@@ -12,7 +12,6 @@
   "24": "guides.test.ts",
   "25": "readPapyrusLog (what the game's scripts did wrong)",
   "26": "editRecord: a record changed field by field",
-  "27": "readCrashLog (Crash Logger SSE logs, diagnoses, suspects)",
   "28": "RecordEdits",
   "31": "EffectCasting",
   "38": "buildProject built_with_warnings notes",
