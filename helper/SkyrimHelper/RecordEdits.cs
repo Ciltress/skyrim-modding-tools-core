@@ -36,7 +36,8 @@ public static class RecordEdits
         (string File, string Relative, Type Type) hit;
         string? found;
         try { hit = Find(pluginDir, record, out found); }
-        catch (HelperException missing) when (missing.Code == "notFound" && index is not null && NotInProject(pluginDir, record, index) is { } game)
+        catch (HelperException missing) when (missing.Code == "notFound" && index is not null
+            && NotInProject(pluginDir, record, index, (set?.Select(f => f.Key) ?? []).Concat(remove?.Select(r => r?.ToString() ?? "") ?? [])) is { } game)
         {
             throw new HelperException("badRequest", game);
         }
@@ -319,7 +320,7 @@ public static class RecordEdits
     /// records — EmbershardMine01, WhiterunBanneredMare, a bandit's template — eval round 146's runs sent such calls 24 times
     /// in 14 runs, and encounterzone #1 wrote the mine's cell by hand into folders the build refuses.
     /// </summary>
-    private static string? NotInProject(string pluginDir, string record, RecordIndex index)
+    private static string? NotInProject(string pluginDir, string record, RecordIndex index, IEnumerable<string>? paths = null)
     {
         var wanted = record.Replace('\\', '/').Trim().TrimEnd('/');
         var last = wanted.Split('/')[^1];
@@ -342,6 +343,23 @@ public static class RecordEdits
                 return $"No record file '{record}' in the project: its copy of {Shown(entry)} is {copy.Relative} — name that file, " +
                     $"{ToolCalls.Edit(project, copy.Relative, "")[..^1]}, \"set\": …}}.";
         var first = entries[0];
+        // Something placed in a game's cell, sent as a field of it: told to copy the cell in, then that a Cell has no field `placed`, all
+        // four of eval round 165's activator runs that ran out of turns spent two or three turns so before writing the reference's file.
+        var placing = paths?.Select(p => Regex.Match(p, @"^\s*(\w+)").Groups[1].Value)
+            .FirstOrDefault(k => k.Length > 0 && RecordFiles.SynonymHint(typeof(Mutagen.Bethesda.Skyrim.Cell), k)?.Contains("Temporary/", StringComparison.Ordinal) == true);
+        if (entries.Count == 1 && first.Type == "Cell" && placing is not null)
+        {
+            var id = first.EditorId ?? Session.FormKeyText(first.FormKey);
+            // An interior cell's folder as addPatch writes it: its block and sub-block the last two decimal digits of its FormID.
+            var folder = $"Cells/{first.FormKey.ID % 10}/{first.FormKey.ID / 10 % 10}/{id} - {first.FormKey.ID:X6}_{first.FormKey.ModKey.FileName}";
+            return $"No record file '{record}' in the project: {Shown(first)} is a cell of the load order, and what is placed in a cell is no " +
+                $"field of its file — `{placing}` is none: each reference is a file of its own in the cell's Temporary/ folder. Copy the cell " +
+                $"in first, addPatch {{\"project\": {ToolCalls.Quoted(project)}, \"records\": [\"{Session.FormKeyText(first.FormKey)}\"]}}; then write " +
+                $"the reference with your file tools as {folder}/Temporary/<its EditorID>.yaml (for an interior cell; addPatch's answer names the " +
+                "folder), its lines `MutagenObjectType: PlacedObject`, `EditorID: <a name of its own>`, `Base: <the record placed>`, and " +
+                $"`Placement:` with `Position:` and `Rotation:` below it — readRecord {{\"record\": \"{id}\"}} answers `newReference`, the lines " +
+                "and a place beside what stands there. Nothing was changed.";
+        }
         var named = entries.Count == 1 ? $"'{record}' is {Shown(first)}, a record of the load order the project has no copy of" :
             $"'{record}' is the in-game name of {string.Join(", ", entries.Select(Shown))}, records of the load order the project has no copy of";
         return $"No record file '{record}' in the project: {named}, and editRecord changes the project's files alone. To change " +

@@ -741,8 +741,12 @@ public sealed partial class Session : IDisposable
         corrected.AddRange(RecordFiles.Untab(dir));
         // And a quote mark alone on a line, which keeps the reader from the rest of the file.
         corrected.AddRange(RecordFiles.DropLoneQuotes(dir));
+        // And a field's value written on the line below it.
+        corrected.AddRange(RecordFiles.ValuesBelowKeys(dir));
         // A reference in its cell's folder but below its Temporary/, into it: the corrections of references read it only there.
         corrected.AddRange(RecordFiles.PlacedIntoCellFolders(dir));
+        // And a reference written with no kind, the kind its Base says.
+        corrected.AddRange(RecordFiles.PlacedKinds(dir, Index));
         // An editor ID first: a copied FormKey is taken out by the EditorID beside it.
         corrected.AddRange(RecordFiles.CleanEditorIds(dir, Index));
         corrected.AddRange(RecordFiles.DropCopiedFormKeys(dir, Index));

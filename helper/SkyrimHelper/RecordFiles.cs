@@ -402,6 +402,34 @@ public static class RecordFiles
     }
 
     /// <summary>
+    /// A reference in a cell's Temporary/ or Persistent/ folder written with no kind — `EditorID:`, `Base: StrangeLever` and its placement, no
+    /// `MutagenObjectType:` — given the kind its Base says: PlacedNpc for an NPC, PlacedObject for any other. Refused for it, eval round
+    /// 163's activator #1 and round 165's activator+detailed #3 wrote the file again, a turn each, the latter its last.
+    /// </summary>
+    public static List<(string File, string Change)> PlacedKinds(string pluginDir, RecordIndex index)
+    {
+        var changes = new List<(string File, string Change)>();
+        var own = FlatRecords(pluginDir).Select(f => (Id: Identity(File.ReadAllText(f.File)).EditorId, f.Type)).Where(f => f.Id is not null)
+            .GroupBy(f => f.Id!, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.First().Type.Name, StringComparer.OrdinalIgnoreCase);
+        foreach (var (file, relative, type) in CellRecords(pluginDir))
+        {
+            if (type is not null || !IsPlacedFile(relative.Split('/'))) continue;
+            var text = File.ReadAllText(file);
+            if (ObjectTypeLine.IsMatch(text) || Regex.Match(text, @"^Base:[ \t]*(?<base>[^\s#]+)", RegexOptions.Multiline) is not { Success: true } based) continue;
+            var name = based.Groups["base"].Value.Trim('\'', '"');
+            var baseType = own.GetValueOrDefault(name)
+                ?? (index.ByEditorId.TryGetValue(name, out var key) && index.ByFormKey.TryGetValue(key, out var entry) ? entry.Type
+                    : FormKey.TryFactory(name, out var formKey) && index.ByFormKey.TryGetValue(formKey, out var byKey) ? byKey.Type : null);
+            if (baseType is null) continue;
+            var kind = baseType is "Npc" or "LeveledNpc" ? "PlacedNpc" : "PlacedObject";
+            File.WriteAllText(file, $"MutagenObjectType: {kind}{(text.Contains("\r\n") ? "\r\n" : "\n")}{text}");
+            changes.Add((relative, $"wrote `MutagenObjectType: {kind}` as its first line — a reference names its kind first, {kind} for " +
+                $"{Article(baseType)}, as {name}, its Base, is"));
+        }
+        return changes;
+    }
+
+    /// <summary>
     /// A placed reference's file inside a cell's folder, but not in its Temporary/ or Persistent/ itself — in a folder below it,
     /// `Temporary/PlacedObjects/0.yaml`, or beside RecordData.yaml — moved into that cell's Temporary/ (Persistent/, where it
     /// was below that): the cell it is placed in is clear. Eval round 148's key+detailed #2 wrote its chest so, was answered
@@ -2539,6 +2567,38 @@ public static class RecordFiles
             changes.Add((relative, $"removed line{(dropped.Count == 1 ? "" : "s")} {Numbers(dropped.Select(i => i + 1).ToList())}, " +
                 $"{string.Join(", ", dropped.Select(i => $"`{lines[i].Trim()}`").Distinct())} — a quote mark alone opens a quoted text that " +
                 "runs on to the end of the file, and writes no field"));
+        }
+        return changes;
+    }
+
+    /// <summary>
+    /// A field's value written alone on the line below it, at the margin — `Event:`, then `CLOC` — joined to its line, where the file then
+    /// reads and did not before: the reader broke at the line after the value, "could not find expected ':'", and eval round 165's
+    /// storymanager #5 wrote the file again so four builds and answered unbuilt.
+    /// </summary>
+    public static List<(string File, string Change)> ValuesBelowKeys(string pluginDir)
+    {
+        var changes = new List<(string File, string Change)>();
+        foreach (var (file, relative, _) in FlatRecords(pluginDir))
+        {
+            var written = File.ReadAllText(file);
+            var text = written.Replace("\r\n", "\n");
+            if (MisplacedFields.Root(text) is not null) continue;
+            var lines = text.Split('\n').ToList();
+            var joined = new List<string>();
+            for (var i = lines.Count - 2; i >= 0; i--)
+            {
+                if (Regex.Match(lines[i], @"^(?<key>[A-Za-z]\w*):[ \t]*$") is not { Success: true } key
+                    || Regex.Match(lines[i + 1], @"^(?<value>[A-Za-z0-9_]+)[ \t]*(?:#.*)?$") is not { Success: true } value) continue;
+                lines[i] = $"{key.Groups["key"].Value}: {value.Groups["value"].Value}";
+                lines.RemoveAt(i + 1);
+                joined.Insert(0, $"`{lines[i]}`");
+            }
+            var kept = string.Join('\n', lines);
+            if (joined.Count == 0 || MisplacedFields.Root(kept) is null) continue;
+            File.WriteAllText(file, written.Contains("\r\n") ? kept.Replace("\n", "\r\n") : kept);
+            changes.Add((relative, $"wrote {string.Join(", ", joined)} — a field's value is written on its field's line, after the colon; " +
+                "alone on the line below it, at the margin, it breaks the file"));
         }
         return changes;
     }
