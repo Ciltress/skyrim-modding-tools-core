@@ -482,7 +482,7 @@ internal static class MadeNotes
         var made = mod.EnumerateMajorRecords().Where(r => r.FormKey.ModKey == mod.ModKey
             && r is INpcGetter or ILeveledItemGetter or ILeveledNpcGetter or ILeveledSpellGetter or IContainerGetter or IEncounterZoneGetter
                 or ILocationGetter or IActivatorGetter or IRaceGetter or ISpellGetter
-                or ILightGetter or IFurnitureGetter or IStaticGetter or IMoveableStaticGetter or IFloraGetter or IDoorGetter).ToList();
+                or ILightGetter or IFurnitureGetter or IStaticGetter or IMoveableStaticGetter or IFloraGetter or ITreeGetter or IDoorGetter).ToList();
         if (made.Count == 0) return [];
         var named = new HashSet<Mutagen.Bethesda.Plugins.FormKey>();
         foreach (var record in mod.EnumerateMajorRecords())
@@ -554,7 +554,7 @@ internal static class MadeNotes
             }
             // A light, a chair, a static, a plant or a door of the mod's own placed nowhere, as a chest: eval round 177's light #2
             // built its blue light, copied Breezehome, placed no light and answered the room lit blue.
-            if (record is ILightGetter or IFurnitureGetter or IStaticGetter or IMoveableStaticGetter or IFloraGetter or IDoorGetter)
+            if (record is ILightGetter or IFurnitureGetter or IStaticGetter or IMoveableStaticGetter or IFloraGetter or ITreeGetter or IDoorGetter)
             {
                 var kind = RecordIndex.TypeName(record);
                 var cell = cells is [var only] ? $" — the project's cell {only.EditorID ?? Session.FormKeyText(only.FormKey)} is one" : "";
@@ -890,6 +890,52 @@ internal static class MadeNotes
                 ToolCalls.Edit(project, tomeFile, $"{{\"path\": \"Teaches.Spell\", \"value\": {ToolCalls.Quoted(gameId)}}}", build: true) +
                 $"; the build after it offers {spellId}'s delete. Where a spell of the mod's own was asked for, nothing to change, and this " +
                 "warning stays");
+        }
+        return notes;
+    }
+
+    /// <summary>The conditions every tempering recipe of the game carries: the item not enchanted, or the Arcane Blacksmith perk.</summary>
+    private const string TemperingConditions =
+        "[{\"MutagenObjectType\": \"ConditionFloat\", \"CompareOperator\": \"NotEqualTo\", \"Flags\": [\"OR\"], " +
+        "\"Data\": {\"MutagenObjectType\": \"EPTemperingItemIsEnchantedConditionData\"}, \"ComparisonValue\": 1}, " +
+        "{\"MutagenObjectType\": \"ConditionFloat\", \"Data\": {\"MutagenObjectType\": \"HasPerkConditionData\", \"Perk\": \"ArcaneBlacksmith\"}, " +
+        "\"ComparisonValue\": 1}]";
+
+    /// <summary>
+    /// A tempering recipe of the project's — at the grindstone or the armor table — that lists the item it improves among its
+    /// materials, or a new one with no Conditions. Tempering improves the item in the inventory, its Items only the materials it
+    /// takes: eval round 177's tempering #3 and tempering+detailed #3 listed the Ancient Nord Sword itself, so a second one was
+    /// needed. The game shows its tempering recipes for an item not enchanted, or with Arcane Blacksmith: 3 of round 177's 5
+    /// detailed runs, asked for those conditions, wrote none.
+    /// </summary>
+    public static List<string> Tempering(ISkyrimModGetter mod, RecordIndex index, string pluginDir)
+    {
+        var benches = new[] { "CraftingSmithingSharpeningWheel", "CraftingSmithingArmorTable" }
+            .Select(id => index.ByEditorId.TryGetValue(id, out var key) ? key : (Mutagen.Bethesda.Plugins.FormKey?)null)
+            .OfType<Mutagen.Bethesda.Plugins.FormKey>().ToHashSet();
+        var recipes = mod.ConstructibleObjects.Where(r => !r.WorkbenchKeyword.IsNull && benches.Contains(r.WorkbenchKeyword.FormKey)).ToList();
+        if (recipes.Count == 0) return [];
+        var files = EffectCasting.Files(pluginDir);
+        var project = ToolCalls.ProjectOf(pluginDir);
+        var notes = new List<string>();
+        foreach (var recipe in recipes)
+        {
+            var id = recipe.EditorID ?? Session.FormKeyText(recipe.FormKey);
+            var file = files.GetValueOrDefault(recipe.FormKey) ?? id;
+            var made = recipe.CreatedObject.FormKey;
+            var madeId = index.ByFormKey.TryGetValue(made, out var entry) ? entry.EditorId ?? Session.FormKeyText(made) : Session.FormKeyText(made);
+            var itself = (recipe.Items ?? []).Select((e, i) => (Entry: e, At: i)).Where(x => x.Entry.Item.Item.FormKey == made).Select(x => x.At).ToList();
+            if (!recipe.CreatedObject.IsNull && itself.Count > 0)
+                notes.Add($"{file}: {id} improves {madeId} and lists {madeId} itself among its Items — tempering improves the one in the " +
+                    "inventory, and its Items are only the materials it takes, so this recipe asks for a second one. One call takes it out and " +
+                    "builds — " + ToolCalls.Fix(project, file, "", string.Join(", ", itself.Select(i => ToolCalls.Quoted($"Items[{i}]")))) +
+                    ". Where a second one was to be taken, nothing to change, and this warning stays");
+            if (recipe.FormKey.ModKey == mod.ModKey && (recipe.Conditions?.Count ?? 0) == 0)
+                notes.Add($"{file}: {id}, a new tempering recipe, has no Conditions: the game's tempering recipes — TemperWeaponIronSword, " +
+                    "TemperArmorIronCuirass — show only for an item that is not enchanted, or with the Arcane Blacksmith perk, and without them " +
+                    "this one improves enchanted items too. One call writes the game's two and builds — " +
+                    ToolCalls.Fix(project, file, $"{{\"path\": \"Conditions\", \"value\": {TemperingConditions}}}") +
+                    ". Where the user asked for a recipe with no conditions, nothing to change, and this warning stays");
         }
         return notes;
     }
