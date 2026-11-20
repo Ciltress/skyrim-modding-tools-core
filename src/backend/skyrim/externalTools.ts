@@ -409,9 +409,11 @@ function writingHint(problem: string, scriptsDir: string, vanilla: string): stri
         /no viable alternative at (character|input)|mismatched input '\/'|invalid (character|token)|invalid right operand/i.test(message)) {
         return `${where}: a Papyrus comment starts with \`;\`, and one of several lines is written \`;/ … /;\` — \`/* … */\` is none`;
     }
-    if (/^(#|\/\/)/.test(line) || /\s(#|\/\/)\s/.test(line) &&
+    // Lua's and SQL's `--` too: eval round 173's activator+detailed #1 wrote two `-- …` lines in its OnActivate, told only
+    // "(block statement) invalid token: ," for the comma in the first.
+    if (/^(#|\/\/|--)/.test(line) || /\s(#|\/\/|--)\s/.test(line) &&
         /no viable alternative at (character|input)|mismatched input '\/'|invalid (character|token)|invalid right operand/i.test(message)) {
-        return `${where}: a Papyrus comment starts with \`;\` — \`#\` and \`//\` are none`;
+        return `${where}: a Papyrus comment starts with \`;\` — \`#\`, \`//\` and \`--\` are none`;
     }
     if (/^(Else)?If\b/i.test(line) && /\bThen\s*$/i.test(line)) {
         return `${where}: Papyrus writes no \`Then\` — \`${line.replace(/\s+Then\s*$/i, '')}\` alone on its line, its block ended by \`EndIf\``;

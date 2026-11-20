@@ -443,9 +443,27 @@ function existingFile(projectsDir: string, file: string, given: string, paths: P
     }
 }
 
+/**
+ * Where moveRecord's `to` puts a file: its path in the plugin folder. One that names the plugin folder first — `plugin/Cells/…`,
+ * or `<project>/plugin/Cells/…` as OpenClaw's file tools take a Skyrim agent's path — is that path from the project's folder or the
+ * projects folder, not a folder `plugin` inside the plugin folder: eval round 173's activator+detailed #4 sent `to`
+ * `plugin/Cells/0/6/…/Temporary/StrangeLeverRef.yaml`, its reference went to plugin/plugin/Cells/…, and a refused build and one
+ * more move undid it.
+ */
+function moveTarget(projectsDir: string, paths: ProjectPaths, to: string): string {
+    const given = to.trim();
+    const inPlugin = path.resolve(paths.plugin, given);
+    if (!given || path.isAbsolute(given)) return inPlugin;
+    const inside = (file: string) => {
+        const relative = path.relative(paths.plugin, file);
+        return !!relative && !relative.startsWith('..') && !path.isAbsolute(relative);
+    };
+    return [path.resolve(paths.root, given), path.resolve(projectsDir, given)].find(inside) ?? inPlugin;
+}
+
 /** Moves a record file into the project's plugin folder, its group folder made when there is none. */
 export function moveRecordFile(projectsDir: string, paths: ProjectPaths, from: string, to: string): { from: string; to: string } {
-    const target = path.resolve(paths.plugin, to.trim());
+    const target = moveTarget(projectsDir, paths, to);
     let source = projectsFile(projectsDir, paths, from, target);
     // A `from` naming no file, whose file name only one record file of the project has, is that file: told "No file at
     // Cells/Temporary/BreezeChestRef.yaml", where its write had asked the file to go, eval round 132's world #1 sent the same

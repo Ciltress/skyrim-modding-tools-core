@@ -74,7 +74,7 @@ describe('papyrusHints', () => {
             'alone on its line, its block ended by `EndIf`');
         expect(hints[3]).toMatch(/^line 7 .*: Papyrus has no Player — the player is `Game.GetPlayer\(\)`, an Actor/);
         expect(hints[4]).toMatch(/^line 8 .*: a script names no record by its FormID — a record a script uses is a property, declared at its top — `MiscObject Property Gold001 Auto`/);
-        expect(hints[5]).toBe('line 10 of GoldLeverScript.psc, `# gold given`: a Papyrus comment starts with `;` — `#` and `//` are none');
+        expect(hints[5]).toBe('line 10 of GoldLeverScript.psc, `# gold given`: a Papyrus comment starts with `;` — `#`, `//` and `--` are none');
         expect(hints[6]).toMatch(/^line 11 .*: Gold is declared nowhere in the script — a record a script uses is a property.*; a number of its own is a variable, `Int Gold = 100`$/);
         expect(hints).toHaveLength(7);
     });
@@ -372,6 +372,18 @@ describe('papyrusHints', () => {
             'line 6 of CStop.psc, `Stop()`: Stop is a Quest\'s function, which ends a quest — this script extends ObjectReference, and ' +
             'its event ends by itself at its End line: delete this line'
         ]);
+    });
+
+    // Eval round 173's activator+detailed #1, with russo-2025's words: told only the comma its first `--` line held.
+    it('names a comment in Lua\'s way', () => {
+        const { scripts, vanilla } = folders();
+        const file = path.join(scripts, 'StrangeLeverScript.psc');
+        fs.writeFileSync(file, 'Scriptname StrangeLeverScript extends ObjectReference\n\nEvent OnActivate(ObjectReference akActionRef)\n' +
+            '    Actor player = Game.GetPlayer()\n    if player != None\n        -- Find the editor ID for gold, which is generally Gold001.\n' +
+            '        player.AddItem(Gold001, 100)\n    EndIf\nEndEvent\n');
+        expect(papyrusHints([`GoldLever/scripts/StrangeLeverScript.psc:6:39: Parser error: (block statement) invalid token: ,,`], scripts, vanilla))
+            .toEqual(['line 6 of StrangeLeverScript.psc, `-- Find the editor ID for gold, which is generally Gold001.`: a Papyrus comment ' +
+                'starts with `;` — `#`, `//` and `--` are none']);
     });
 
     // Eval round 163's activator #3 and message+detailed #5, with russo-2025's words.

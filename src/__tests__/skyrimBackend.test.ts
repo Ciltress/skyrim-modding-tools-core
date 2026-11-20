@@ -747,6 +747,26 @@ describe('the Skyrim backend', () => {
             .rejects.toThrow(/like "Cells\/0\/6\/Whiterun - 0165A8_Skyrim\.esm\/CellarKey\.yaml"/);
     });
 
+    it('takes a `to` that names the plugin folder first as that path in it, not a folder plugin inside it', async () => {
+        // Eval round 173's activator+detailed #4 sent `to` `plugin/Cells/…/Temporary/StrangeLeverRef.yaml`: the reference went to
+        // plugin/plugin/Cells/…, and a refused build and one more move undid it.
+        const { backend, fixture } = makeBackend();
+        await backend.newProject({ project: 'GoldLever' });
+        const plugin = path.join(fixture.projects, 'GoldLever', 'plugin');
+        const cell = 'Cells/0/6/WhiterunBreezehome - 0165A8_Skyrim.esm';
+        write(path.join(plugin, ...cell.split('/'), 'RecordData.yaml'), 'EditorID: WhiterunBreezehome\n');
+        write(path.join(plugin, 'Temporary', 'StrangeLeverRef.yaml'), 'MutagenObjectType: PlacedObject\nEditorID: StrangeLeverRef\n');
+        write(path.join(plugin, 'Misc', 'GoldLeverNote.yaml'), 'EditorID: GoldLeverNote\n');
+
+        const placed = path.join(plugin, ...cell.split('/'), 'Temporary', 'StrangeLeverRef.yaml');
+        expect((await backend.moveRecord({ project: 'GoldLever', from: 'StrangeLeverRef.yaml', to: `plugin/${cell}/Temporary/StrangeLeverRef.yaml` }))
+            .moved).toEqual({ from: path.join(plugin, 'Temporary', 'StrangeLeverRef.yaml'), to: placed });
+        // As OpenClaw's file tools take it, from the projects folder.
+        expect((await backend.moveRecord({ project: 'GoldLever', from: 'Misc/GoldLeverNote.yaml', to: 'GoldLever/plugin/Books/GoldLeverNote.yaml' }))
+            .moved.to).toBe(path.join(plugin, 'Books', 'GoldLeverNote.yaml'));
+        expect(fs.existsSync(path.join(plugin, 'plugin'))).toBe(false);
+    });
+
     it('takes a path the plugin folder has no file at from the projects folder, and names the files outside it when none is there', async () => {
         // The model gave moveRecord the path it had written from the projects folder — the same as `to`, or with plugin/ before
         // it — and was refused 11 times in 3 runs, told only "No file" (eval round 67).

@@ -159,9 +159,10 @@ Conditions:
 
 - **A message box or a notification** is a `Message` in `Messages/`: its text is `Description`'s `Value`; `Flags` with
   `MessageBox` makes it a box the player closes, without it a notification in the corner; `MenuButtons`, each with its
-  `Text`, are a box's buttons ("OK"). A script shows it: a `Message Property WelcomeMessage Auto`, filled with the
-  record in the script's `VirtualMachineAdapter`, and `WelcomeMessage.Show()` — in a quest's `OnInit` for "when a new
-  game starts" (the section above).
+  `Text`, are a box's buttons. A button the user names — "with an OK button" — is written, not left out: `MenuButtons:`,
+  then `- Text:` with `TargetLanguage: English` and `Value: OK` two spaces deeper than `Text:`. A script shows it: a
+  `Message Property WelcomeMessage Auto`, filled with the record in the script's `VirtualMachineAdapter`, and
+  `WelcomeMessage.Show()` — in a quest's `OnInit` for "when a new game starts" (the section above).
 - **A scene** — NPCs talking to each other — is a `Scene` in `Scenes/` that belongs to a quest (`Quest`): its `Actors`
   are the quest's aliases by `ID`, filled with the NPCs (an alias's `UniqueActor`, or a `GetIsID` condition, as
   `DialogueSolitudeAddvarHouseScene2`'s are); its `Actions`, in their order, each name the actor (`ActorID`) and, for a
