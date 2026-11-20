@@ -737,6 +737,8 @@ public sealed partial class Session : IDisposable
             throw new HelperException("badRecord", $"{unfit.Count} record file(s) cannot be built as written: {string.Join("; ", unfit)}");
         // A group folder in other letters before all: no file in it is read until it has its name.
         var corrected = RecordFiles.FolderCase(dir);
+        // And a folder named by the end of one group's name.
+        corrected.AddRange(RecordFiles.FolderTails(dir));
         // Then tabs, before any correction reads a file as YAML: the reader takes none in a line's indent.
         corrected.AddRange(RecordFiles.Untab(dir));
         // And a quote mark alone on a line, which keeps the reader from the rest of the file.
@@ -781,13 +783,15 @@ public sealed partial class Session : IDisposable
         // A list's items written as names, where each takes the name as its link's line; then a node's Event, into the quests it names.
         corrected.AddRange(MisplacedFields.NamesAsItems(dir));
         corrected.AddRange(MisplacedFields.EventToQuests(dir));
-        corrected.AddRange(RecordFiles.EventCodes(dir));
         // Before the moves: what is left of another record type may break the reader they use.
         corrected.AddRange(RecordFiles.DropOtherTypesFields(dir));
         // A part's field written among its Flags, and a flag written as a field, before the moves read the part's fields.
         corrected.AddRange(FlagLines.OutOfFlags(dir));
         corrected.AddRange(FlagLines.IntoFlags(dir));
         corrected.AddRange(FlagLines.NoneOutOfFlags(dir));
+        corrected.AddRange(FlagLines.TruthsInFlags(dir));
+        // A quest's Event as its code, once a field among its Flags is at the margin.
+        corrected.AddRange(RecordFiles.EventCodes(dir));
         // A list item's fields that are one part's of it, under that part: a leveled list's Level, Reference and Count, under Data.
         corrected.AddRange(MisplacedFields.IntoItemParts(dir));
         // A weapon's field at the margin takes the place of its part's, where that one is the weapon's it was written after.
@@ -960,7 +964,7 @@ public sealed partial class Session : IDisposable
             .Concat(MadeNotes.NpcItems(mod, lookup, dir)).Concat(MadeNotes.ListEntries(mod, lookup, dir)).Concat(MadeNotes.KeywordsReplaced(mod, lookup, dir)).Concat(MadeNotes.Words(mod, dir))
             .Concat(MadeNotes.Unplayable(mod, dir)).Concat(MadeNotes.LightWorldspace(mod, dir)).Concat(MadeNotes.NotScrolls(mod, dir))
             .Concat(MadeNotes.Unused(mod, lookup, Index, dir)).Concat(MadeNotes.GameNamedInLists(mod, lookup, Index, dir))
-            .Concat(MadeNotes.MiscActivators(mod, dir)).Concat(MadeNotes.Levers(mod, dir)).Concat(MadeNotes.WordlessMessages(mod, dir))
+            .Concat(MadeNotes.MiscActivators(mod, dir)).Concat(MadeNotes.Levers(mod, dir)).Concat(MadeNotes.WordlessMessages(mod, dir)).Concat(MadeNotes.ScriptedOverrides(mod, lookup, dir))
             .Concat(MadeNotes.Ungiven(mod, lookup, Index, dir))
             .Concat(MadeNotes.GameLights(mod, dir)).Concat(MadeNotes.EmptyEffects(mod, dir)).Concat(MadeNotes.LightColors(mod, dir))
             .Concat(MadeNotes.EffectsByFormId(mod, Index, dir))

@@ -47,6 +47,57 @@ internal static class FlagLines
     /// </summary>
     public static List<(string File, string Change)> NoneOutOfFlags(string pluginDir) => EachFile(pluginDir, NoneOut);
 
+    /// <summary>
+    /// A record's Flags written with a truth for each — `- RunOnce: false` as an item, or `RunOnce: false` below `Flags:` — as the list of
+    /// those set, and a field of the record written among them, `Event: DA09ChangeLocation`, at the margin below it: eval round 169's
+    /// storymanager #4 was refused so six builds, "a field written as a list item" and "Flags is written with fields below it".
+    /// </summary>
+    public static List<(string File, string Change)> TruthsInFlags(string pluginDir) => EachFile(pluginDir, Truthed);
+
+    private static (string Text, string Change)? Truthed(string text, Type type)
+    {
+        if (type.GetProperty("Flags", Public)?.PropertyType is not { } flagsType || (Nullable.GetUnderlyingType(flagsType) ?? flagsType) is not { IsEnum: true } kind) return null;
+        var flags = Enum.GetNames(kind);
+        var lines = text.Split('\n').ToList();
+        var at = lines.FindIndex(l => System.Text.RegularExpressions.Regex.IsMatch(l, @"^Flags:[ \t]*\r?$"));
+        if (at < 0) return null;
+        var items = new List<string>();
+        var fields = new List<string>();
+        var set = new List<string>();
+        var off = new List<string>();
+        var end = at + 1;
+        for (; end < lines.Count; end++)
+        {
+            var line = lines[end].TrimEnd('\r');
+            if (line.Trim().Length == 0) continue;
+            if (line[0] is not (' ' or '\t' or '-')) break;
+            var truth = System.Text.RegularExpressions.Regex.Match(line,
+                @"^[ \t]*(?:-[ \t]+)?(?<key>\w+)[ \t]*:[ \t]*(?<value>[^#]*?)[ \t]*(?:#.*)?$");
+            var item = System.Text.RegularExpressions.Regex.Match(line, @"^[ \t]*-[ \t]+(?<name>[^:#]+?)[ \t]*(?:#.*)?$");
+            if (truth.Success && flags.FirstOrDefault(f => f.Equals(truth.Groups["key"].Value, StringComparison.OrdinalIgnoreCase)) is { } flag
+                && System.Text.RegularExpressions.Regex.Match(truth.Groups["value"].Value, "^(?:(?<on>true|yes|on|1)|false|no|off|0)$",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase) is { Success: true } said)
+            {
+                if (said.Groups["on"].Success) { items.Add($"- {flag}"); set.Add(flag); } else off.Add(flag);
+            }
+            else if (truth.Success && type.GetProperty(truth.Groups["key"].Value, Public) is not null && truth.Groups["value"].Value.Length > 0)
+                fields.Add($"{truth.Groups["key"].Value}: {truth.Groups["value"].Value}");
+            else if (item.Success && !truth.Success) items.Add($"- {item.Groups["name"].Value}");
+            else return null;
+        }
+        if (set.Count + off.Count == 0) return null;
+        var block = new List<string> { items.Count > 0 ? "Flags:" : "Flags: []" };
+        block.AddRange(items);
+        block.AddRange(fields);
+        lines.RemoveRange(at, end - at);
+        lines.InsertRange(at, block);
+        var change = $"wrote Flags as the list of those set{(set.Count > 0 ? $", {string.Join(", ", set)}" : ", none")}" +
+            (off.Count > 0 ? $" — {string.Join(", ", off)} written false, left out" : "") +
+            (fields.Count > 0 ? $"; {string.Join(", ", fields.Select(f => $"`{f}`"))} below it, a field of the record" : "") +
+            " — a record's Flags is a list of the flags set, each on a line of its own, `- RunOnce`";
+        return (string.Join('\n', lines), change);
+    }
+
     private static (string Text, string Change)? NoneOut(string text, Type type)
     {
         if (MisplacedFields.Root(text) is not { } root) return null;

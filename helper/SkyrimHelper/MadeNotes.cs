@@ -870,6 +870,37 @@ internal static class MadeNotes
     }
 
     /// <summary>
+    /// An override of a game's record that attaches a script its original has not: every one the game places runs it. Eval round 168's
+    /// activator #1 and round 169's activator+detailed #4 copied the game's SimpleLever in with addPatch, attached their gold script to
+    /// the copy, and built every SimpleLever of the game a gold lever, no lever of the mod's own.
+    /// </summary>
+    public static List<string> ScriptedOverrides(ISkyrimModGetter mod, ILinkCache lookup, string pluginDir)
+    {
+        var files = EffectCasting.Files(pluginDir);
+        var notes = new List<string>();
+        foreach (var record in mod.EnumerateMajorRecords().Where(r => r.FormKey.ModKey != mod.ModKey))
+        {
+            if (record is not IHaveVirtualMachineAdapterGetter { VirtualMachineAdapter: { Scripts.Count: > 0 } adapter }) continue;
+            if (!lookup.TryResolve(record.FormKey, ((Loqui.ILoquiObject)record).Registration.GetterType, out var game)) continue;
+            var had = (game as IHaveVirtualMachineAdapterGetter)?.VirtualMachineAdapter?.Scripts.Select(s => s.Name).ToHashSet(StringComparer.OrdinalIgnoreCase) ?? [];
+            var added = adapter.Scripts.Select(s => s.Name).Where(n => !had.Contains(n)).ToList();
+            if (added.Count == 0) continue;
+            var id = record.EditorID ?? Session.FormKeyText(record.FormKey);
+            var type = RecordIndex.TypeName(record);
+            var file = files.GetValueOrDefault(record.FormKey) ?? id;
+            notes.Add($"{file}: {id} is {record.FormKey.ModKey.FileName}'s own {type}, copied in as an override, and it attaches {string.Join(", ", added)}, " +
+                $"which the game's has not: every {id} the game places runs it" +
+                (mod.EnumerateMajorRecords().Any(r => r.FormKey.ModKey == mod.ModKey && RecordIndex.TypeName(r) == type) ? "" : $", and the mod has no {type} of its own") +
+                $". Where a new {type} was meant, " +
+                "one call makes the copy a new record of its own, keeping what it holds, and builds: " +
+                ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), file, $"{{\"path\": \"EditorID\", \"value\": {ToolCalls.Quoted($"New{id}")}}}", "\"FormKey\"", build: true) +
+                $", with an EditorID of its own in place of New{id} — then place that one. Where every {id} of the game was to run it, nothing to " +
+                "change, and this warning stays");
+        }
+        return notes;
+    }
+
+    /// <summary>
     /// A new Message of the project's shown as a box with no Description: the box shows its Description, so it opens with no words.
     /// Eval round 163's message+detailed #4 wrote "Welcome Message" as its Name, no Description, and answered the welcome made.
     /// </summary>

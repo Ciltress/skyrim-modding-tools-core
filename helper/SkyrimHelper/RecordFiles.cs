@@ -2503,6 +2503,40 @@ public static class RecordFiles
         return corrected;
     }
 
+    /// <summary>
+    /// The record files of a folder named by the end of one group's name alone — `QuestNodes` for StoryManagerQuestNodes — moved into that
+    /// group's folder, each where no file of its name is there yet: refused "'QuestNodes' is no group folder", eval round 169's storymanager
+    /// #5 wrote its node again in StoryManagerQuestNodes/, was warned of the one left over, deleted the one it had just written, and
+    /// answered unbuilt.
+    /// </summary>
+    public static List<(string File, string Change)> FolderTails(string pluginDir)
+    {
+        var corrected = new List<(string File, string Change)>();
+        if (!Directory.Exists(pluginDir)) return corrected;
+        foreach (var folder in Directory.EnumerateDirectories(pluginDir))
+        {
+            var name = Path.GetFileName(folder);
+            if (name.Length < 5 || Groups.Keys.Any(g => g.Equals(name, StringComparison.OrdinalIgnoreCase))) continue;
+            if (Groups.Keys.Where(g => g.Length > name.Length && g.EndsWith(name, StringComparison.OrdinalIgnoreCase)).ToList() is not [var group]) continue;
+            var files = Directory.EnumerateFiles(folder, "*.yaml", SearchOption.TopDirectoryOnly).ToList();
+            if (files.Count == 0 || Directory.EnumerateDirectories(folder).Any()) continue;
+            var target = Path.Combine(pluginDir, group);
+            Directory.CreateDirectory(target);
+            var moved = new List<string>();
+            foreach (var file in files)
+            {
+                var to = Path.Combine(target, Path.GetFileName(file));
+                if (File.Exists(to)) continue;
+                File.Move(file, to);
+                moved.Add(Path.GetFileName(file));
+            }
+            if (!Directory.EnumerateFileSystemEntries(folder).Any()) Directory.Delete(folder);
+            if (moved.Count > 0)
+                corrected.Add(($"{name}/", $"moved {string.Join(", ", moved)} into {group}/ — {name} is no group folder, and {group} the one group whose name ends so"));
+        }
+        return corrected;
+    }
+
     /// <summary>A tab among a line's leading blanks.</summary>
     private static readonly Regex LeadingTab = new(@"^[ ]*\t[ \t]*");
 
@@ -3085,12 +3119,17 @@ public static class RecordFiles
         {
             if (type != typeof(Quest)) continue;
             var text = File.ReadAllText(file);
-            var line = Regex.Match(text, @"^Event:[ \t]*(?<written>OnStory(?<event>[A-Za-z]+)[^#\r\n]*?)[ \t]*(?<comment>#[^\r\n]*)?(?=\r?$)", RegexOptions.Multiline);
-            if (!line.Success || !StoryEventCodes.TryGetValue(line.Groups["event"].Value, out var code)) continue;
+            var line = Regex.Match(text, @"^Event:[ \t]*(?<written>[^#\r\n]*?)[ \t]*(?<comment>#[^\r\n]*)?(?=\r?$)", RegexOptions.Multiline);
+            if (!line.Success || line.Groups["written"].Value.Trim('\'', '"') is var written && written.Length == 4) continue;
+            // The script's event, `OnStoryChangeLocation(…)`, or a quest's or node's editor ID that names it, `DA09ChangeLocation` (eval
+            // round 169's storymanager #4, refused six builds).
+            var named = Regex.Match(written, @"^OnStory(?<event>[A-Za-z]+)") is { Success: true } story ? story.Groups["event"].Value
+                : Regex.IsMatch(written, @"^\w*ChangeLocation\w*$", RegexOptions.IgnoreCase) ? "ChangeLocation" : "";
+            if (!StoryEventCodes.TryGetValue(named, out var code)) continue;
             File.WriteAllText(file, text[..line.Index] + $"Event: {code}" + text[(line.Index + line.Length)..]);
-            changes.Add((relative, $"wrote `Event: {code}` for `Event: {line.Groups["written"].Value}` — a quest's Event is the code of the story " +
-                $"manager event it is started on, four letters, {code} for OnStory{line.Groups["event"].Value}; that event's line, with its " +
-                "parameters, is its script's own"));
+            changes.Add((relative, $"wrote `Event: {code}` for `Event: {written}` — a quest's Event is the code of the story manager event it is " +
+                $"started on, four letters, {code} for a change of location (its script's event OnStory{named}, with its parameters, is the " +
+                "script's own line)"));
         }
         return changes;
     }
