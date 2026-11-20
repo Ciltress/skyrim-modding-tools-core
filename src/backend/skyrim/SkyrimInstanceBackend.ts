@@ -23,7 +23,7 @@ import { Attributor, dataPath } from './crash/attribution.js';
 import {
     BLENDER_SCRIPT, cellFolderOf, copyEditorId, findBlender, groundChanged, initiallyDisabled, layoutChanges, navmeshesChanged, launcher, newReferenceText, normalRotation, recordFileOf,
     saveBlendCode, sceneFolderName, texturesOf,
-    triple, type CellSceneFile, type LayoutFile
+    triple, type CellSceneFile, type LayoutFile, type SceneReference
 } from './cellScene.js';
 import { HeightmapError, readHeightmap, worldHeights } from './heightmap.js';
 import { CrashLogNotFoundError, chooseCrashLog } from './crash/crashLogFiles.js';
@@ -106,6 +106,27 @@ export interface SkyrimInstanceBackendOptions {
  * refused credential: it surfaces on the first tool call and in healthcheck with its own cause, and
  * is checked again on every call rather than latched.
  */
+/** The kinds of base a user names when moving one thing of a cell, not its walls, lights and markers — the things used first, the items after. */
+const USABLE_KINDS = ['Container', 'Npc', 'Activator', 'TalkingActivator', 'Door', 'Furniture', 'Flora', 'Weapon', 'Armor', 'Book', 'Key',
+    'SoulGem', 'Scroll', 'Ammunition', 'Ingestible', 'Ingredient', 'MiscItem'];
+
+/**
+ * The objects of an exported cell a user moves or copies — its containers, NPCs, doors, furniture, items — each by the name
+ * skyrim_cell.py gives it in Blender (`_label`), with the base's name and type. Told the objects are "named after their
+ * reference", eval round 177's blender runs looked up a strongbox as bpy.data.objects.get("Strongbox"), found none, and
+ * imported a layout with nothing changed (10 of 10).
+ */
+export function usableObjects(references: SceneReference[], limit = 60): string[] {
+    const rank = (r: SceneReference) => USABLE_KINDS.indexOf(r.base?.type ?? '');
+    const rows = references.filter(r => rank(r) >= 0).sort((a, b) => rank(a) - rank(b)).map(r => {
+        const label = `${r.editorId || r.base?.editorId || r.formId} [${r.formId.split(':')[0]}]`.slice(0, 63);
+        const type = r.base!.type!;
+        return `${label}: ${r.base?.name ? `"${r.base.name}", ` : ''}${/^[AEIOU]/.test(type) ? 'an' : 'a'} ${type}` +
+            (r.base?.editorId ? ` (${r.base.editorId})` : '');
+    });
+    return rows.length > limit ? [...rows.slice(0, limit), `… and ${rows.length - limit} more`] : rows;
+}
+
 export class SkyrimInstanceBackend implements SkyrimBackend {
     private accepted = false;
     private readonly nexus: NexusCatalogue;
@@ -799,7 +820,8 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
         const blend = await this.saveBlend(folder);
         return {
             project, cell: scene.cell.editorId ?? scene.cell.formId, folder,
-            references: scene.references.length, meshes: found.length, textures: textureCount, missing, importScript, exportScript, ...blend
+            references: scene.references.length, meshes: found.length, textures: textureCount, missing, importScript, exportScript,
+            objects: usableObjects(scene.references), ...blend
         };
     }
 

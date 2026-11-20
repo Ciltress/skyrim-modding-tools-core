@@ -196,6 +196,20 @@ or none. Never write a worldspace, its cells or their landscape by hand: the hei
 | the level of a cell's enemies and loot | `EncounterZone` in `EncounterZones/` | `MinLevel`, `MaxLevel` (0: none), `Location`, `Flags` (`NeverResets`) | a cell's `EncounterZone` — a game cell's through its copy (addPatch); or the zone a game cell has, copied with addPatch, which changes every cell that has it |
 | weather or sound over an area outdoors | `Region` in `Regions/` | `Worldspace`, `RegionAreas` (the area's points), its weather data naming `Weather` records with a chance | the exterior cells the area covers — each cell's copy names it in its `Regions`, as the game's cells name theirs |
 
+A place of the game's stays the game's cell: the enemies of Embershard Mine, levels 20 to 40, are the mine's own cell
+`EmbershardMine01` changed, never a new cell (newCell makes a room apart, which no door of the game leads to). Copy the cell
+with addPatch, write the zone, and set the copy's `EncounterZone` to it:
+
+```yaml
+# <project>/plugin/EncounterZones/DangerousEmbershardZone.yaml
+EditorID: DangerousEmbershardZone
+Location: EmbershardLocation
+MinLevel: 20
+MaxLevel: 40
+```
+
+then `editRecord` of the copy, `{"path": "EncounterZone", "value": "DangerousEmbershardZone"}`. A zone has no `Name`.
+
 Weather over a place of the game's — snow around Riverwood — is a region of the mod's own in Tamriel, never a new
 worldspace (newWorldspace makes a land apart). Its area's points are world units, the corners around the cells: the cell
 at grid x, y runs from x·4096 to (x+1)·4096, and readRecord of an exterior cell names its grid — `Riverwood` is at 4, -12.

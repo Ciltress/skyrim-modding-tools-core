@@ -60,10 +60,13 @@ Effects:
 ```
 
 When the spell should be learned from a book, a spell tome teaches it: a second file, mirroring
-`SpellTomeFastHealing`, whose `Spell` is the new spell's own editor ID — or, for a tome of a game spell, that spell's,
-`Spell: Flames`, with no spell of the mod's own beside it. Its `Model` and `InventoryArt`
+`SpellTomeFastHealing`, whose `Spell` is the new spell's own editor ID. Its `Model` and `InventoryArt`
 are its school's — `SpellTomeDestructionLowPoly.nif` and `HighPolyDestructionBook` for Destruction, and
 likewise Restoration, Alteration, Conjuration and Illusion.
+
+**A tome of a game spell** — "a spell tome named Spell Tome: Ember Bolt that teaches Firebolt" — is one file, the book:
+its `Spell` is the game spell's editor ID as the game has it, `Spell: Firebolt`, and the project has no spell file. The
+tome's name is the book's alone, whatever it says: "Ember Bolt" names no spell to make.
 
 ```yaml
 # <project>/plugin/Books/SpellTomeMendingLight.yaml

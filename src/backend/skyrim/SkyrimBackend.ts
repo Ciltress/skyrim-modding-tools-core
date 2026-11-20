@@ -771,6 +771,8 @@ export interface ExportCellResult {
     /** The Python that places the cell in Blender, and the one that writes its layout. */
     importScript: string;
     exportScript: string;
+    /** The objects a user moves or copies — containers, NPCs, doors, furniture, items — by their names in Blender: `TGRStrongbox [0A1B2C]: "Strongbox", a Container (TGRStrongbox)`. */
+    objects?: string[];
     /** The cell placed and saved by Blender in the background — open it, or work on it through Blender's MCP server's _for_cli tools. */
     blendFile?: string;
     /** Why there is no cell.blend: no Blender found, or no PyNifly in it. */

@@ -481,7 +481,8 @@ internal static class MadeNotes
     {
         var made = mod.EnumerateMajorRecords().Where(r => r.FormKey.ModKey == mod.ModKey
             && r is INpcGetter or ILeveledItemGetter or ILeveledNpcGetter or ILeveledSpellGetter or IContainerGetter or IEncounterZoneGetter
-                or ILocationGetter or IActivatorGetter or IRaceGetter or ISpellGetter).ToList();
+                or ILocationGetter or IActivatorGetter or IRaceGetter or ISpellGetter
+                or ILightGetter or IFurnitureGetter or IStaticGetter or IMoveableStaticGetter or IFloraGetter or IDoorGetter).ToList();
         if (made.Count == 0) return [];
         var named = new HashSet<Mutagen.Bethesda.Plugins.FormKey>();
         foreach (var record in mod.EnumerateMajorRecords())
@@ -549,6 +550,19 @@ internal static class MadeNotes
                     $"PlacedObject file in that cell's Temporary/ folder places it{cell}: readRecord of the cell answers `newReference`, the path " +
                     $"and the lines to write, with `Base: {id}`. Where the activator record alone was asked for, nothing to change, and this " +
                     "warning stays");
+                continue;
+            }
+            // A light, a chair, a static, a plant or a door of the mod's own placed nowhere, as a chest: eval round 177's light #2
+            // built its blue light, copied Breezehome, placed no light and answered the room lit blue.
+            if (record is ILightGetter or IFurnitureGetter or IStaticGetter or IMoveableStaticGetter or IFloraGetter or IDoorGetter)
+            {
+                var kind = RecordIndex.TypeName(record);
+                var cell = cells is [var only] ? $" — the project's cell {only.EditorID ?? Session.FormKeyText(only.FormKey)} is one" : "";
+                var shown = (record as ITranslatedNamedGetter)?.Name?.String is { Length: > 0 } name ? $" \"{name}\"" : "";
+                notes.Add($"{file}: {id}{shown}, a new {kind}, is placed in no cell, and nothing in the plugin names {id}, so the game never " +
+                    $"shows it. Where the user asked for it somewhere, a house or a room, a PlacedObject file in that cell's Temporary/ folder " +
+                    $"places it{cell}: readRecord of the cell answers `newReference`, the path and the lines to write, with `Base: {id}`. Where " +
+                    $"the {kind} record alone was asked for, nothing to change, and this warning stays");
                 continue;
             }
             // A zone of the mod's own no cell takes: eval round 148's encounterzone+detailed #2 wrote one for the mine, named no cell
@@ -768,6 +782,114 @@ internal static class MadeNotes
                     ToolCalls.Edit(project, file, $"{{\"path\": \"Base\", \"value\": {ToolCalls.Quoted(newPlant)}}}", build: true) +
                     ". Where the leaf itself was to lie there, nothing to change, and this warning stays");
             }
+        }
+        return notes;
+    }
+
+    /// <summary>
+    /// A new Furniture of the project's with no Markers: the game puts an actor on a furniture at its markers, where and how it sits
+    /// or lies, so nobody uses one that has none. Moved out of MiscItems/ on the warning that names WoodenChair01's Markers, eval
+    /// round 177's furniture #1, #2 and #4 built their Reading Chair without them. Offered the markers of the game's furniture of the
+    /// same model, else WoodenChair01's.
+    /// </summary>
+    public static List<string> Seatless(ISkyrimModGetter mod, ILinkCache lookup, RecordIndex index, string pluginDir)
+    {
+        var made = mod.Furniture.Where(f => f.FormKey.ModKey == mod.ModKey && (f.Markers?.Count ?? 0) == 0).ToList();
+        if (made.Count == 0) return [];
+        static string? PathOf(string? given) => given is { Length: > 0 }
+            ? Regex.Replace(given.Replace('/', '\\'), @"^(?i:meshes\\)", "").ToLowerInvariant() : null;
+        var files = EffectCasting.Files(pluginDir);
+        var project = ToolCalls.ProjectOf(pluginDir);
+        var notes = new List<string>();
+        foreach (var chair in made)
+        {
+            var id = chair.EditorID ?? Session.FormKeyText(chair.FormKey);
+            var file = files.GetValueOrDefault(chair.FormKey) ?? id;
+            var model = PathOf(chair.Model?.File.GivenPath);
+            IFurnitureGetter? source = null;
+            if (model is not null)
+                foreach (var entry in index.ByFormKey.Values.Where(e => e.Type == "Furniture" && e.FormKey.ModKey != mod.ModKey))
+                    if (lookup.TryResolve<IFurnitureGetter>(entry.FormKey, out var game) && (game.Markers?.Count ?? 0) > 0
+                        && PathOf(game.Model?.File.GivenPath) == model)
+                    {
+                        source = game;
+                        if (game.FormKey.ModKey.FileName == "Skyrim.esm") break;
+                    }
+            var sameModel = source is not null;
+            if (source is null && index.ByEditorId.TryGetValue("WoodenChair01", out var plain)
+                && lookup.TryResolve<IFurnitureGetter>(plain, out var woodenChair) && (woodenChair.Markers?.Count ?? 0) > 0)
+                source = woodenChair;
+            var shown = chair.Name?.String is { Length: > 0 } name ? $" \"{name}\"" : "";
+            var head = $"{file}: {id}{shown}, a new Furniture, has no Markers — where and how an actor sits or lies on it — so nobody sits " +
+                "on it in game, and activating it does nothing.";
+            if (source is null)
+            {
+                notes.Add(head + " Write its Markers as a game chair's or bed's: readRecord of one shows them. Where a furniture nobody " +
+                    "uses was meant, nothing to change, and this warning stays");
+                continue;
+            }
+            var sourceId = source.EditorID ?? Session.FormKeyText(source.FormKey);
+            static string Flags(object? value) => value?.ToString() is { Length: > 0 } text && text != "0"
+                ? string.Join(", ", text.Split(", ").Select(ToolCalls.Quoted)) : "";
+            var markers = string.Join(", ", source.Markers!.Select(m =>
+                $"{{\"Enabled\": {(m.Enabled ? "true" : "false")}" +
+                (m.EntryPoints is { } points ? $", \"EntryPoints\": {{\"Type\": [{Flags(points.Type)}], \"Points\": [{Flags(points.Points)}]}}" : "") +
+                (m.MarkerKeyword.IsNull ? "" : $", \"MarkerKeyword\": {ToolCalls.Quoted(Session.FormKeyText(m.MarkerKeyword.FormKey))}") + "}"));
+            notes.Add(head + $" {sourceId} ({Session.FormKeyText(source.FormKey)}), the game's {(sameModel ? "furniture of the same model" : "chair")}, has " +
+                $"them: one call writes them and builds — " +
+                ToolCalls.Fix(project, file, $"{{\"path\": \"Markers\", \"value\": [{markers}]}}") +
+                ". Where a furniture nobody uses was meant, nothing to change, and this warning stays");
+        }
+        return notes;
+    }
+
+    /// <summary>
+    /// A new spell of the project's, taught by a new spell tome of the project's, that casts what a spell of the game a game
+    /// tome teaches casts — the same effects. Asked for a tome named "Spell Tome: Ember Bolt" that teaches Firebolt, eval round
+    /// 177's spelltome runs wrote an Ember Bolt spell of FireDamageFFAimed at 25, Firebolt's, taught it, and built with no word
+    /// (7 of 10).
+    /// </summary>
+    public static List<string> TomesOfCopies(ISkyrimModGetter mod, ILinkCache lookup, RecordIndex index, string pluginDir)
+    {
+        var tomes = mod.Books.Where(b => b.FormKey.ModKey == mod.ModKey && b.Teaches is IBookSpellGetter { Spell.IsNull: false } t
+            && t.Spell.FormKey.ModKey == mod.ModKey).ToList();
+        if (tomes.Count == 0) return [];
+        // The game's spells a game tome teaches, by their first effect: a game spell carries its perks' effects after it
+        // (Firebolt: FireDamageFFAimed, then PerkImpactStaggerPushFFAimed and PerkIntenseFlamesConfDownFFAimed), a copy often not.
+        var taughtByGame = new Dictionary<Mutagen.Bethesda.Plugins.FormKey, List<(ISpellGetter Spell, IBookGetter Tome)>>();
+        foreach (var entry in index.ByFormKey.Values.Where(e => e.Type == "Book" && e.FormKey.ModKey != mod.ModKey))
+            if (lookup.TryResolve<IBookGetter>(entry.FormKey, out var book) && book.Teaches is IBookSpellGetter { Spell.IsNull: false } teaches
+                && lookup.TryResolve<ISpellGetter>(teaches.Spell.FormKey, out var gameSpell) && gameSpell.Effects.Count > 0)
+                (taughtByGame.TryGetValue(gameSpell.Effects[0].BaseEffect.FormKey, out var list) ? list
+                    : taughtByGame[gameSpell.Effects[0].BaseEffect.FormKey] = []).Add((gameSpell, book));
+        var files = EffectCasting.Files(pluginDir);
+        var project = ToolCalls.ProjectOf(pluginDir);
+        var notes = new List<string>();
+        foreach (var tome in tomes)
+        {
+            var taught = ((IBookSpellGetter)tome.Teaches!).Spell.FormKey;
+            if (mod.Spells.FirstOrDefault(s => s.FormKey == taught) is not { } spell || spell.Effects.Count == 0
+                || !taughtByGame.TryGetValue(spell.Effects[0].BaseEffect.FormKey, out var firsts)) continue;
+            // Each of the copy's effects one of the game spell's.
+            var twins = firsts.Where(t => spell.Effects.All(e => t.Spell.Effects.Any(g => g.BaseEffect.FormKey == e.BaseEffect.FormKey))).ToList();
+            if (twins.Count == 0) continue;
+            // The twin of the same first magnitude first, then Skyrim.esm's.
+            var (game, gameTome) = twins.OrderBy(t => t.Spell.Effects[0].Data?.Magnitude == spell.Effects[0].Data?.Magnitude ? 0 : 1)
+                .ThenBy(t => t.Spell.FormKey.ModKey.FileName == "Skyrim.esm" ? 0 : 1).First();
+            var tomeId = tome.EditorID ?? Session.FormKeyText(tome.FormKey);
+            var spellId = spell.EditorID ?? Session.FormKeyText(spell.FormKey);
+            var gameId = game.EditorID ?? Session.FormKeyText(game.FormKey);
+            var tomeFile = files.GetValueOrDefault(tome.FormKey) ?? tomeId;
+            var effects = string.Join(", ", spell.Effects.Select(e =>
+                (index.ByFormKey.TryGetValue(e.BaseEffect.FormKey, out var mgef) ? mgef.EditorId : null) ?? Session.FormKeyText(e.BaseEffect.FormKey)));
+            notes.Add($"{tomeFile}: {tomeId} teaches {spellId}{(spell.Name?.String is { Length: > 0 } sn ? $" \"{sn}\"" : "")}, a new spell of the " +
+                $"project's, which casts what the game's {gameId}{(game.Name?.String is { Length: > 0 } gn ? $" \"{gn}\"" : "")} " +
+                $"({Session.FormKeyText(game.FormKey)}) casts — {effects} — the spell the game's {gameTome.EditorID} teaches. A tome's own name " +
+                $"is the book's, not a spell's: where the user asked for a tome of the game's {gameId}, the tome teaches that spell itself, " +
+                $"`Spell: {gameId}`, and {spellId} is not needed — one call names it and builds: " +
+                ToolCalls.Edit(project, tomeFile, $"{{\"path\": \"Teaches.Spell\", \"value\": {ToolCalls.Quoted(gameId)}}}", build: true) +
+                $"; the build after it offers {spellId}'s delete. Where a spell of the mod's own was asked for, nothing to change, and this " +
+                "warning stays");
         }
         return notes;
     }

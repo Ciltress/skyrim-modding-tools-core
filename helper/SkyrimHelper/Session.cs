@@ -208,6 +208,17 @@ public sealed partial class Session : IDisposable
                         searchedAs = $"no record is named '{text}': these are '{singular}'";
                         break;
                     }
+            // A name with a word more than the record's finds nothing: "Embershard Mine Riverwood" found no record, and eval round
+            // 177's encounterzone #1 searched "Riverwood" next and raised Riverwood's levels in place of the mine's. The text with
+            // words left out, the most kept first, side by side as said: the first that finds a record answers.
+            if (text.Length > 0 && searchedAs is null && !Chosen(matches).Any())
+                foreach (var fewer in FewerWords(text))
+                    if (ByText(fewer) is var found && Chosen(found).Any())
+                    {
+                        matches = found;
+                        searchedAs = $"no record is named '{text}': these are named '{fewer}'";
+                        break;
+                    }
         }
         IEnumerable<RecordIndex.Entry> ByText(string text)
         {
@@ -299,6 +310,27 @@ public sealed partial class Session : IDisposable
                 if (string.Join(' ', words.Select((w, at) => at == i ? singular : w)) is var said && seen.Add(said)) yield return said;
         if (words.Select(w => Of(w).FirstOrDefault() ?? w).ToArray() is var all && string.Join(' ', all) is var every && seen.Add(every))
             yield return every;
+    }
+
+    /// <summary>
+    /// A search's text of several words with words left out, the most kept first, each run of them side by side as said:
+    /// "Embershard Mine Riverwood" as "Embershard Mine", then "Mine Riverwood", then the single words. A part that begins or ends
+    /// with a small word ("near", "of") is left out, as is a single word under four letters.
+    /// </summary>
+    private static IEnumerable<string> FewerWords(string text)
+    {
+        var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length < 2) yield break;
+        string[] small = ["a", "an", "the", "of", "in", "at", "on", "near", "by", "from", "to", "with", "and", "or", "for"];
+        bool Small(string w) => small.Contains(w, StringComparer.OrdinalIgnoreCase);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { text };
+        for (var count = words.Length - 1; count >= 1; count--)
+            for (var from = 0; from + count <= words.Length; from++)
+            {
+                var part = words[from..(from + count)];
+                if (Small(part[0]) || Small(part[^1]) || count == 1 && part[0].Length < 4) continue;
+                if (string.Join(' ', part) is var said && seen.Add(said)) yield return said;
+            }
     }
 
     // ---------------------------------------------------------------- reading
@@ -967,6 +999,7 @@ public sealed partial class Session : IDisposable
             .Concat(MadeNotes.Unused(mod, lookup, Index, dir)).Concat(MadeNotes.GameNamedInLists(mod, lookup, Index, dir))
             .Concat(MadeNotes.MiscActivators(mod, dir)).Concat(MadeNotes.Levers(mod, dir)).Concat(MadeNotes.WordlessMessages(mod, dir)).Concat(MadeNotes.ScriptedOverrides(mod, lookup, dir))
             .Concat(MadeNotes.Ungiven(mod, lookup, Index, dir))
+            .Concat(MadeNotes.Seatless(mod, lookup, Index, dir)).Concat(MadeNotes.TomesOfCopies(mod, lookup, Index, dir))
             .Concat(MadeNotes.GameLights(mod, dir)).Concat(MadeNotes.EmptyEffects(mod, dir)).Concat(MadeNotes.LightColors(mod, dir))
             .Concat(MadeNotes.EffectsByFormId(mod, Index, dir))
             .Concat(CellContents.PlacedNotes(mod, Contexts, Index, dir)).Concat(DialogContents.Notes(mod, lookup, Index, dir)).Concat(DialogContents.StoryNotes(mod, lookup, dir)).Concat(GameSettings.Notes(mod, Index, dir))

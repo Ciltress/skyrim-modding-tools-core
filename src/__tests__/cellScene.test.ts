@@ -179,3 +179,19 @@ describe('blenderMcpLaunch', () => {
         expect(fs.readFileSync(BLENDER_MCP_NO_STDIN, 'utf8')).toContain('subprocess.DEVNULL');
     });
 });
+
+describe('usableObjects', () => {
+    it('names the things a user moves by their names in Blender, containers before items, statics left out', async () => {
+        const { usableObjects } = await import('../backend/skyrim/SkyrimInstanceBackend.js');
+        const plate = { ...barrel, formId: '0D58CF:Skyrim.esm', base: { formId: '0310D8:Skyrim.esm', editorId: 'GlazedPlate01', type: 'MiscItem', name: 'Plate' } };
+        const ledger = { ...barrel, formId: '06DC98:Skyrim.esm', editorId: 'TGRFOBusinessLedger',
+            base: { formId: '06DC97:Skyrim.esm', editorId: 'TGRFOBusinessLedger', type: 'Activator', name: 'Business Ledger' } };
+        expect(usableObjects([plate, barrel, ledger, chest])).toEqual([
+            'PlayerHouseChest [10EB84]: "Chest", a Container (PlayerHouseChest)',
+            'TGRFOBusinessLedger [06DC98]: "Business Ledger", an Activator (TGRFOBusinessLedger)',
+            'GlazedPlate01 [0D58CF]: "Plate", a MiscItem (GlazedPlate01)'
+        ]);
+        expect(usableObjects([chest, chest, chest], 2)).toHaveLength(3);
+        expect(usableObjects([chest, chest, chest], 2)[2]).toBe('… and 1 more');
+    });
+});

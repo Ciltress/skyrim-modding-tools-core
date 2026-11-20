@@ -1091,13 +1091,16 @@ export class ProjectsHandlers extends BaseHandler {
                         ...exported,
                         nextStep: exported.blendFile
                             ? `${exported.blendFile} holds the ${exported.references} objects of ${exported.cell}, each where the game places it and ` +
-                              `named after its reference. Open it in Blender, or work on it without a window through Blender's MCP server: ` +
+                              `named after its reference — \`objects\` names those a user moves or copies, as Blender has them. Open it in ` +
+                              `Blender, or work on it without a window through Blender's MCP server: ` +
                               `execute_blender_code_for_cli with blend_file ${JSON.stringify(exported.blendFile)} and code that changes the objects ` +
-                              `— bpy.data.objects["<name>"].location, rotation_euler, .copy() for one more, bpy.data.objects.remove for one less — ` +
-                              `then ends with ${run(exported.exportScript)} and bpy.ops.wm.save_mainfile(). Then ${importCell}.`
+                              `— bpy.data.objects["<its name in objects>"].location, rotation_euler, .copy() for one more, bpy.data.objects.remove ` +
+                              `for one less; a name Blender has not raises a KeyError, which the answer shows, where .get() changes nothing ` +
+                              `without a word — then ends with ${run(exported.exportScript)} and bpy.ops.wm.save_mainfile(). Then ${importCell}.`
                             : `In Blender, with the PyNifly add-on enabled, run ${exported.importScript} — the Scripting tab's Run ` +
                               `Script, or ${run(exported.importScript)} through Blender's MCP server: it places ${exported.references} ` +
-                              `objects of ${exported.cell}. Move, turn, scale, copy (Shift+D) or delete them there; then run ` +
+                              `objects of ${exported.cell}, each named after its reference (\`objects\` names those a user moves or copies). ` +
+                              `Move, turn, scale, copy (Shift+D) or delete them there; then run ` +
                               `${exported.exportScript} the same way — ${run(exported.exportScript)} — and call ${importCell}.`
                     };
                 }
