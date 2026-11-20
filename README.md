@@ -37,7 +37,7 @@ This is the engine of the Skyrim Modding Tools. Use it from your own code, or ta
   dragon shouts, NPCs, leveled lists, perks, books and notes, quests with Papyrus scripts, and objects placed in the
   world, indoors and out — a chest in Breezehome, a bedroll by Riverwood's cooking pot.
 - 🧊 **Cells in Blender.** Export a cell — its objects, with the meshes and textures they show — and arrange it in
-  Blender with the PyNifly add-on, by hand or through Blender's MCP server; what was moved, copied or deleted comes back
+  Blender with the [PyNifly](https://github.com/BadDogSkyrim/PyNifly) add-on ([on Linux](https://github.com/Ciltress/PyNifly)), by hand or through Blender's MCP server; what was moved, copied or deleted comes back
   as the mod's own references, the ground sculpted and the navmesh edited too.
 - 🗺️ **Land and navmesh, no Creation Kit.** Shape the ground outdoors, make a new worldspace — flat or from a
   heightmap — and give any cell its navmesh in one call, made from the collision of what stands there.

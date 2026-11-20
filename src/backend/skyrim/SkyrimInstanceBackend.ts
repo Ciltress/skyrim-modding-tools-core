@@ -821,7 +821,9 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
                 (error, stdout, stderr) => resolve(`${stdout}\n${stderr}${error ? `\n${error.message}` : ''}`));
         });
         if (fs.existsSync(blendFile)) return { blendFile };
-        const why = /PyNifly add-on is not enabled/.test(output) ? 'its PyNifly add-on is not enabled'
+        // PyNifly is Windows-only upstream: on Linux the add-on is its Linux build, which a Blender without it is told of.
+        const linux = process.platform === 'win32' ? '' : ` (on Linux, PyNifly's Linux build: ${PYNIFLY_LINUX})`;
+        const why = /PyNifly add-on is not enabled/.test(output) ? `its PyNifly add-on is not enabled${linux}`
             : output.split('\n').filter(line => /Error|error:/.test(line)).slice(-2).join(' ').slice(0, 300) || 'it saved none';
         return { blendFileNote: `${blender} made no cell.blend: ${why}. The importScript places the cell in a running Blender.` };
     }
@@ -1916,6 +1918,9 @@ function isProjectMod(projectsDir: string, mod: string): boolean {
  * How long capabilities() waits for Nexus's key check: under the server's 8 s for the whole gate, so the
  * answer arrives in time — a late one would leave the gate empty and list the download after all.
  */
+/** PyNifly's Linux build: upstream PyNifly is Windows-only (2026-11-20). */
+const PYNIFLY_LINUX = 'https://github.com/Ciltress/PyNifly';
+
 const CAPABILITIES_WAIT_MS = 5_000;
 
 /** Builds and pulls of big plugins take a while; the helper's default timeout is for lookups. */

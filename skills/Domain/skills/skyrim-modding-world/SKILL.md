@@ -240,7 +240,7 @@ and importCell sets the cell's ground to them, its neighbours' edges moved with 
 ## Arrange a cell in Blender
 
 To move, turn, copy or remove what stands in a cell by eye, the cell goes to Blender and back — Blender with the
-PyNifly add-on, which reads the game's meshes.
+PyNifly add-on, which reads the game's meshes (on Linux the Linux build, https://github.com/Ciltress/PyNifly: PyNifly itself is Windows-only).
 
 1. `exportCell` `{"project": "BreezehomeTidy", "cell": "WhiterunBreezehome"}` writes the cell's objects, the meshes and
    textures they show into the project's `blender/` folder, and answers `blendFile` — the cell placed and saved in

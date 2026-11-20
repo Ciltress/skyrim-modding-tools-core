@@ -411,7 +411,8 @@ the game's prefix with Amethyst):
 
 ### 4.5 Arrange a cell in Blender
 
-Blender with the PyNifly add-on; the Blender part runs in its Scripting tab, or through Blender's MCP server:
+Blender with the PyNifly add-on (on Linux its Linux build, https://github.com/Ciltress/PyNifly — PyNifly itself is Windows-only); the Blender part
+runs in its Scripting tab, or through Blender's MCP server:
 
 ```jsonc
 {"tool":"exportCell","args":{"project":"BreezehomeTidy","cell":"WhiterunBreezehome"}}
