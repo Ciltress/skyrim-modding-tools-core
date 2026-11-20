@@ -91,10 +91,16 @@ def _model_collection(model, folder, meshes, library, failed):
     return collection
 
 
-def _label(reference):
+def _label(reference, used):
+    """An object's name: its reference's editor ID, else its base's — `TGRStrongbox` — and, for a second object of that name,
+    the reference's FormID after it: `GlazedGoblet01 [0D58D4]`. Named `TGRStrongbox [0EA73B]` each, a model looked the
+    strongbox up as bpy.data.objects["TGRStrongbox"] (eval round 178). Blender keeps names to 63 characters."""
     base = reference.get("base") or {}
-    name = reference.get("editorId") or base.get("editorId") or reference["formId"]
-    return f"{name} [{reference['formId'].split(':')[0]}]"[:63]
+    name = (reference.get("editorId") or base.get("editorId") or reference["formId"])[:63]
+    if name in used:
+        name = f"{name} [{reference['formId'].split(':')[0]}]"[:63]
+    used.add(name)
+    return name
 
 
 def _ground(ground, collection):
@@ -188,10 +194,11 @@ def import_cell(folder, clear=True):
 
     library, failed = {}, []
     placed = 0
+    used = set()
     for reference in scene["references"]:
         model = reference.get("model")
         source = _model_collection(model, folder, meshes, library, failed) if model else None
-        obj = bpy.data.objects.new(_label(reference), None)
+        obj = bpy.data.objects.new(_label(reference, used), None)
         if source is not None:
             obj.instance_type = "COLLECTION"
             obj.instance_collection = source

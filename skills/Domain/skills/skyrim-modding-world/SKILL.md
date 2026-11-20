@@ -258,8 +258,10 @@ PyNifly add-on, which reads the game's meshes (on Linux the Linux build, https:/
 
 1. `exportCell` `{"project": "BreezehomeTidy", "cell": "WhiterunBreezehome"}` writes the cell's objects, the meshes and
    textures they show into the project's `blender/` folder, and answers `blendFile` — the cell placed and saved in
-   Blender, each object where the game places it, named after its reference (`PlayerHouseChest [10EB84]`), an exterior
-   cell on its ground — and `exportScript`, which writes what changed.
+   Blender, each object where the game places it, named by its editor ID (`PlayerHouseChest`; a second of that name with
+   its FormID after it, `GlazedGoblet01 [0D58D4]`), an exterior cell on its ground — `objects`, the lookups of the
+   containers, NPCs, doors, furniture and items, `bpy.data.objects["TGRStrongbox"]` — and `exportScript`, which writes
+   what changed.
 2. Arrange the objects: move, turn or scale one; copy one for one more of its kind; delete one to take it out.
    - **By hand:** open `blendFile` in Blender; Shift+D copies an object.
    - **Through Blender's MCP server, no window:** `execute_blender_code_for_cli` with `blend_file` the `blendFile` and
@@ -267,7 +269,7 @@ PyNifly add-on, which reads the game's meshes (on Linux the Linux build, https:/
 
      ```python
      import bpy
-     chest = bpy.data.objects["PlayerHouseChest [10EB84]"]
+     chest = bpy.data.objects["PlayerHouseChest"]   # as `objects` writes it
      chest.location.x += 100                      # game units: 64 is about an arm's length
      copy = chest.copy(); chest.users_collection[0].objects.link(copy); copy.location.y += 80
      exec(open(r"<exportScript>", encoding="utf-8").read())

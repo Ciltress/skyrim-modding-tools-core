@@ -187,10 +187,13 @@ describe('usableObjects', () => {
         const ledger = { ...barrel, formId: '06DC98:Skyrim.esm', editorId: 'TGRFOBusinessLedger',
             base: { formId: '06DC97:Skyrim.esm', editorId: 'TGRFOBusinessLedger', type: 'Activator', name: 'Business Ledger' } };
         expect(usableObjects([plate, barrel, ledger, chest])).toEqual([
-            'PlayerHouseChest [10EB84]: "Chest", a Container (PlayerHouseChest)',
-            'TGRFOBusinessLedger [06DC98]: "Business Ledger", an Activator (TGRFOBusinessLedger)',
-            'GlazedPlate01 [0D58CF]: "Plate", a MiscItem (GlazedPlate01)'
+            'bpy.data.objects["PlayerHouseChest"]: "Chest", a Container (PlayerHouseChest)',
+            'bpy.data.objects["TGRFOBusinessLedger"]: "Business Ledger", an Activator (TGRFOBusinessLedger)',
+            'bpy.data.objects["GlazedPlate01"]: "Plate", a MiscItem (GlazedPlate01)'
         ]);
+        // A second of the same name has its FormID after it, as skyrim_cell.py names it.
+        const second = { ...chest, formId: '10EB85:Skyrim.esm' };
+        expect(usableObjects([chest, second])[1]).toBe('bpy.data.objects["PlayerHouseChest [10EB85]"]: "Chest", a Container (PlayerHouseChest)');
         expect(usableObjects([chest, chest, chest], 2)).toHaveLength(3);
         expect(usableObjects([chest, chest, chest], 2)[2]).toBe('… and 1 more');
     });

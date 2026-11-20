@@ -112,14 +112,22 @@ const USABLE_KINDS = ['Container', 'Npc', 'Activator', 'TalkingActivator', 'Door
 
 /**
  * The objects of an exported cell a user moves or copies — its containers, NPCs, doors, furniture, items — each by the name
- * skyrim_cell.py gives it in Blender (`_label`), with the base's name and type. Told the objects are "named after their
+ * skyrim_cell.py gives it in Blender (`_label`), written as the lookup — `bpy.data.objects["TGRStrongbox"]` — with the base's name and type. Told the objects are "named after their
  * reference", eval round 177's blender runs looked up a strongbox as bpy.data.objects.get("Strongbox"), found none, and
  * imported a layout with nothing changed (10 of 10).
  */
 export function usableObjects(references: SceneReference[], limit = 60): string[] {
+    // The names skyrim_cell.py's _label gives, in the scene's order: the editor ID, and the FormID after it for a second one.
+    const used = new Set<string>();
+    const labels = new Map(references.map(r => {
+        let name = (r.editorId || r.base?.editorId || r.formId).slice(0, 63);
+        if (used.has(name)) name = `${name} [${r.formId.split(':')[0]}]`.slice(0, 63);
+        used.add(name);
+        return [r, name] as const;
+    }));
     const rank = (r: SceneReference) => USABLE_KINDS.indexOf(r.base?.type ?? '');
     const rows = references.filter(r => rank(r) >= 0).sort((a, b) => rank(a) - rank(b)).map(r => {
-        const label = `${r.editorId || r.base?.editorId || r.formId} [${r.formId.split(':')[0]}]`.slice(0, 63);
+        const label = `bpy.data.objects[${JSON.stringify(labels.get(r))}]`;
         const type = r.base!.type!;
         return `${label}: ${r.base?.name ? `"${r.base.name}", ` : ''}${/^[AEIOU]/.test(type) ? 'an' : 'a'} ${type}` +
             (r.base?.editorId ? ` (${r.base.editorId})` : '');
