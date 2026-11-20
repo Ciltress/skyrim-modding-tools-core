@@ -816,6 +816,17 @@ public static class RecordLinks
                             (deleting is null ? ")" : $"; one call does it and builds again: {deleting(field, $"{{\"path\": \"{path}.{meant}\", \"value\": {written}}}")})"));
                         continue;
                     }
+                    // An event written under a script's item, as if the record ran it: eval round 176's activator+detailed #2 wrote
+                    // `OnActivate:` under its Scripts[1], was told "delete it" three builds, and wrote it again each time.
+                    if (type.Name == "ScriptEntry" && Regex.IsMatch(key, @"^On[A-Z]\w*$"))
+                    {
+                        var script = mapping.Children.TryGetValue(new YamlScalarNode("Name"), out var scriptNode)
+                            && scriptNode is YamlScalarNode { Value: { Length: > 0 } scriptName } ? scriptName : "<the script>";
+                        problem($"{path} has no field {key} ({key} is an event, and an event is code of the script's source — " +
+                            $"`Event {key}(…)` in the project's scripts/{script}.psc, with what it does — not a field of the record that " +
+                            $"attaches the script: delete it here{deleted})");
+                        continue;
+                    }
                     problem($"{path} has no field {key}" + (RecordFiles.LevelHint(type, key) is { } level
                             ? (deleting is not null && Holds(mapping, "Level", key) ? $" (its Level holds {key} already: delete this one{deleted})" : $" ({level})")
                         : record.Name == "MagicEffect" && key == "Data" ? $" ({RecordFiles.EffectStrength})"
