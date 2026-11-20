@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { PermanentBackendError, SessionExpiredError } from '../Backend.js';
 import type { HealthReport } from '../Backend.js';
-import { compileScripts, hasUncommittedChanges, scriptSourceFolders } from './externalTools.js';
+import { compileScripts, hasUncommittedChanges, scriptSourceFolders, vanillaSourceFolder } from './externalTools.js';
 import { PapyrusSources, scriptWarnings, type ScriptedRecord } from './scriptChecks.js';
 import { HelperError, HelperUnavailableError } from './helperClient.js';
 import {
@@ -1689,6 +1689,7 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
             scriptsDir: paths.scripts,
             sources: new PapyrusSources(scriptSourceFolders(paths.scripts, this.engine.creationKitDir, instance, mods)),
             gameHas: name => !!found[`scripts\\${name}.pex`],
+            gameScript: name => { const vanilla = vanillaSourceFolder(this.engine.creationKitDir); return !!vanilla && !!findCaseInsensitive(vanilla, `${name}.psc`); },
             recordTexts: hasSources ? recordFiles(paths.plugin).map(file => fs.readFileSync(file, 'utf8')).join('\n') : ''
         });
     }

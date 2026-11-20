@@ -145,6 +145,19 @@ describe('scriptWarnings', () => {
         expect(quiet('VirtualMachineAdapter:\n  Scripts:\n  - Name: OtherScript\n')).toEqual([]);
     });
 
+    // Eval round 167's activator+detailed #2 wrote its own TrapLever.psc, the script of every lever of the game.
+    it('names a script of the project under a game script\'s name', () => {
+        fs.writeFileSync(path.join(scriptsDir, 'TrapLever.psc'), 'Scriptname TrapLever extends ObjectReference\n\nEvent OnActivate(ObjectReference akActor)\nEndEvent\n');
+        const record: ScriptedRecord = { file: 'Activators/StrangeLever.yaml', editorId: 'StrangeLever', type: 'Activator', scripts: [{ name: 'TrapLever', properties: [] }] };
+        const warnings = scriptWarnings([record], { scriptsDir, sources: new PapyrusSources([scriptsDir, vanilla]), gameHas: () => false,
+            gameScript: name => name.toLowerCase() === 'traplever' });
+        expect(warnings.filter(w => w.includes('is a script of the game\'s own'))).toHaveLength(1);
+        expect(warnings.find(w => w.includes('is a script of the game\'s own'))).toContain('TrapLever is a script of the game\'s own, and the project\'s ' +
+            'TrapLever.pex replaces it for every record of the game that runs it');
+        expect(scriptWarnings([record], { scriptsDir, sources: new PapyrusSources([scriptsDir, vanilla]), gameHas: () => false, gameScript: () => false })
+            .some(w => w.includes('is a script of the game\'s own'))).toBe(false);
+    });
+
     it('names a form property nothing fills, but not a value, an array or one with a value of its own', () => {
         const script = GOOD.replace('MiscObject Property Gold001 Auto',
             'MiscObject Property Gold001 Auto\nInt Property Amount Auto\nForm[] Property Extras Auto\nFloat Property Delay = 1.0 Auto');

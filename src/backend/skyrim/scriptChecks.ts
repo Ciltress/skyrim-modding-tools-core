@@ -183,6 +183,8 @@ export interface ScriptCheckContext {
     gameHas: (name: string) => boolean;
     /** The project's record files' text: a script any of them names — a fragment's, a property's type — is in use. */
     recordTexts?: string;
+    /** Whether the game's own sources have a script of this name: one the game runs on its own records. */
+    gameScript?: (name: string) => boolean;
 }
 
 /**
@@ -207,6 +209,17 @@ export function scriptWarnings(records: readonly ScriptedRecord[], context: Scri
             .map(f => ({ file: path.join(scriptsDir, f), text: fs.readFileSync(path.join(scriptsDir, f), 'utf8') }))
         : [];
     const word = (name: string) => new RegExp(`(^|[^\\w])${name}([^\\w]|$)`, 'i');
+    // A script of the game's own name: built, it replaces the game's for every record that runs it — eval round 167's activator+detailed
+    // #2 copied NorLever01's TrapLever, the script of every lever of the game, and wrote its own TrapLever.psc to give gold.
+    for (const { file, text } of projectScripts) {
+        const name = readPapyrus(text).name || path.basename(file, path.extname(file));
+        if (!context.gameScript?.(name)) continue;
+        warnings.push(`${file}: ${name} is a script of the game's own, and the project's ${name}.pex replaces it for every record of the game ` +
+            `that runs it — every lever, door or quest that has it. A script of the mod's own takes a name of its own: write it as ` +
+            `${path.join(path.dirname(file), `<a name of its own>.psc`)}, its first line \`ScriptName <that name> extends …\`, name it so in its ` +
+            `record's VirtualMachineAdapter, and delete ${name}.psc. Where the game's own ${name} was to be changed, nothing to change, and ` +
+            'this warning stays.');
+    }
     for (const { file, text } of projectScripts) {
         const name = readPapyrus(text).name || path.basename(file, path.extname(file));
         const others = projectScripts.filter(s => s.file !== file);

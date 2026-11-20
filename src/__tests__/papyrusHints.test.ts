@@ -445,6 +445,31 @@ describe('papyrusHints', () => {
         ]);
     });
 
+    // Eval round 167's activator #3 and activator+detailed #2, with russo-2025's words.
+    it('names Game as a property\'s type, and a FormID in hex', () => {
+        const { scripts, vanilla } = folders();
+        const write = (name: string, body: string) => {
+            fs.writeFileSync(path.join(scripts, `${name}.psc`), `ScriptName ${name} extends ObjectReference\n\n${body}`);
+            return path.join(scripts, `${name}.psc`);
+        };
+        const glued = write('GGlued', 'GameProperty GoldReward Auto\n');
+        const typed = write('GTyped', 'Game Property GoldReward Auto\n\nEvent OnActivate(ObjectReference akActionRef)\n    Game.GetPlayer().AddItem(GoldReward, 100)\nEndEvent\n');
+        const hex = write('GHex', 'Event OnActivate(ObjectReference akActor)\n    akActor.AddItem(0x20001, 100)\nEndEvent\n');
+        expect(papyrusHints([
+            `${glued}:3:14: Checker error: undefined type: \`GameProperty\``,
+            `${typed}:6:26: Checker error: cannot convert type \`Game\` to type \`Form\``,
+            `${hex}:4:13: Checker error: cannot convert type \`Int\` to type \`Form\``
+        ], scripts, vanilla)).toEqual([
+            'line 3 of GGlued.psc, `GameProperty GoldReward Auto`: a property is declared with its type and the word Property apart, and Game ' +
+            'is no type a property holds — a script of functions, called by its name — but a property is typed as what it holds: ' +
+            '`MiscObject Property GoldReward Auto` for this one; ' + byUse,
+            'line 6 of GTyped.psc, `Game.GetPlayer().AddItem(GoldReward, 100)`: GoldReward is declared a Game, and Game is no type a property ' +
+            'holds — a script of functions, called by its name — but a property is typed as what it holds: `MiscObject Property GoldReward ' +
+            'Auto` for this one; ' + byUse,
+            expect.stringContaining('line 4 of GHex.psc, `akActor.AddItem(0x20001, 100)`: a script names no record by its FormID')
+        ]);
+    });
+
     it('adds nothing for an error the sources do not explain', () => {
         const { scripts, vanilla } = folders();
         expect(papyrusHints(['C:\\p\\scripts\\X.psc(1,0): mismatched input', 'Compilation failed'], scripts, vanilla)).toEqual([]);

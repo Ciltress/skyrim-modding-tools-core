@@ -213,6 +213,9 @@ const VAGUE_TYPE = /^(Object|Record|Item|Items|Reference|Ref|Thing|Entity|Any|Va
 /** The game's types a modding script's properties hold, searched for the one a function called on another is of. */
 const OWNERS = ['Message', 'Quest', 'Actor', 'ObjectReference', 'MiscObject', 'Location', 'GlobalVariable', 'Spell', 'Weapon', 'Armor', 'Book', 'Key'];
 
+/** The game's scripts of functions alone, called by their names, which no property holds: `Game Property GoldReward Auto`. */
+const FUNCTIONS_ONLY = /^(Game|Debug|Utility|Math|Input|UI|StringUtil)$/i;
+
 /** The types a property most often holds, said where it was typed otherwise. */
 const TYPES_BY_USE = '`Message` for a message box, `MiscObject` for gold (`MiscObject Property Gold001 Auto`), `ObjectReference` for a thing ' +
     'placed in a cell, `Actor` for an NPC placed, `Quest` for a quest';
@@ -401,6 +404,13 @@ function writingHint(problem: string, scriptsDir: string, vanilla: string): stri
         const type = plain !== glued[1] && !findCaseInsensitive(vanilla, `${glued[1]}.psc`) && findCaseInsensitive(vanilla, `${plain}.psc`) ? plain : glued[1];
         // Eval round 163's activator #5 wrote `ItemProperty Gold001 Auto`, was told `Item Property Gold001 Auto`, wrote it, and was refused
         // for "undefined type: `Item`": the game has no type Item.
+        // Round 167's activator #3 wrote `GameProperty GoldReward Auto`, was told `Game Property GoldReward Auto`, and was refused three
+        // builds for "cannot convert type `Game` to type `Form`": Game is a script of functions, which no property holds.
+        if (FUNCTIONS_ONLY.test(type)) {
+            const held = heldType(glued[2], source);
+            return `${where}: a property is declared with its type and the word Property apart, and ${type} is no type a property holds — ` +
+                `a script of functions, called by its name — but a property is typed as what it holds${held ? `: \`${held} Property ${glued[2]} Auto\` for this one; ` : ': '}${TYPES_BY_USE}`;
+        }
         if (VAGUE_TYPE.test(type)) {
             const held = heldType(glued[2], source);
             return `${where}: a property is declared with its type and the word Property apart, and the game has no type ${type} — a property ` +
@@ -426,7 +436,16 @@ function writingHint(problem: string, scriptsDir: string, vanilla: string): stri
         return `${where}: Papyrus has no Player — the player is \`Game.GetPlayer()\`, an Actor: \`Game.GetPlayer().AddItem(Gold001, 100)\`, ` +
             'or `Actor player = Game.GetPlayer()` first';
     }
-    if (/\(\s*[0-9A-Fa-f]{6,8}(?::[^,)]+)?\s*[,)]/.test(line)) {
+    const scriptTyped = /cannot convert type `(\w+)` to type `Form`/i.exec(message)?.[1];
+    const typedAs = scriptTyped && FUNCTIONS_ONLY.test(scriptTyped) ? new RegExp(`^\\s*${scriptTyped}\\s+Property\\s+(\\w+)`, 'im').exec(source)?.[1] : undefined;
+    if (scriptTyped && typedAs) {
+        const held = heldType(typedAs, source);
+        return `${where}: ${typedAs} is declared ${/^[AEIOU]/i.test(scriptTyped) ? 'an' : 'a'} ${scriptTyped}, and ${scriptTyped} is no type a property holds — a script of ` +
+            `functions, called by its name — but a property is typed as what it holds${held ? `: \`${held} Property ${typedAs} Auto\` for this one; ` : ': '}${TYPES_BY_USE}`;
+    }
+    // A FormID in hex too: round 167's activator+detailed #2 called `akActor.AddItem(0x20001, 100)`, told "cannot convert type `Int` to
+    // type `Form`" five builds.
+    if (/\(\s*(?:0[xX][0-9A-Fa-f]{1,8}|[0-9A-Fa-f]{6,8})(?::[^,)]+)?\s*[,)]/.test(line)) {
         return `${where}: a script names no record by its FormID — ${PROPERTY_FILLED}`;
     }
     // Eval round 157's activator+detailed #1 called `Player.AddItem("Gold", 100)`, told "cannot convert type `String` to type `Form`".
@@ -557,8 +576,13 @@ export function modSourceFolders(instance: Instance, mods: readonly ModEntry[]):
  * The folders a script's source is read from, in the compiler's order of precedence: the project's own, every enabled
  * mod's, then the vanilla sources the Creation Kit unpacked — those of them that exist.
  */
+/** The game's own script sources, as the Creation Kit unpacked them; undefined where it did not. */
+export function vanillaSourceFolder(creationKitDir: string): string | undefined {
+    return SOURCE_FOLDERS.map(folder => findCaseInsensitive(creationKitDir, folder)).find(Boolean);
+}
+
 export function scriptSourceFolders(scriptsDir: string, creationKitDir: string, instance: Instance, mods: readonly ModEntry[]): string[] {
-    const vanilla = SOURCE_FOLDERS.map(folder => findCaseInsensitive(creationKitDir, folder)).find(Boolean);
+    const vanilla = vanillaSourceFolder(creationKitDir);
     return [scriptsDir, ...modSourceFolders(instance, mods), ...(vanilla ? [vanilla] : [])].filter(dir => fs.existsSync(dir));
 }
 

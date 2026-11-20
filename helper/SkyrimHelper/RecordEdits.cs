@@ -347,8 +347,11 @@ public static class RecordEdits
         // four of eval round 165's activator runs that ran out of turns spent two or three turns so before writing the reference's file.
         var placing = paths?.Select(p => Regex.Match(p, @"^\s*(\w+)").Groups[1].Value)
             .FirstOrDefault(k => k.Length > 0 && RecordFiles.SynonymHint(typeof(Mutagen.Bethesda.Skyrim.Cell), k)?.Contains("Temporary/", StringComparison.Ordinal) == true);
-        if (entries.Count == 1 && first.Type == "Cell" && placing is not null)
+        // The in-game name of several records, one of them a cell: that one, for what is placed (round 167's activator+detailed #5 sent
+        // `Breezehome`, its cell, its location and a topic of that name).
+        if (placing is not null && (entries.Count == 1 ? entries : entries.Where(e => e.Type == "Cell").ToList()) is [{ Type: "Cell" } cell])
         {
+            first = cell;
             var id = first.EditorId ?? Session.FormKeyText(first.FormKey);
             // An interior cell's folder as addPatch writes it: its block and sub-block the last two decimal digits of its FormID.
             var folder = $"Cells/{first.FormKey.ID % 10}/{first.FormKey.ID / 10 % 10}/{id} - {first.FormKey.ID:X6}_{first.FormKey.ModKey.FileName}";
