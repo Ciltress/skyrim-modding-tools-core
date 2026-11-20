@@ -2603,6 +2603,42 @@ public static class RecordFiles
         return changes;
     }
 
+    /// <summary>
+    /// A text's lines written as deep as its field — `- Text:`, then `TargetLanguage: English` and `Value: OK` below it at the column of
+    /// `Text` — indented under it, where a `TargetLanguage:` line says they are a text's: told "they are the lines of MenuButtons[0].Text, …
+    /// written as deep as `Text:` itself", eval round 166's message+detailed #2 was refused so nine builds and answered unbuilt.
+    /// </summary>
+    public static List<(string File, string Change)> TextLinesUnderTheirField(string pluginDir)
+    {
+        var changes = new List<(string File, string Change)>();
+        foreach (var (file, relative, _) in FlatRecords(pluginDir))
+        {
+            var written = File.ReadAllText(file);
+            var lines = written.Replace("\r\n", "\n").Split('\n').ToList();
+            var moved = new List<string>();
+            for (var i = 0; i < lines.Count - 1; i++)
+            {
+                if (Regex.Match(lines[i], @"^(?<lead>[ \t]*(?:-[ \t]+)?)(?<key>[A-Za-z]\w*):[ \t]*$") is not { Success: true } field
+                    || field.Groups["key"].Value is "TargetLanguage" or "Value") continue;
+                var column = field.Groups["lead"].Value.Length;
+                var at = new string(' ', column);
+                var below = 0;
+                while (i + 1 + below < lines.Count && below < 2
+                    && Regex.IsMatch(lines[i + 1 + below], $@"^{Regex.Escape(at)}(TargetLanguage|Value):[^\n]*$")) below++;
+                if (below == 0 || !lines.Skip(i + 1).Take(below).Any(l => l.TrimStart().StartsWith("TargetLanguage:", StringComparison.Ordinal))) continue;
+                for (var j = i + 1; j <= i + below; j++) lines[j] = "  " + lines[j];
+                moved.Add(field.Groups["key"].Value);
+                i += below;
+            }
+            if (moved.Count == 0) continue;
+            var kept = string.Join('\n', lines);
+            File.WriteAllText(file, written.Contains("\r\n") ? kept.Replace("\n", "\r\n") : kept);
+            changes.Add((relative, $"indented the lines of {string.Join(", ", moved.Distinct().Select(k => $"`{k}:`"))} under it — a text's " +
+                "`TargetLanguage:` and `Value:` are written two spaces deeper than its field"));
+        }
+        return changes;
+    }
+
     /// <summary>Line numbers as words: "4", "4 and 6", "29–31", "2, 5 and 9–11".</summary>
     internal static string Numbers(List<int> numbers)
     {

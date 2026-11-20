@@ -743,6 +743,8 @@ public sealed partial class Session : IDisposable
         corrected.AddRange(RecordFiles.DropLoneQuotes(dir));
         // And a field's value written on the line below it.
         corrected.AddRange(RecordFiles.ValuesBelowKeys(dir));
+        // And a text's lines written as deep as its field.
+        corrected.AddRange(RecordFiles.TextLinesUnderTheirField(dir));
         // A reference in its cell's folder but below its Temporary/, into it: the corrections of references read it only there.
         corrected.AddRange(RecordFiles.PlacedIntoCellFolders(dir));
         // And a reference written with no kind, the kind its Base says.

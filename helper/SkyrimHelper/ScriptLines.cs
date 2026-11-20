@@ -43,6 +43,14 @@ public static class ScriptLines
             }
             if (at < 0) continue;
             var count = RecordFiles.BlockLength(lines, at);
+            // A property written as its script's line, `- MessageBox Property WelcomeMessage Auto` with `Object:` below it: the YAML broke
+            // there, "found invalid mapping", and eval round 166's message+detailed #5 answered unbuilt.
+            for (var i = at + 1; i < at + count; i++)
+                if (Regex.Match(lines[i], @"^(?<lead>[ \t]*-[ \t]+)(?<type>\w+)[ \t]+Property[ \t]+(?<name>\w+)(?:[ \t]+Auto(?:ReadOnly)?)?[ \t]*$", RegexOptions.IgnoreCase) is { Success: true } line)
+                {
+                    lines[i] = $"{line.Groups["lead"].Value}Name: {line.Groups["name"].Value}";
+                    said.Add($"`{line.Value.Trim()}` as the property's `Name: {line.Groups["name"].Value}`, its Papyrus line the script's own");
+                }
             YamlNode? block;
             try
             {

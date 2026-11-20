@@ -150,6 +150,15 @@ export function papyrusHints(problems: readonly string[], scriptsDir: string, va
         if (!type || !declared) continue;
         const functions = [...declared.text.matchAll(/^\s*(?:\w+(?:\[\])?\s+)?Function\s+(\w+)\s*\(/gim)].map(m => m[1]);
         const parent = /^\s*Scriptname\s+\w+\s+extends\s+(\w+)/im.exec(declared.text)?.[1];
+        // The function another type's: eval round 166's message #4 declared `ObjectReference Property WelcomeMessage Auto`, was given
+        // ObjectReference's functions for its `WelcomeMessage.Show()`, and gave up its message box for a notification.
+        const owner = OWNERS.filter(other => other.toLowerCase() !== type.toLowerCase())
+            .find(other => new RegExp(`^\\s*(?:\\w+(?:\\[\\])?\\s+)?Function\\s+${called}\\s*\\(`, 'im').test(vanillaSource(vanilla, other)?.text ?? ''));
+        if (owner) {
+            hints.add(`${called} is ${/^[AEIOU]/i.test(owner) ? 'an' : 'a'} ${owner}'s function, and ${variable} is declared ${/^[AEIOU]/i.test(type) ? 'an' : 'a'} ` +
+                `${type}: where it holds ${/^[AEIOU]/i.test(owner) ? 'an' : 'a'} ${owner}, declare it so — \`${owner} Property ${variable} Auto\``);
+            continue;
+        }
         if (functions.length) {
             hints.add(`${variable} is ${/^[AEIOU]/i.test(type) ? 'an' : 'a'} ${type}, whose functions are ${functions.join(', ')}` +
                 (parent ? `, and ${parent}'s, which it extends` : '') + ` (${declared.file} of the game's sources)`);
@@ -200,6 +209,9 @@ function openBlocks(source: string, before: number): OpenBlock[] {
 
 /** Words a model types a property with that are no type of the game's: `Item Property Gold001 Auto`, `Object Property …`. */
 const VAGUE_TYPE = /^(Object|Record|Item|Items|Reference|Ref|Thing|Entity|Any|Var|Gold|Coin|Coins|Money)$/i;
+
+/** The game's types a modding script's properties hold, searched for the one a function called on another is of. */
+const OWNERS = ['Message', 'Quest', 'Actor', 'ObjectReference', 'MiscObject', 'Location', 'GlobalVariable', 'Spell', 'Weapon', 'Armor', 'Book', 'Key'];
 
 /** The types a property most often holds, said where it was typed otherwise. */
 const TYPES_BY_USE = '`Message` for a message box, `MiscObject` for gold (`MiscObject Property Gold001 Auto`), `ObjectReference` for a thing ' +

@@ -713,7 +713,7 @@ public static class RecordEdits
         if (steps[^1].Index is null && value is JsonValue words && words.TryGetValue<string>(out var said)
             && Items(types[^1]) is { } item && (item.IsEnum || RecordLinks.LinkTarget(item) is not null))
         {
-            value = Listed(text, steps, label, said);
+            value = Listed(text, steps, label, said, item);
             label += " (a list, sent as a text)";
             // The list's items, each with its comment still: sent as one text, the steel keyword named silver in its comment went
             // past the check above (mini-round of 2026-11-08, keyword+detailed #4).
@@ -927,7 +927,7 @@ public static class RecordEdits
     /// each name without its `- `. One name alone for a list that holds others is refused, the whole list given: a list
     /// is set whole, and "Female" for an NPC's Flags would have taken its AutoCalcStats and Unique with it.
     /// </summary>
-    private static JsonArray Listed(string text, List<Step> steps, string label, string said)
+    private static JsonArray Listed(string text, List<Step> steps, string label, string said, Type? item = null)
     {
         var names = Regex.Split(said.Trim().TrimStart('[').TrimEnd(']'), @"\\n|\r?\n|,")
             .Select(n => n.Trim().TrimStart('-').Trim().Trim('"', '\'')).Where(n => n.Length > 0).ToList();
@@ -936,9 +936,19 @@ public static class RecordEdits
         // eval round 146's storymanager #3 could not set its quest's Flags without the None in them.
         var whole = said.Trim() is ['[', .., ']'];
         if (names.Count == 1 && held.Count > 0 && !held.SequenceEqual(names) && !whole)
+        {
+            // The items it holds that are no value of its kind left out of the list offered: an Activator's Flags `Activator` and `Misc`,
+            // offered back with NoDisplacement, were set so and refused again, eight turns of eval round 166's activator #5.
+            var none = item is { IsEnum: true }
+                ? held.Where(h => !Enum.GetNames(item).Contains(h, StringComparer.OrdinalIgnoreCase) && !Regex.IsMatch(h, @"^(0[xX][0-9A-Fa-f]+|\d+)$")).ToList()
+                : [];
+            var kept = held.Except(none).ToList();
             throw new HelperException("badRequest", held.Contains(names[0])
                 ? $"{label}: a list, set whole, and {names[0]} is among its items already: {Json(held)}. Nothing was written."
-                : $"{label}: a list, set whole — to add {names[0]}, set it to {Json([.. held, names[0]])}. Nothing was written.");
+                : $"{label}: a list, set whole — to add {names[0]}, set it to {Json([.. kept, names[0]])}" +
+                  (none.Count > 0 ? $", without {string.Join(" and ", none)}, which {(none.Count == 1 ? "is" : "are")} none of its values" : "") +
+                  ". Nothing was written.");
+        }
         return new JsonArray(names.Select(n => (JsonNode?)JsonValue.Create(n)).ToArray());
     }
 

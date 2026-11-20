@@ -433,6 +433,18 @@ describe('papyrusHints', () => {
         ]);
     });
 
+    // Eval round 166's message #4: `WelcomeMessage.Show()` on a property declared an ObjectReference.
+    it('names the type whose function a call on another type named', () => {
+        const { scripts, vanilla } = folders();
+        fs.writeFileSync(path.join(vanilla, 'ObjectReference.psc'), 'Scriptname ObjectReference extends Form Hidden\n\nFunction Disable() native\n');
+        const file = path.join(scripts, 'WelcomeScript.psc');
+        fs.writeFileSync(file, 'ScriptName WelcomeScript extends Quest\n\nObjectReference Property WelcomeMessage Auto\n\nEvent OnInit()\n    WelcomeMessage.Show()\nEndEvent\n');
+        expect(papyrusHints([`${file}:6:20: Checker error: undefined function \`Show\``], scripts, vanilla)).toEqual([
+            'Show is a Message\'s function, and WelcomeMessage is declared an ObjectReference: where it holds a Message, declare it so — ' +
+            '`Message Property WelcomeMessage Auto`'
+        ]);
+    });
+
     it('adds nothing for an error the sources do not explain', () => {
         const { scripts, vanilla } = folders();
         expect(papyrusHints(['C:\\p\\scripts\\X.psc(1,0): mismatched input', 'Compilation failed'], scripts, vanilla)).toEqual([]);
