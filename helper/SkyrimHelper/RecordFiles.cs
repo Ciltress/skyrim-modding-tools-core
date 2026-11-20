@@ -1112,6 +1112,13 @@ public static class RecordFiles
             : holds is not null
             ? $"{holds}; if {Article(type.Name)} was meant, delete {them}: one call deletes {them} and builds again: " +
                 ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, "", string.Join(", ", bare.Select(ToolCalls.Quoted)), build: true)
+            // A statue written as a misc item, with fields of another type: told "it is a Book's … move the file into Books/",
+            // eval round 177's static #5 built its statue as a book.
+            : type == typeof(MiscItem) && owner is [var (_, standOf)] && StandsWhereItIs(text, relative)
+            ? $"{(bare.Count == 1 ? "it is" : "they are")} {Article(standOf!.Name)}'s, which a MiscItem has nowhere — and a statue, a thing that " +
+              "stands where it is placed, part of the room, is neither: it is a Static, in Statics/, as the game's StatueDibella has it (readRecord " +
+              "{\"record\": \"StatueDibella\"}: its Model, one the game has, and its ObjectBounds). One call moves this file there — " +
+              ToolCalls.Move(pluginDir, relative, $"Statics/{Path.GetFileName(relative)}") + $" — then write it with a Static's fields, {them} left out"
             : owner is [var (folder, of)]
             ? NamedAs(type, of!, relative, text, others) is { } namer
                 ? $"{(bare.Count == 1 ? "it is" : "they are")} {Article(of!.Name)}'s, which {Article(type.Name)} has nowhere, and {namer}: " +
@@ -1130,6 +1137,16 @@ public static class RecordFiles
                 ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, "", string.Join(", ", bare.Select(ToolCalls.Quoted)), build: true);
         return string.Join(", ", named.Append(bare.Count == 0 ? "" : $"{string.Join(", ", bare)} ({deleted})")
             .Where(s => s.Length > 0));
+    }
+
+    /// <summary>Whether a file's editor ID, in-game name or file name says it is a statue or another thing that stands where it is placed.</summary>
+    private static bool StandsWhereItIs(string text, string relative)
+    {
+        var id = Regex.Match(text, @"^EditorID:[ \t]*(\S+)", RegexOptions.Multiline).Groups[1].Value;
+        var name = Regex.Match(text, @"^Name:[ \t]*\r?\n(?:[ \t]+\w+:.*\r?\n)*?[ \t]+Value:[ \t]*(.+)$", RegexOptions.Multiline).Groups[1].Value;
+        if (name.Length == 0) name = Regex.Match(text, @"^Name:[ \t]*(\S.*)$", RegexOptions.Multiline).Groups[1].Value;
+        return new[] { id.Replace('_', ' '), name, Path.GetFileNameWithoutExtension(relative).Replace('_', ' ') }
+            .Any(s => s.Length > 0 && MadeNotes.Standing.IsMatch(s));
     }
 
     /// <summary>

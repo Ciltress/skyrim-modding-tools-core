@@ -982,7 +982,7 @@ internal static class MadeNotes
     }
 
     /// <summary>The words of a thing that stands where it is placed, part of a room, by which a new MiscItem's name says it is a Static.</summary>
-    private static readonly Regex Standing = new(@"(?i:\b(statue|monument|obelisk|pillar|column|pedestal|bust)s?\b)|(?<=[a-z])(Statue|Monument|Obelisk|Pillar|Column|Pedestal)(?![a-z])");
+    internal static readonly Regex Standing = new(@"(?i:\b(statue|monument|obelisk|pillar|column|pedestal|bust)s?\b)|(?<=[a-z])(Statue|Monument|Obelisk|Pillar|Column|Pedestal)(?![a-z])");
 
     /// <summary>The words of a thing used where it stands, by which a new MiscItem's name or editor ID says it is an Activator.</summary>
     internal static readonly Regex UsedWhereItStands = new(@"(?i:\b(lever|switch|button|handle|crank|valve|pull ?chain)s?\b)|(?<=[a-z])(Lever|Switch|Button|Handle|Crank|Valve)(?![a-z])");
