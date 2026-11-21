@@ -146,8 +146,8 @@ public sealed class RecordIndex
         .Where(pair => RecordClasses.Contains(pair.Key)) // not OBND (ObjectBounds), a part of records
         .SelectMany(pair => new[] { (Text: pair.Value, Shown: $"{pair.Value} ({pair.Key})"), (Text: pair.Key, Shown: $"{pair.Value} ({pair.Key})") })
         .Concat(EditorNames.Where(e => Signatures.ContainsKey(e.Value)).Select(e => (Text: e.Key, Shown: $"{Signatures[e.Value]} ({e.Value})")))
-        .Select(c => (c.Shown, Distance: name.Length >= 3 && c.Text.StartsWith(name, StringComparison.OrdinalIgnoreCase)
-                ? 0 : Distance(c.Text.ToUpperInvariant(), name.ToUpperInvariant()),
+        .Select(c => (c.Shown, c.Text, Distance: name.Length >= 3 && c.Text.StartsWith(name, StringComparison.OrdinalIgnoreCase)
+                ? 0 : Abbreviates(name, c.Text) ? 1 : Distance(c.Text.ToUpperInvariant(), name.ToUpperInvariant()),
             Prefix: c.Text.Zip(name).TakeWhile(p => char.ToUpperInvariant(p.First) == char.ToUpperInvariant(p.Second)).Count(),
             Exact: c.Text.Equals(name, StringComparison.OrdinalIgnoreCase)))
         .Where(c => c.Distance <= Math.Max(2, name.Length / 3) || c.Prefix >= 4)
@@ -155,9 +155,26 @@ public sealed class RecordIndex
         .OrderByDescending(c => c.Exact)
         .ThenBy(c => c.Distance)
         .ThenByDescending(c => c.Prefix)
+        .ThenBy(c => c.Text.Length)
         .Select(c => c.Shown)
         .Distinct()
         .Take(3);
+
+    /// <summary>
+    /// Whether two or three letters stand for a type's name, its first one first and the others in it in their order: `LT` for
+    /// Light. Answered "Did you mean LTEX (LandscapeTexture), LGTM (LightingTemplate), LCTN (Location)?", eval round 184's
+    /// light+detailed #2 made a lighting template, where a light was asked.
+    /// </summary>
+    private static bool Abbreviates(string sent, string name)
+    {
+        // A name, never a signature: LTEX has an L and a T too.
+        if (sent.Length is < 2 or > 3 || name.Length <= sent.Length || !name.Any(char.IsLower)
+            || char.ToUpperInvariant(name[0]) != char.ToUpperInvariant(sent[0])) return false;
+        var at = 1;
+        foreach (var letter in name[1..])
+            if (at < sent.Length && char.ToUpperInvariant(letter) == char.ToUpperInvariant(sent[at])) at++;
+        return at == sent.Length;
+    }
 
     public static int Distance(string a, string b)
     {

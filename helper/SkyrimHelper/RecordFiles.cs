@@ -718,6 +718,15 @@ public static class RecordFiles
         // "Move", not "it goes": told Value and Weight go under BasicStats, a model added BasicStats and kept
         // them at the top level, build after build (eval probe 7 after round 11).
         if (Under(type, key, values, fields) is { } path) return $"move it {path}";
+        // A heading over the record's own fields — a light's `Lights:` above its Radius and Color — is no field of it: told "delete it",
+        // eval round 184's light+detailed #4 deleted the line with its fields below, and built a light with no radius and no color.
+        if (fields is { Count: > 0 } below && below.Where(known.Contains).ToList() is { Count: > 0 } own && own.Count * 2 >= below.Count)
+        {
+            var other = below.Except(own).ToList();
+            return $"{string.Join(", ", own)} below it {(own.Count == 1 ? "is" : "are")} {Article(type.Name)}'s own: write {(own.Count == 1 ? "it" : "them")} " +
+                $"at the margin, without the `{key}:` line above" +
+                (other.Count > 0 ? $"; {string.Join(", ", other)} {(other.Count == 1 ? "is" : "are")} none of its fields" : "");
+        }
         // One letter off one field of the type: HalflCostPerk, told "delete it", was deleted, written back and deleted
         // again until the turns ran out (eval round 37's spell+detailed #3).
         return known.Where(k => OneEditApart(k, key)).ToList() is [var near] ? Rename(near, $"it is spelled {near}") : null;

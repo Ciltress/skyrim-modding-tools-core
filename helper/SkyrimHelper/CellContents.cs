@@ -153,13 +153,17 @@ internal static class CellContents
     /// <summary>
     /// A spot in an exterior cell for a reference whose position lies far outside it: 64 units along x from the thing of its own
     /// kind the game places in the cell nearest its middle — a plant beside a plant — else from the container, piece of furniture,
-    /// door, plant or tree nearest it; on the ground where the cell has a landscape. Null where the cell places none of them.
+    /// door, plant or tree nearest it; on the ground where the cell has a landscape. Null where the cell places none of them,
+    /// and for anything but a plant: a plant is asked for anywhere in a place, among its kind, and a chest beside a thing named.
+    /// Offered for a chest asked beside Riverwood's grindstone, the spot beside a container 580 units from it was taken in 3 of
+    /// eval round 184's 7 failed outdoor runs, one of them after it had read where the grindstone stands.
     /// </summary>
     private static (P3Float At, string By, bool Kin)? KinSpot(IPlacedGetter reference, List<Row> rows, P2Int grid, float[,]? heights,
         RecordIndex index, Dictionary<FormKey, string> ownKinds)
     {
         var kind = reference is IPlacedObjectGetter { Base.FormKeyNullable: { } baseKey }
             ? ownKinds.GetValueOrDefault(baseKey) ?? index.ByFormKey.GetValueOrDefault(baseKey)?.Type : null;
+        if (kind is not ("Flora" or "Tree")) return null;
         float midX = grid.X * CellSize + CellSize / 2f, midY = grid.Y * CellSize + CellSize / 2f;
         var standing = rows.Where(r => r.Base is { } entry && entry.EditorId?.Contains("Marker", StringComparison.OrdinalIgnoreCase) != true
                 && r.Placement is { } p && GridAt(p.Position).Equals(grid))
@@ -338,7 +342,7 @@ internal static class CellContents
                 : $"write its Position in {cellName}'s cell — {inside} is";
             // More than a cell away, its position is a guess, not a cell it was meant in: a plant asked for "outside Riverwood", set
             // 50,834 units off and filed under Riverwood, took the move offered into the cell its position lay in, and stood in no
-            // cell of Riverwood (eval round 182, flora #2). There it is offered a spot in its own cell, beside a thing of its kind.
+            // cell of Riverwood (eval round 182, flora #2). A plant there is offered a spot in its own cell, beside a plant (KinSpot).
             var kin = outside > CellSize && beside is null && file is not null ? KinSpot(reference, rows, grid, heights, index, ownKinds) : null;
             if (outside > CellSize && beside is null) move = "";
             yield return $"{file ?? name}: {name} is placed at {Triple(placement.Position)}, in {there} — not in {cellName}, cell {grid.X}, {grid.Y}, " +

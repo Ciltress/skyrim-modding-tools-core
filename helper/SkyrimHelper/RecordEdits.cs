@@ -624,6 +624,65 @@ public static class RecordEdits
             : type.IsPrimitive || type == typeof(decimal) ? "a number"
             : "one value";
 
+    /// <summary>
+    /// The axes of a point — a position, a rotation, an object's bounds — that a file writes as one line of its numbers,
+    /// `-48, -25, 0`: X, Y and Z, or X and Y; null for any other type.
+    /// </summary>
+    private static string[]? Axes(Type type)
+    {
+        var bare = Nullable.GetUnderlyingType(type) ?? type;
+        if (bare.Namespace != "Noggog" || !Regex.IsMatch(bare.Name, @"^P[23][A-Z]")) return null;
+        return bare.Name[1] == '3' ? ["X", "Y", "Z"] : ["X", "Y"];
+    }
+
+    /// <summary>
+    /// A point's numbers sent as its fields, `{"X": 15, "Y": 85, "Z": 30}` — in a text, its quotes escaped or not, or as a JSON
+    /// object — or as a list, `[15, 85, 30]`, as the one line a file writes: `15, 85, 30`. Null for anything else.
+    /// </summary>
+    private static string? PointText(JsonNode? value, string[] axes)
+    {
+        if (value is JsonValue sent && sent.TryGetValue<string>(out var said))
+        {
+            var written = Regex.Replace(said.Trim(), @"\\([""\\])", "$1");
+            if (written is not (['{', .., '}'] or ['[', .., ']'])) return null;
+            try { value = JsonNode.Parse(written); }
+            catch (System.Text.Json.JsonException)
+            {
+                try
+                {
+                    var yaml = new YamlStream();
+                    yaml.Load(new StringReader(written));
+                    value = yaml.Documents.Count > 0 ? FromYaml(yaml.Documents[0].RootNode) : null;
+                }
+                catch (YamlException) { return null; }
+            }
+        }
+        var numbers = value switch
+        {
+            JsonObject fields when fields.Count == axes.Length && axes.All(a => fields.Any(f => string.Equals(f.Key, a, StringComparison.OrdinalIgnoreCase)))
+                => axes.Select(a => NumberOf(fields.First(f => string.Equals(f.Key, a, StringComparison.OrdinalIgnoreCase)).Value)).ToList(),
+            JsonArray list when list.Count == axes.Length => list.Select(NumberOf).ToList(),
+            _ => null
+        };
+        return numbers is null || numbers.Any(n => n is null) ? null : string.Join(", ", numbers);
+    }
+
+    /// <summary>A number sent as one, or as a text of one, as the text a file writes it in; null for anything else.</summary>
+    private static string? NumberOf(JsonNode? value)
+    {
+        if (value is not JsonValue one) return null;
+        if (one.TryGetValue<string>(out var said))
+            return double.TryParse(said.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out _) ? said.Trim() : null;
+        return one.TryGetValue<double>(out var number) ? number.ToString(CultureInfo.InvariantCulture) : null;
+    }
+
+    /// <summary>The numbers of a point's one line, `-48, -25, 0`, each as written; null where any is no number.</summary>
+    private static string[]? NumbersOf(string? line)
+    {
+        var parts = (line ?? "").Split(',', StringSplitOptions.TrimEntries);
+        return parts.All(p => double.TryParse(p, NumberStyles.Float, CultureInfo.InvariantCulture, out _)) ? parts : null;
+    }
+
     /// <summary>A part: a field that holds fields of its own — not a number, a word, a flag, a link, a list or a text.</summary>
     private static bool IsPart(Type type) =>
         !type.IsPrimitive && !type.IsEnum && type != typeof(string) && type != typeof(decimal) && !Translated(type)
@@ -713,7 +772,15 @@ public static class RecordEdits
             var linkedSteps = steps;
             types = Types(type, steps, label, (below, link) => Linked(text, linkedSteps, below, link, context, value));
         }
-        if (value is JsonValue braced && braced.TryGetValue<string>(out var bracedText) && Fielded(bracedText, types[^1], out var unescaped) is { } parsed)
+        // A point's numbers sent as its fields — ObjectBounds.First as {"X": 15, "Y": 85, "Z": 30}, in a text or not, or as a list —
+        // are the one line a file writes it in, `15, 85, 30`: sent so in a text, eval round 184's outdoor #3 had it written as that
+        // text, and every build after refused the file.
+        if (Axes(types[^1]) is { } axes && PointText(value, axes) is { } point)
+        {
+            value = JsonValue.Create(point);
+            label += $" (a point's numbers, written as its one line, {string.Join(", ", axes).ToLowerInvariant()})";
+        }
+        else if (value is JsonValue braced && braced.TryGetValue<string>(out var bracedText) && Fielded(bracedText, types[^1], out var unescaped) is { } parsed)
         {
             value = parsed;
             label += unescaped ? " (fields, sent as a text with its quotes escaped, `\\\"`, read as quotes)" : " (fields, sent as a text)";
@@ -1008,6 +1075,9 @@ public static class RecordEdits
     /// </summary>
     private static JsonArray Listed(string text, List<Step> steps, string label, string said, Type? item = null)
     {
+        // Quotes escaped once more, `[\"Dynamic\"]`, are quotes: kept, a light's flag was written `\"Dynamic\`, and the build after it
+        // left the file unreadable (eval round 184's light+detailed #4).
+        said = Regex.Replace(said, @"\\([""'])", "$1");
         var names = Regex.Split(said.Trim().TrimStart('[').TrimEnd(']'), @"\\n|\r?\n|,")
             .Select(n => n.Trim().TrimStart('-').Trim().Trim('"', '\'')).Where(n => n.Length > 0).ToList();
         var held = At(text, steps) is YamlSequenceNode list ? list.Children.OfType<YamlScalarNode>().Select(s => s.Value ?? "").ToList() : [];
@@ -1225,6 +1295,22 @@ public static class RecordEdits
             var last = i == steps.Count - 1;
             // A part of fields written as one value — a reference's `Lock: CellarKey` — set whole as the mapping it is, with what that
             // value meant among its fields: told "set Lock whole", eval round 146's key #1 had been sent `Lock.Level` by the build.
+            // One number of a point written as one line — ObjectBounds.First.X, Placement.Position.Z — set in that line: told to set
+            // the point whole as a mapping, eval round 184's outdoor #3 sent the mapping in a text, and its builds refused the file.
+            if (node is YamlScalarNode line && i > 0 && last && into is not null && Axes(types[i - 1]) is { } axes
+                && Array.IndexOf(axes, step.Key) is var axis and >= 0 && NumbersOf(line.Value) is { } numbers && numbers.Length == axes.Length
+                && NumberOf(value) is { } number)
+            {
+                var was = numbers[axis];
+                numbers[axis] = number;
+                var joined = string.Join(", ", numbers);
+                changes.Add($"set {path}: {was} → {number}, in {Upto(steps, i)}, `{joined}`");
+                return ReplaceScalar(text, line, Column(into), JsonValue.Create(joined));
+            }
+            if (node is YamlScalarNode written && i > 0 && Axes(types[i - 1]) is { } pointAxes)
+                throw new HelperException("badRequest", $"{path}: {Upto(steps, i)} is a point, written as one line of its numbers, " +
+                    $"`{written.Value}` — set it whole so, {{\"path\": \"{Upto(steps, i)}\", \"value\": \"{string.Join(", ", pointAxes.Select(a => a.ToLowerInvariant()))}\"}}" +
+                    $"{(pointAxes.Contains(step.Key) ? $", or one number by its path, {{\"path\": \"{Upto(steps, i)}.{pointAxes[0]}\", \"value\": 15}}" : "")}. Nothing was written.");
             if (node is YamlScalarNode one && i > 0 && types[i - 1] is var part && IsPart(part) && Property(part, step.Key) is not null)
             {
                 throw new HelperException("badRequest", $"{path}: {Upto(steps, i)} is written as one value, `{one.Value}`, and takes fields of its " +
