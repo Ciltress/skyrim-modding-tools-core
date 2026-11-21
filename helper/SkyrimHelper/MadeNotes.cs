@@ -953,6 +953,32 @@ internal static class MadeNotes
         return notes;
     }
 
+    /// <summary>
+    /// A container of the project's holding 50 Gold Ingots or more, where gold coins — the septims, Gold001 — are what such a count
+    /// means: asked for a chest with 500 gold, eval round 181's world #4 filled it with 500 IngotGold and built a success.
+    /// </summary>
+    public static List<string> GoldIngots(ISkyrimModGetter mod, RecordIndex index, string pluginDir)
+    {
+        if (!index.ByEditorId.TryGetValue("IngotGold", out var ingot)) return [];
+        var files = EffectCasting.Files(pluginDir);
+        var project = ToolCalls.ProjectOf(pluginDir);
+        var notes = new List<string>();
+        foreach (var chest in mod.Containers)
+        {
+            var at = (chest.Items ?? []).Select((e, i) => (Entry: e, At: i))
+                .Where(x => x.Entry.Item.Item.FormKey == ingot && x.Entry.Item.Count >= 50).ToList();
+            if (at.Count == 0) continue;
+            var id = chest.EditorID ?? Session.FormKeyText(chest.FormKey);
+            var file = files.GetValueOrDefault(chest.FormKey) ?? id;
+            var (entry, i) = at[0];
+            notes.Add($"{file}: {id} holds {entry.Item.Count} IngotGold, Gold Ingots — a smithing material, one worth 100 gold. The game's gold, " +
+                "the septims a chest or a purse holds, is Gold001. Where gold coins were meant, one call names them and builds — " +
+                ToolCalls.Fix(project, file, $"{{\"path\": \"Items[{i}].Item.Item\", \"value\": \"Gold001\"}}") +
+                ". Where ingots were asked for, nothing to change, and this warning stays");
+        }
+        return notes;
+    }
+
     /// <summary>The conditions every tempering recipe of the game carries: the item not enchanted, or the Arcane Blacksmith perk.</summary>
     private const string TemperingConditions =
         "[{\"MutagenObjectType\": \"ConditionFloat\", \"CompareOperator\": \"NotEqualTo\", \"Flags\": [\"OR\"], " +
