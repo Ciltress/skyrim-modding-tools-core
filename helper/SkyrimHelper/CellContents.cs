@@ -150,6 +150,32 @@ internal static class CellContents
     private static (P3Float At, string By)? ExampleSpot(List<Row> listed) =>
         listed is [{ Placement: { } first, Base: { } by }, ..] ? (Beside(first.Position), NameOf(by)) : null;
 
+    /// <summary>
+    /// A spot in an exterior cell for a reference whose position lies far outside it: 64 units along x from the thing of its own
+    /// kind the game places in the cell nearest its middle — a plant beside a plant — else from the container, piece of furniture,
+    /// door, plant or tree nearest it; on the ground where the cell has a landscape. Null where the cell places none of them.
+    /// </summary>
+    private static (P3Float At, string By, bool Kin)? KinSpot(IPlacedGetter reference, List<Row> rows, P2Int grid, float[,]? heights,
+        RecordIndex index, Dictionary<FormKey, string> ownKinds)
+    {
+        var kind = reference is IPlacedObjectGetter { Base.FormKeyNullable: { } baseKey }
+            ? ownKinds.GetValueOrDefault(baseKey) ?? index.ByFormKey.GetValueOrDefault(baseKey)?.Type : null;
+        float midX = grid.X * CellSize + CellSize / 2f, midY = grid.Y * CellSize + CellSize / 2f;
+        var standing = rows.Where(r => r.Base is { } entry && entry.EditorId?.Contains("Marker", StringComparison.OrdinalIgnoreCase) != true
+                && r.Placement is { } p && GridAt(p.Position).Equals(grid))
+            .OrderBy(r => Math.Pow(r.Placement!.Position.X - midX, 2) + Math.Pow(r.Placement.Position.Y - midY, 2)).ToList();
+        // A plant is a Flora or a Tree with an ingredient, as the game's mountain flowers are: either is its kind.
+        bool Kin(string type) => type == kind || kind is "Flora" or "Tree" && type is "Flora" or "Tree";
+        var ofKind = kind is null ? null : standing.Cast<Row?>().FirstOrDefault(r => Kin(r!.Value.Base!.Type));
+        // Else beside a thing that stands where it is — no NPC, who walks away from it.
+        var pick = ofKind ?? standing.Cast<Row?>().FirstOrDefault(r => r!.Value.Base!.Type != "Npc" && Array.IndexOf(StandingKinds, r.Value.Base.Type) >= 0);
+        if (pick is not { Placement: { } placed, Base: { } by }) return null;
+        var at = Beside(placed.Position);
+        if (!GridAt(at).Equals(grid)) at = new P3Float(placed.Position.X - 64, placed.Position.Y, placed.Position.Z);
+        var z = heights is null ? at.Z : CellScene.GroundAt(heights, grid, at.X, at.Y);
+        return (new P3Float(at.X, at.Y, z), NameOf(by), ofKind is not null);
+    }
+
     /// <summary>A placed record's name for messages: its editor ID, else its FormID.</summary>
     private static string NameOf(RecordIndex.Entry entry) => entry.EditorId ?? Session.FormKeyText(entry.FormKey);
 
@@ -186,6 +212,7 @@ internal static class CellContents
         Func<FormKey, List<IModContext<ISkyrimMod, ISkyrimModGetter, IMajorRecord, IMajorRecordGetter>>> contexts, RecordIndex index, string pluginDir)
     {
         var notes = new List<string>();
+        Dictionary<FormKey, string>? ownKinds = null;
         var files = RecordFiles.CellRecords(pluginDir).Where(c => c.Type is not null && c.Type != typeof(Cell))
             .Select(c => (c.Relative, Identity: RecordFiles.Identity(File.ReadAllText(c.File)))).ToList();
         foreach (var cell in mod.EnumerateMajorRecords<ICellGetter>())
@@ -197,7 +224,8 @@ internal static class CellContents
             // unloaded with the wrong ground.
             if (GridOf(cell) is { } grid)
             {
-                notes.AddRange(OutsideGrid(cell, grid, own, files, contexts, index, pluginDir));
+                ownKinds ??= mod.EnumerateMajorRecords().GroupBy(r => r.FormKey).ToDictionary(g => g.Key, g => RecordIndex.TypeName(g.First()));
+                notes.AddRange(OutsideGrid(cell, grid, own, files, contexts, index, pluginDir, ownKinds));
                 continue;
             }
             var seen = new HashSet<FormKey>();
@@ -246,7 +274,8 @@ internal static class CellContents
     /// </summary>
     private static IEnumerable<string> OutsideGrid(ICellGetter cell, P2Int grid, List<IPlacedGetter> own,
         List<(string Relative, (FormKey? FormKey, string? EditorId) Identity)> files,
-        Func<FormKey, List<IModContext<ISkyrimMod, ISkyrimModGetter, IMajorRecord, IMajorRecordGetter>>> contexts, RecordIndex index, string pluginDir)
+        Func<FormKey, List<IModContext<ISkyrimMod, ISkyrimModGetter, IMajorRecord, IMajorRecordGetter>>> contexts, RecordIndex index, string pluginDir,
+        Dictionary<FormKey, string> ownKinds)
     {
         var cellName = cell.EditorID ?? Session.FormKeyText(cell.FormKey);
         var versions = contexts(cell.FormKey);
@@ -307,6 +336,11 @@ internal static class CellContents
                 ? $"one call places it in {cellName}, at its edge nearest to where it is, and builds again: " +
                   ToolCalls.Edit(project, file, $"{{\"path\": \"Placement.Position\", \"value\": \"{inside}\"}}", build: true)
                 : $"write its Position in {cellName}'s cell — {inside} is";
+            // More than a cell away, its position is a guess, not a cell it was meant in: a plant asked for "outside Riverwood", set
+            // 50,834 units off and filed under Riverwood, took the move offered into the cell its position lay in, and stood in no
+            // cell of Riverwood (eval round 182, flora #2). There it is offered a spot in its own cell, beside a thing of its kind.
+            var kin = outside > CellSize && beside is null && file is not null ? KinSpot(reference, rows, grid, heights, index, ownKinds) : null;
+            if (outside > CellSize && beside is null) move = "";
             yield return $"{file ?? name}: {name} is placed at {Triple(placement.Position)}, in {there} — not in {cellName}, cell {grid.X}, {grid.Y}, " +
                 $"between x {grid.X * CellSize} and {(grid.X + 1) * CellSize}, y {grid.Y * CellSize} and {(grid.Y + 1) * CellSize}: the game loads it with {cellName} " +
                 "while it stands elsewhere, on ground that is not loaded with it. " +
@@ -318,6 +352,11 @@ internal static class CellContents
                     : outside > FarOutside
                     ? $"It lies {Whole(outside)} units outside {cellName}: where it is meant beside something the game places, readRecord gives where " +
                       $"that stands — {{\"record\": \"<its editor ID>\", \"in\": {ToolCalls.Quoted(cellName)}}}, its placedIn — and its Position goes beside it." +
+                      (kin is { } k
+                          ? $" Where it is meant anywhere in {cellName}, one call sets it beside {k.By}, {(k.Kin ? "a thing of its kind" : "the thing nearest the cell's middle")} " +
+                            $"the game places there, on the ground, and builds again: " +
+                            ToolCalls.Edit(project, file!, $"{{\"path\": \"Placement.Position\", \"value\": \"{Triple(k.At)}\"}}", build: true) + "."
+                          : "") +
                       (move.Length > 0 ? $" Where it is meant in {there}, {move}." : "")
                     : $"{char.ToUpperInvariant(edge[0])}{edge[1..]}." + (move.Length > 0 ? $" Where it is meant to stand there, {move}." : ""));
         }

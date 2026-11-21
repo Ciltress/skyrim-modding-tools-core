@@ -223,16 +223,23 @@ public sealed partial class Session : IDisposable
         IEnumerable<RecordIndex.Entry> ByText(string text)
         {
             var word = new Regex($@"(?<![A-Za-z0-9]){Regex.Escape(text)}(?![A-Za-z0-9])", RegexOptions.IgnoreCase);
+            // A text that is a record type's name, with no types sent, finds records of that type first: "light" answered the
+            // magic effect Light and LightFingers, and eval round 178's light #2 and light+detailed #3 made their light of them.
+            var kind = Regex.Replace(text, @"\s+", "") is var bare && bare.Length > 2 ? bare : null;
+            var kindNamed = kind is not null && (types is null || types.Count == 0);
+            bool OfKind(RecordIndex.Entry e) => kindNamed && (string.Equals(e.Type, kind, StringComparison.OrdinalIgnoreCase)
+                || kind!.EndsWith('s') && string.Equals(e.Type, kind[..^1], StringComparison.OrdinalIgnoreCase));
             return idx.ByFormKey.Values
                 .Where(e => text.Length == 0
                     || e.EditorId?.Contains(text, StringComparison.OrdinalIgnoreCase) == true
                     || e.Name?.Contains(text, StringComparison.OrdinalIgnoreCase) == true)
+                .OrderBy(e => OfKind(e) ? 0 : 1)
                 // Exact matches first, then the in-game names people speak in — "steel" finds the Steel
                 // Sword before 1stPersonSteelSword, a static only the editor ID mentions — and the named records
                 // whose editor IDs begin with the text, which name the thing itself: "shock" finds
                 // ShockDamageFFAimed, Lightning Bolt's effect, before EnchShockDamageFFContact, a weapon's, which
                 // three of three spells copied (eval probe 9 after round 11); SteelBootsAA, nameless, stays back.
-                .OrderBy(e => string.Equals(e.EditorId, text, StringComparison.OrdinalIgnoreCase) ? 0
+                .ThenBy(e => string.Equals(e.EditorId, text, StringComparison.OrdinalIgnoreCase) ? 0
                     : string.Equals(e.Name, text, StringComparison.OrdinalIgnoreCase) ? 1
                     : e.Name?.Contains(text, StringComparison.OrdinalIgnoreCase) == true
                         || e.Name is { Length: > 0 } && e.EditorId?.StartsWith(text.Replace(" ", ""), StringComparison.OrdinalIgnoreCase) == true ? 2 : 3)
@@ -779,6 +786,8 @@ public sealed partial class Session : IDisposable
         corrected.AddRange(RecordFiles.ValuesBelowKeys(dir));
         // And a text's lines written as deep as its field.
         corrected.AddRange(RecordFiles.TextLinesUnderTheirField(dir));
+        // A reference in the folder of a game cell the project has no copy of: that cell copied in, as addPatch does.
+        corrected.AddRange(await CellsCopiedIn(dir));
         // A reference in its cell's folder but below its Temporary/, into it: the corrections of references read it only there.
         corrected.AddRange(RecordFiles.PlacedIntoCellFolders(dir));
         // And a reference written with no kind, the kind its Base says.
@@ -1003,7 +1012,7 @@ public sealed partial class Session : IDisposable
             .Concat(MadeNotes.GameLights(mod, dir)).Concat(MadeNotes.EmptyEffects(mod, dir)).Concat(MadeNotes.LightColors(mod, dir))
             .Concat(MadeNotes.EffectsByFormId(mod, Index, dir))
             .Concat(CellContents.PlacedNotes(mod, Contexts, Index, dir)).Concat(DialogContents.Notes(mod, lookup, Index, dir)).Concat(DialogContents.StoryNotes(mod, lookup, dir)).Concat(GameSettings.Notes(mod, Index, dir))
-            .Concat(NavmeshNotes.Stale(mod, lookup, dir)).Concat(DoorlessCopies(mod, dir))
+            .Concat(NavmeshNotes.Stale(mod, lookup, dir)).Concat(DoorlessCopies(mod, dir)).Concat(RefilledGameContainers(mod, dir))
             .Select(n => (JsonNode)n).ToArray();
         // The sequence file the plugin's start-game-enabled quests need for their dialogue, beside it in the build.
         var seq = DialogContents.WriteSeq(written, lookup, output);
@@ -1070,6 +1079,55 @@ public sealed partial class Session : IDisposable
                 $"newCell {{\"project\": {ToolCalls.Quoted(project)}, \"cell\": {ToolCalls.Quoted(roomId)}, \"like\": {ToolCalls.Quoted(sourceId)}, " +
                 "\"door\": {\"in\": \"<the cell the player comes from, by editor ID>\"}}. Where the room alone was asked for, nothing to " +
                 "change, and this warning stays");
+        }
+        return notes;
+    }
+
+    /// <summary>
+    /// A copy of a game container whose items the project changed: what it holds changes in every chest of it the game places —
+    /// a merchant's stock where one sells from it — and no cell gets a chest of the mod's own. Asked for a chest of the mod's own
+    /// in Breezehome and one beside Riverwood's grindstone, eval round 183's world #2 and outdoor #4 each copied a game container
+    /// with addPatch — the Companions' C05FragmentBox, Eorlund's merchant chest — wrote the gold and the sword into it, placed
+    /// nothing, and the build answered success.
+    /// </summary>
+    private List<string> RefilledGameContainers(ISkyrimModGetter mod, string pluginDir)
+    {
+        var copies = mod.Containers.Where(c => c.FormKey.ModKey != mod.ModKey).ToList();
+        if (copies.Count == 0) return [];
+        var files = EffectCasting.Files(pluginDir);
+        var project = ToolCalls.ProjectOf(pluginDir);
+        var notes = new List<string>();
+        static List<(FormKey Item, int Count)> Held(IContainerGetter c) =>
+            (c.Items ?? []).Where(e => !e.Item.Item.IsNull).Select(e => (e.Item.Item.FormKey, e.Item.Count)).ToList();
+        foreach (var copy in copies)
+        {
+            if (Contexts(copy.FormKey).FirstOrDefault(c => c.ModKey != mod.ModKey)?.Record is not IContainerGetter game) continue;
+            var before = Held(game);
+            var added = Held(copy).Where(h => !before.Remove(h)).ToList();
+            if (added.Count == 0) continue;
+            placedIndex ??= PlacedIndex.Build(plugins.Select(x => (ISkyrimModGetter)x.Mod).ToList());
+            var spots = placedIndex.SpotsOf(copy.FormKey).Where(s => s.Reference.ModKey != mod.ModKey).ToList();
+            var refs = spots.Select(s => s.Reference).ToHashSet();
+            var merchants = refs.Count == 0 ? [] : plugins.SelectMany(x => ((ISkyrimModGetter)x.Mod).Factions)
+                .Where(f => f.MerchantContainer.FormKeyNullable is { } chest && refs.Contains(chest))
+                .Select(f => f.EditorID ?? FormKeyText(f.FormKey)).Distinct().ToList();
+            var id = copy.EditorID ?? FormKeyText(copy.FormKey);
+            var file = files.GetValueOrDefault(copy.FormKey) ?? id;
+            var own = Regex.Replace($"{project}{id}", "[^A-Za-z0-9_]", "");
+            var cells = spots.Select(s => s.CellEditorId ?? s.CellName ?? FormKeyText(s.Cell)).Distinct().ToList();
+            var where = spots.Count == 0 ? "— the game places none of it"
+                : $"— {spots.Count} placed, in {string.Join(", ", cells.Take(3))}{(cells.Count > 3 ? $" and {cells.Count - 3} more cells" : "")}";
+            var held = string.Join(", ", added.Take(4).Select(h =>
+                $"{h.Count} {(Index.ByFormKey.TryGetValue(h.Item, out var entry) && entry.EditorId is { } itemId ? itemId : FormKeyText(h.Item))}"));
+            notes.Add($"{file}: overrides {id} of {copy.FormKey.ModKey.FileName}, a container of the game's, and changes what it holds — {held} — " +
+                $"in every chest of it the game places {where}" +
+                (merchants.Count > 0 ? $"; it is the merchant chest of {string.Join(", ", merchants)}, so it changes what they sell" : "") +
+                ". A chest of the mod's own, standing in one cell, is a new record placed there: one call makes this copy a new record, " +
+                "keeping what it holds and what was changed in it, and builds — " +
+                ToolCalls.Edit(project, file, $"{{\"path\": \"EditorID\", \"value\": {ToolCalls.Quoted(own)}}}", "\"FormKey\"", build: true) +
+                " — then a PlacedObject file in the cell's Temporary/ folder places it: readRecord of the cell answers `newReference`, the " +
+                $"path and the lines to write, with `Base: {own}`. Where the user asked for the game's {id} to hold this wherever it stands, " +
+                "nothing to change, and this warning stays");
         }
         return notes;
     }
@@ -1218,6 +1276,78 @@ public sealed partial class Session : IDisposable
             changes.Add((relative, $"made a new record, {id}, of a copy of {theirs} of {key.ModKey.FileName} that changed nothing in it: removed " +
                 $"`{formKeyLine}` and wrote `EditorID: {id}`, its file's name — an override that changes nothing only undoes what mods " +
                 $"loaded before it change. A change to {theirs} itself is a copy with its FormKey line and the change written in"));
+        }
+        return changes;
+    }
+
+    /// <summary>
+    /// A reference placed in the folder of a game cell the project has no copy of, the cell copied in as addPatch copies it, and
+    /// the reference moved beside that copy where it is written in another folder: its folder names the cell,
+    /// `&lt;EditorID&gt; - &lt;FormID&gt;_&lt;plugin&gt;`, and the build reads a reference only beside the project's copy of its cell. Refused,
+    /// eval round 182's flora #3 and flora+detailed #5 and round 183's world+detailed #5 each spent a call on addPatch and a build
+    /// after it, in runs that ran out of turns. A folder that names no cell of the load order is left to the build's refusal.
+    /// </summary>
+    private async Task<List<(string File, string Change)>> CellsCopiedIn(string dir)
+    {
+        if (RecordFiles.OwnPlugin(dir) is not { } own) return [];
+        var changes = new List<(string File, string Change)>();
+        foreach (var group in new[] { "Cells", "Worldspaces" })
+        {
+            var folder = Path.Combine(dir, group);
+            if (!Directory.Exists(folder)) continue;
+            foreach (var file in Directory.EnumerateFiles(folder, "*.yaml", SearchOption.AllDirectories).Order(StringComparer.Ordinal).ToList())
+            {
+                var relative = Path.GetRelativePath(dir, file).Replace('\\', '/');
+                var parts = relative.Split('/');
+                if (!File.Exists(file) || !RecordFiles.IsPlacedFile(parts)) continue;
+                var depth = RecordFiles.CellDepth(parts);
+                var cellFolder = string.Join('/', parts.Take(depth));
+                if (File.Exists(Path.Combine(dir, cellFolder, "RecordData.yaml"))) continue;
+                if (RecordFiles.CellFolder.Match(parts[depth - 1]) is not { Success: true } named) continue;
+                FormKey key;
+                try { key = FormKey.Factory($"{named.Groups["id"].Value.ToUpperInvariant()}:{named.Groups["plugin"].Value}"); }
+                catch (ArgumentException) { continue; }
+                var versions = Contexts(key).Where(c => c.ModKey != own).ToList();
+                if (versions is not [{ Record: ICellGetter cell }, ..]) continue;
+                var suffix = $"{key.ID:X6}_{key.ModKey.FileName}";
+                var copied = Directory.EnumerateDirectories(folder, "*", SearchOption.AllDirectories)
+                    .FirstOrDefault(d => Path.GetFileName(d).EndsWith(suffix, StringComparison.OrdinalIgnoreCase) && File.Exists(Path.Combine(d, "RecordData.yaml")));
+                var name = cell.EditorID ?? FormKeyText(key);
+                string copyFolder;
+                var how = "";
+                if (copied is not null) copyFolder = Path.GetRelativePath(dir, copied).Replace('\\', '/');
+                else
+                {
+                    string? cellFile = null;
+                    foreach (var (path, text) in await Render([versions[0]], own))
+                    {
+                        if (RecordFiles.IsCellFile(path.Split('/')) && Path.GetFileName(Path.GetDirectoryName(path))!.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                            cellFile = path;
+                        var target = Path.Combine(dir, path);
+                        if (File.Exists(target)) continue;
+                        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                        await File.WriteAllTextAsync(target, Annotated(text));
+                    }
+                    if (cellFile is null) continue;
+                    copyFolder = Path.GetDirectoryName(cellFile)!.Replace('\\', '/');
+                    how = $"copied in {name} ({FormKeyText(key)}), the game's cell it is placed in, as addPatch copies it — its copy is " +
+                        $"{copyFolder}/RecordData.yaml, an override of that cell as the load order has it";
+                }
+                var placedAt = relative;
+                if (!copyFolder.Equals(cellFolder, StringComparison.OrdinalIgnoreCase))
+                {
+                    var moved = $"{copyFolder}/{parts[depth]}/{parts[^1]}";
+                    if (File.Exists(Path.Combine(dir, moved))) continue;
+                    Directory.CreateDirectory(Path.GetDirectoryName(Path.Combine(dir, moved))!);
+                    File.Move(file, Path.Combine(dir, moved));
+                    for (var left = Path.GetDirectoryName(file)!; left.Length > folder.Length && !Directory.EnumerateFileSystemEntries(left).Any();
+                         left = Path.GetDirectoryName(left)!)
+                        Directory.Delete(left);
+                    placedAt = moved;
+                    how += (how.Length > 0 ? ", and " : "") + $"moved this file from {relative} into the copy's folder";
+                }
+                changes.Add((placedAt, $"{how} — the build reads a reference only beside the project's copy of its cell"));
+            }
         }
         return changes;
     }

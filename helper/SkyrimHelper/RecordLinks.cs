@@ -196,6 +196,23 @@ public static class RecordLinks
                         $"{o.Id}{(o.Name is { Length: > 0 } shown ? $" \"{shown}\"" : "")} ({Session.FormKeyText(o.Key)}){(o.Made ? ", the one it makes" : "")}: " +
                         ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, $"{{\"path\": \"{field}\", \"value\": {ToolCalls.Quoted(o.Id)}}}", build: true)));
             }
+            // A projectile named as an item: findRecords "Steel Arrow" with types PROJ answered ArrowSteelProjectile, and eval round
+            // 183's world+detailed #2 listed it in its chest, was refused as a Projectile, and ran out of turns; the arrow a chest or an
+            // NPC holds is the Ammunition of the same name, which fires that projectile.
+            string? ProjectileAsItem(string field, string wanted, string kind, string editorId, FormKey? key)
+            {
+                if (kind != "Projectile" || wanted == "Projectile" || key is not { } shotKey || !index.ByFormKey.TryGetValue(shotKey, out var shot)
+                    || shot.Name is not { Length: > 0 } shotName) return null;
+                var ammo = index.ByFormKey.Values.Where(e => e.Type == "Ammunition" && e.EditorId is not null && string.Equals(e.Name, shotName, StringComparison.OrdinalIgnoreCase))
+                    // The one its name spells, SteelArrow, before a quest's MQ101SteelArrow of the same name.
+                    .OrderBy(e => string.Equals(e.EditorId, Regex.Replace(shotName, "[^A-Za-z0-9]", ""), StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                    .ThenBy(e => e.FormKey.ModKey.FileName.String.Equals("Skyrim.esm", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                    .ThenBy(e => e.EditorId!.Length).ThenBy(e => e.EditorId, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
+                if (ammo is null) return null;
+                return $" — {editorId} is the arrow in flight, not the arrow itself: the one a chest or an NPC holds is an Ammunition, " +
+                    $"{ammo.EditorId} \"{shotName}\" ({Session.FormKeyText(ammo.FormKey)}): one call names it here and builds again — " +
+                    ToolCalls.Edit(ToolCalls.ProjectOf(pluginDir), relative, $"{{\"path\": \"{field}\", \"value\": {ToolCalls.Quoted(ammo.EditorId!)}}}", build: true);
+            }
             // The project's own file of a lever, a switch, a button written as another kind than an Activator: eval round 152's
             // activator+detailed #1 wrote its lever in ObjectEffects/, was told "Base takes a PlaceableObject — write the editor ID of
             // the one meant", and ran out of turns.
@@ -214,6 +231,7 @@ public static class RecordLinks
                 : BaseAsEffect(field, wanted, kind, editorId) is { } baseText ? baseText
                     : ItemInNpcList(wanted, kind, editorId) is { } npcListText ? npcListText
                     : RecipeAsItem(field, wanted, kind, editorId, key) is { } recipeText ? recipeText
+                    : ProjectileAsItem(field, wanted, kind, editorId, key) is { } ammoText ? ammoText
                     : CasterAsEffect(field, wanted, editorId, key) is { } casterText ? casterText
                     // A recipe placed as a chest: eval round 131's world #2 made its chest of a copy of a Hearthfire recipe.
                     : field == "Base" && kind == "ConstructibleObject"

@@ -170,7 +170,7 @@ public static class RecordFiles
     }
 
     /// <summary>A cell's folder as Spriggit names it: `WhiterunBreezehome - 0165A8_Skyrim.esm`, its editor ID, FormID and plugin.</summary>
-    private static readonly Regex CellFolder = new(@"^.+ - (?<id>[0-9A-Fa-f]{6})_(?<plugin>.+\.(?:esm|esp|esl))$", RegexOptions.IgnoreCase);
+    internal static readonly Regex CellFolder = new(@"^.+ - (?<id>[0-9A-Fa-f]{6})_(?<plugin>.+\.(?:esm|esp|esl))$", RegexOptions.IgnoreCase);
 
     /// <summary>A cell's folder as Spriggit names it, with its editor ID or, for a cell that has none, its FormID alone.</summary>
     private static bool NamedCellFolder(string name) =>
@@ -534,7 +534,7 @@ public static class RecordFiles
         (["Armor"], ["ArmorValue", "Defense", "Rating"], "ArmorRating", "it is ArmorRating"),
         // Told "delete it" for a chest's `Inventory:`, a model deleted it and answered its chest filled, the chest built empty
         // (mini-round of 2026-11-08, outdoor+detailed #1). The build sets each item in place below Items.
-        (["Container"], ["Inventory", "Inventories", "Contents", "Content", "ContainerItems", "ContainerItem", "Loot"], "Items",
+        (["Container"], ["Inventory", "Inventories", "Contents", "Content", "ContainerItems", "ContainerItem", "ContainedItems", "ContainedItem", "Loot"], "Items",
             "a container's contents are Items: write that line as `Items:` in its place, its items below it as they are"),
         // Told "delete it: a StoryManagerQuestNode has it nowhere", 4 of eval round 144's storymanager runs deleted their node's
         // `Event: CLOC` and built a quest started on no event; the build moves it into a quest the node names, and this is the rest.

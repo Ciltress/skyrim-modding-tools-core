@@ -249,6 +249,28 @@ public static class RecordEdits
                 text = Remove(text, sent, path, changes);
                 continue;
             }
+            // A flag sent as a field to remove — a chest's Respawns — goes from its Flags, or is no flag there to remove: refused
+            // "a Container has no field Respawns", eval round 183's world+detailed #3 sent the same call again until its turns ran out.
+            if (sent is [{ Index: null } lone] && Property(type, lone.Key) is null && RecordFiles.FlagPlace(type, lone.Key) is (var part, { } flag))
+            {
+                var flagsPath = part is null ? "Flags" : $"{part}.Flags";
+                var flags = Parse(flagsPath);
+                var held = At(text, flags);
+                var at = held is YamlSequenceNode list
+                    ? list.Children.ToList().FindIndex(c => c is YamlScalarNode s && string.Equals(s.Value?.Trim(), flag, StringComparison.OrdinalIgnoreCase))
+                    : -1;
+                if (at >= 0) text = Remove(text, [.. flags.SkipLast(1), new Step(flags[^1].Key, at)], $"{flagsPath}[{at}], {flag}", changes);
+                else if (held is YamlScalarNode { Value: { } words } && words.Split(',', StringSplitOptions.TrimEntries) is var named
+                         && named.Any(w => string.Equals(w, flag, StringComparison.OrdinalIgnoreCase)))
+                {
+                    var kept = named.Where(w => w.Length > 0 && !string.Equals(w, flag, StringComparison.OrdinalIgnoreCase)).ToList();
+                    text = kept.Count > 0
+                        ? SetPath(text, type, flagsPath, JsonValue.Create(string.Join(", ", kept)), changes, context)
+                        : Remove(text, flags, flagsPath, changes);
+                }
+                else changes.Add($"no {flag} among {flagsPath} to remove: {path} is one of the Flags, and the file lists it nowhere");
+                continue;
+            }
             var (steps, label) = Placed(type, path);
             // One the same call sets is kept: in that call, `Level`, which the build had moved under Configuration, was
             // to be removed after Configuration.Level was set.
@@ -667,6 +689,16 @@ public static class RecordEdits
                 $"{RecordFiles.HintFor(type, only.Key)} — one call sets {meant} and builds again: " +
                 ToolCalls.Edit(ToolCalls.ProjectOf(context.PluginDir), context.Relative, $"{{\"path\": \"{meant}\", \"value\": {value.ToJsonString()}}}", build: true) +
                 ". Nothing was written.");
+        // A path that begins at a field under another name — a chest's ContainedItems[0].Item, its Items — goes on from the one meant:
+        // told "a Container has no field ContainedItems", eval round 183's world+detailed #3 spent a call on each step of the path.
+        if (steps.Count > 1 && path.StartsWith(steps[0].Key, StringComparison.Ordinal) && Property(type, steps[0].Key) is null && RecordFiles.SynonymFor(type, steps[0].Key) is { } begins
+            && Property(type, begins) is not null)
+        {
+            var sentAs = steps[0].Key;
+            steps = [new Step(begins, steps[0].Index), .. steps.Skip(1)];
+            path = begins + path[sentAs.Length..];
+            label = $"{label} (read as {path}: {RecordFiles.Article(type.Name)}'s {sentAs} is its {begins})";
+        }
         var types = Types(type, steps, label, (below, link) => Linked(text, steps, below, link, context, value));
         // A part's link sent as the part — `Items[0].Item` set to "Gold001", where an entry's Item holds the link of its own name
         // and the Count: eval round 182's world+detailed #1 and #2 sent it so, were told to send its fields as a mapping, and sent
