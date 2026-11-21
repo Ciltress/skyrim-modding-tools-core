@@ -1003,7 +1003,7 @@ public sealed partial class Session : IDisposable
             .Concat(MadeNotes.GameLights(mod, dir)).Concat(MadeNotes.EmptyEffects(mod, dir)).Concat(MadeNotes.LightColors(mod, dir))
             .Concat(MadeNotes.EffectsByFormId(mod, Index, dir))
             .Concat(CellContents.PlacedNotes(mod, Contexts, Index, dir)).Concat(DialogContents.Notes(mod, lookup, Index, dir)).Concat(DialogContents.StoryNotes(mod, lookup, dir)).Concat(GameSettings.Notes(mod, Index, dir))
-            .Concat(NavmeshNotes.Stale(mod, lookup, dir))
+            .Concat(NavmeshNotes.Stale(mod, lookup, dir)).Concat(DoorlessCopies(mod, dir))
             .Select(n => (JsonNode)n).ToArray();
         // The sequence file the plugin's start-game-enabled quests need for their dialogue, beside it in the build.
         var seq = DialogContents.WriteSeq(written, lookup, output);
@@ -1021,6 +1021,57 @@ public sealed partial class Session : IDisposable
             ["notes"] = new JsonArray(notes),
             ["fixes"] = new JsonArray(fixes.Select(f => (JsonNode)f).ToArray())
         };
+    }
+
+    /// <summary>The words of an editor ID or a name, by its capitals, digits, spaces and underscores, lower case.</summary>
+    private static IEnumerable<string> WordsOf(string? text) => text is null ? []
+        : Regex.Matches(text, @"[A-Z]?[a-z]+|[A-Z]+(?![a-z])").Select(m => m.Value.ToLowerInvariant());
+
+    /// <summary>Words of a room's name that say nothing of which room it is.</summary>
+    private static readonly HashSet<string> PlainRoomWords = ["cell", "cellar", "room", "house", "home", "cave", "mine", "interior",
+        "new", "zone", "area", "dangerous", "the", "of", "copy", "mod", "own", "dungeon", "hall", "inn", "basement", "level"];
+
+    /// <summary>
+    /// A new interior cell of the project's that no door leads to, its objects standing where a game cell has them — newCell made
+    /// it like that cell — and named after it: where the game's cell itself was to change, the copy is a room apart nobody walks
+    /// into. Asked for a zone of the mod's own set on EmbershardMine01, every detailed run of eval mini-rounds 178 and 179 made
+    /// DangerousEmbershardCell like it and changed that; told so in newCell's answer, they went on to its navmesh.
+    /// </summary>
+    private List<string> DoorlessCopies(ISkyrimModGetter mod, string pluginDir)
+    {
+        var rooms = mod.Cells.Records.SelectMany(b => b.SubBlocks).SelectMany(s => s.Cells)
+            .Where(c => c.FormKey.ModKey == mod.ModKey && c.Flags.HasFlag(Cell.Flag.IsInteriorCell)).ToList();
+        var notes = new List<string>();
+        var project = ToolCalls.ProjectOf(pluginDir);
+        foreach (var room in rooms)
+        {
+            var refs = room.Persistent.Concat(room.Temporary).OfType<IPlacedObjectGetter>().ToList();
+            if (refs.Count < 5 || refs.Any(r => r.TeleportDestination is not null)) continue;
+            placedIndex ??= PlacedIndex.Build(plugins.Select(x => (ISkyrimModGetter)x.Mod).ToList());
+            var votes = new Dictionary<FormKey, int>();
+            foreach (var r in refs.Where(r => r.Placement is not null && !r.Base.IsNull).Take(30))
+                foreach (var cellKey in placedIndex.SpotsOf(r.Base.FormKey).Where(s => s.Grid is null
+                        && Math.Abs(s.Position.X - r.Placement!.Position.X) < 1 && Math.Abs(s.Position.Y - r.Placement.Position.Y) < 1
+                        && Math.Abs(s.Position.Z - r.Placement.Position.Z) < 1).Select(s => s.Cell).Distinct())
+                    votes[cellKey] = votes.GetValueOrDefault(cellKey) + 1;
+            if (votes.OrderByDescending(v => v.Value).FirstOrDefault() is not { Value: >= 5 } best
+                || !Index.ByFormKey.TryGetValue(best.Key, out var source) || source.EditorId is not { } sourceId) continue;
+            var own = WordsOf(room.EditorID).Concat(WordsOf(room.Name?.String)).Where(w => w.Length >= 4 && !PlainRoomWords.Contains(w)).ToHashSet();
+            if (!WordsOf(sourceId).Concat(WordsOf(source.Name)).Any(own.Contains)) continue;
+            var roomId = room.EditorID ?? FormKeyText(room.FormKey);
+            var file = RecordFiles.CellRecords(pluginDir).Where(c => c.Type == typeof(Cell)).Select(c => c.Relative)
+                .FirstOrDefault(f => f.Contains($"/{roomId} - ", StringComparison.Ordinal)) ?? roomId;
+            notes.Add($"{file}: {roomId}, a room of the mod's own, is a copy of the game's {sourceId}" +
+                (source.Name is { Length: > 0 } n ? $" \"{n}\"" : "") + $" — its objects stand where {sourceId}'s do — and no door leads to " +
+                $"it: the player gets there only with `coc {roomId}`, and {sourceId} itself stays as the game has it, its enemies' levels, " +
+                $"its light, what stands there. Where {sourceId} itself was to change — a zone of the mod's own set on it, its light — " +
+                $"copy it, addPatch {{\"project\": {ToolCalls.Quoted(project)}, \"records\": [{ToolCalls.Quoted(sourceId)}]}}, change the " +
+                $"copy, and this room is not needed. Where a new room was meant, a door leads into it from where the player comes: " +
+                $"newCell {{\"project\": {ToolCalls.Quoted(project)}, \"cell\": {ToolCalls.Quoted(roomId)}, \"like\": {ToolCalls.Quoted(sourceId)}, " +
+                "\"door\": {\"in\": \"<the cell the player comes from, by editor ID>\"}}. Where the room alone was asked for, nothing to " +
+                "change, and this warning stays");
+        }
+        return notes;
     }
 
     /// <summary>The skills' example weapons the core sends with a build, each with its BasicStats; none where it sends none.</summary>

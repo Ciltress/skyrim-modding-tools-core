@@ -24,6 +24,9 @@ internal sealed class PlacedIndex
     /// <summary>Each load door's spot, by the door reference: the cell a door teleporting to it leads to.</summary>
     private readonly Dictionary<FormKey, Spot> loadDoors = new();
 
+    /// <summary>Where the load order places a record: every reference of it, by its base.</summary>
+    public IReadOnlyList<Spot> SpotsOf(FormKey baseRecord) => byBase.GetValueOrDefault(baseRecord) ?? [];
+
     /// <summary>Where a load door stands — its cell — or null for a reference that is none.</summary>
     public Spot? LoadDoor(FormKey reference) => loadDoors.GetValueOrDefault(reference);
 
