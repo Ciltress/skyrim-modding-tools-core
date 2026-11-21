@@ -1819,6 +1819,19 @@ public static class RecordFiles
                 problems.Add(PlacedOutside(relative, placedKind, pluginDir));
                 continue;
             }
+            // A record of a group written into a cell's folder — Cells/…/WhiterunBreezehome - 0165A8_Skyrim.esm/Containers/HuntersChest.yaml —
+            // which the reader takes for nothing: told its reference's Base named no record, eval round 180's world #1 placed a game
+            // chest in its place and built one with neither the gold nor the sword asked for.
+            if (CellDepth(parts) is > 0 and var cellDepth && parts.Length == cellDepth + 2 && !PlacedFolders.Contains(parts[cellDepth])
+                && parts[cellDepth] != "NavigationMeshes" && Groups.TryGetValue(parts[cellDepth], out var misplaced) && misplaced is not null)
+            {
+                problems.Add($"{relative} is {Article(misplaced.Name)}'s file inside a cell's folder, where the build reads only the cell's " +
+                    "RecordData.yaml and what is placed in it (Temporary/, Persistent/): a record of its own goes into its group's folder at " +
+                    $"the plugin folder's root, {parts[cellDepth]}/ — one call moves it there: " +
+                    ToolCalls.Move(pluginDir, relative, $"{parts[cellDepth]}/{parts[^1]}") +
+                    " — and a reference in the cell's Temporary/ folder places it by its editor ID, `Base: <its EditorID>`");
+                continue;
+            }
             if (parts.Length == 1)
             {
                 problems.Add($"{relative} is in no group folder: move it into its type's, as {ToolCalls.Move(pluginDir, relative, $"Weapons/{relative}")} does for a weapon");
