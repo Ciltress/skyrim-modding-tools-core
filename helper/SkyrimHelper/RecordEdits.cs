@@ -668,6 +668,19 @@ public static class RecordEdits
                 ToolCalls.Edit(ToolCalls.ProjectOf(context.PluginDir), context.Relative, $"{{\"path\": \"{meant}\", \"value\": {value.ToJsonString()}}}", build: true) +
                 ". Nothing was written.");
         var types = Types(type, steps, label, (below, link) => Linked(text, steps, below, link, context, value));
+        // A part's link sent as the part — `Items[0].Item` set to "Gold001", where an entry's Item holds the link of its own name
+        // and the Count: eval round 182's world+detailed #1 and #2 sent it so, were told to send its fields as a mapping, and sent
+        // it again until their turns ran out. Set on the link, and said so.
+        if (value is JsonValue linkSent && linkSent.TryGetValue<string>(out var linkSaid) && !Regex.IsMatch(linkSaid, @"^\s*\w+:\s|[{}\n]")
+            && (Nullable.GetUnderlyingType(types[^1]) ?? types[^1]) is var holder && typeof(Loqui.ILoquiObject).IsAssignableFrom(holder)
+            && !Translated(holder) && Property(holder, steps[^1].Key) is { } inner && RecordLinks.LinkTarget(inner.PropertyType) is not null)
+        {
+            steps = [.. steps, new Step(steps[^1].Key, null)];
+            path = $"{path}.{steps[^1].Key}";
+            label = $"{label} (sent as the {steps[^1].Key} it holds, {path})";
+            var linkedSteps = steps;
+            types = Types(type, steps, label, (below, link) => Linked(text, linkedSteps, below, link, context, value));
+        }
         if (value is JsonValue braced && braced.TryGetValue<string>(out var bracedText) && Fielded(bracedText, types[^1], out var unescaped) is { } parsed)
         {
             value = parsed;

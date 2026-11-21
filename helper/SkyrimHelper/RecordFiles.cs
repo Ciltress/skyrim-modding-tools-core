@@ -2963,6 +2963,25 @@ public static class RecordFiles
                         $"{editorId} was meant, this file is a second {entry.Type} the game holds for nothing — one call deletes it: " +
                         $"{ToolCalls.Delete(pluginDir, relative)}; where this one was meant, name {name} there")));
         }
+        // A reference placed in a cell under the editor ID of a record — the game chest it places, a record of the project's: eval
+        // round 182's world #2 named its chest's reference CWFortSoldierWoundedTentChest after the game chest it copied, was refused
+        // for it three builds running, and never renamed it. Given an editor ID of its own, the old one with Ref after it; a link
+        // by the old one names that record, as it did before.
+        foreach (var (file, relative, type) in CellRecords(pluginDir))
+        {
+            if (type is null || type == typeof(Cell) || !IsPlacedFile(relative.Split('/'))) continue;
+            var text = File.ReadAllText(file);
+            if (Identity(text) is not { EditorId: { } refId } refIdentity || refIdentity.FormKey is { } refKey && refKey.ModKey != own
+                || !index.ByEditorId.ContainsKey(refId) && !taken.Contains(refId) || EditorIdLine.Match(text) is not { Success: true } refLine)
+                continue;
+            var name = Numbered(refId + "Ref", Free);
+            taken.Add(name);
+            var value = refLine.Groups[1];
+            File.WriteAllText(file, text[..value.Index] + name + text[(value.Index + value.Length)..]);
+            changes.Add((relative, $"wrote `EditorID: {name}` for `EditorID: {refId}` — {refId} is a record's editor ID already, " +
+                (index.ByEditorId.TryGetValue(refId, out var refTaken) ? $"{refTaken.ModKey.FileName}'s ({Session.FormKeyText(refTaken)})" : "the project's") +
+                ", and this reference placed in the cell is a record of its own; its Base is as it was"));
+        }
         return changes;
     }
 

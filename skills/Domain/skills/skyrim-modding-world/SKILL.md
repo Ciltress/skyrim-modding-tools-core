@@ -264,7 +264,8 @@ PyNifly add-on, which reads the game's meshes (on Linux the Linux build, https:/
    what changed.
 2. Arrange the objects: move, turn or scale one; copy one for one more of its kind; delete one to take it out.
    - **By hand:** open `blendFile` in Blender; Shift+D copies an object.
-   - **Through Blender's MCP server, no window:** `execute_blender_code_for_cli` with `blend_file` the `blendFile` and
+   - **Through Blender's MCP server, no window:** `execute_blender_code_for_cli` (the client may name it with the server's name
+     before it: `blender__execute_blender_code_for_cli` in OpenClaw) with `blend_file` the `blendFile` and
      code that changes the objects and ends with the exportScript and a save:
 
      ```python

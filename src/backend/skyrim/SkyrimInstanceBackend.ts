@@ -887,7 +887,7 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
             throw new ProjectError(saved
                 ? `${folder} holds no layout.json yet, and ${blendFile} was saved after the export, with the changes made in it: they ` +
                   `are there, and only the layout is to be written. Run the export script alone on it — through Blender's MCP server, ` +
-                  `execute_blender_code_for_cli with blend_file ${JSON.stringify(blendFile)} and the code ` +
+                  `execute_blender_code_for_cli (blender__execute_blender_code_for_cli in OpenClaw) with blend_file ${JSON.stringify(blendFile)} and the code ` +
                   `exec(open(${JSON.stringify(exportScript)}, encoding="utf-8").read()) — not the changes again: run a second time, ` +
                   `they move each object twice and copy it twice. Then call importCell again.`
                 : `${folder} holds no layout.json yet: in Blender, run ${exportScript} — ` +

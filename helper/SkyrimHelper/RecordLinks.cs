@@ -1140,6 +1140,13 @@ public static class RecordLinks
                 if (type == typeof(QuestStage.Flag) && Enum.GetNames<Quest.Flag>().Contains(name, StringComparer.OrdinalIgnoreCase))
                     return $"{name} is the quest's own flag, among the Flags at the margin of the quest's file — keep it there, and delete it " +
                         $"here; a stage's Flags take {string.Join(", ", names)}";
+                // A chest that never respawns written as a flag — NoRespawn, then `Respawns: False`: a container respawns by its
+                // Respawns flag alone, and one that never does has none. Told only the flag's values, eval round 182's
+                // outdoor+detailed #1 and #4 wrote both and ran out of turns.
+                if (type == typeof(Container.Flag) && Regex.IsMatch(name, @"^(No|Never|Not|Dont|DoesNot)[ _]*Respawns?|Respawns?\s*:\s*(False|No|0)$|^NoReset", RegexOptions.IgnoreCase))
+                    return $"a container that never respawns has no Respawns flag — its items are put back only with it — so " +
+                        $"{name} is no flag to write: take it out, and Flags with it where it is the only one; Respawns is for a " +
+                        $"container whose items come back, these Flags take {string.Join(", ", names)}";
                 // A quest alias's flag on an NPC: the alias written as a record of its own (eval round 146's scene+detailed #3).
                 if (type != typeof(QuestAlias.Flag) && Enum.GetNames<QuestAlias.Flag>().Contains(name, StringComparer.Ordinal))
                     return $"{name} is a quest alias's flag: an alias is an item of its quest's `Aliases:` list, its Flags there — delete it here; " +
