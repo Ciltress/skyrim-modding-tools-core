@@ -105,6 +105,9 @@ public static class Archives
             }
             else
             {
+                // Entry by entry, in archive order: only an archive with a redirect entry comes here, and
+                // the entries before the wanted one are drained rather than skipped, because a solid
+                // archive cannot be read from the middle.
                 foreach (var entry in archive.Entries.Where(e => !e.IsDirectory && e.Key is not null && !IsRedirect(e)))
                 {
                     var key = Normalize(entry.Key!);
@@ -148,11 +151,27 @@ public static class Archives
 
     /// <summary>
     /// One entry's bytes, or null where the archive holds no readable data for it. A solid archive is read
-    /// front to back, because reading an entry from the start of one makes SharpCompress decompress again
-    /// from the beginning and land on the wrong offset.
+    /// once, front to back, and the entry wanted is taken as it passes: opening entries one at a time makes
+    /// SharpCompress decompress from the start again for each, which is quadratic in the entry count and
+    /// minutes long on a many-file 7z. Only an archive holding a redirect entry, which the stream cannot
+    /// step over, is read entry by entry.
     /// </summary>
     private static byte[]? ReadEntry(IArchive archive, string key)
     {
+        if ((archive.IsSolid || archive.Type == ArchiveType.SevenZip) && !HasRedirect(archive))
+        {
+            using var reader = archive.ExtractAllEntries();
+            while (reader.MoveToNextEntry())
+            {
+                if (reader.Entry.IsDirectory || reader.Entry.Key is null) continue;
+                if (!Normalize(reader.Entry.Key).Equals(key, StringComparison.OrdinalIgnoreCase)) continue;
+                using var bytes = new MemoryStream();
+                reader.WriteEntryTo(bytes);
+                return bytes.ToArray();
+            }
+            return null;
+        }
+
         foreach (var entry in archive.Entries.Where(e => !e.IsDirectory && e.Key is not null && !IsRedirect(e)))
         {
             var held = Normalize(entry.Key!);
