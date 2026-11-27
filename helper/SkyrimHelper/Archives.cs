@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using SharpCompress.Archives;
+using SharpCompress.Archives.Rar;
 using SharpCompress.Common;
 
 namespace SkyrimHelper;
@@ -33,13 +34,14 @@ public static class Archives
             .FirstOrDefault();
         if (installer.Entry is not null)
         {
-            using var stream = installer.Entry.OpenEntryStream();
-            using var bytes = new MemoryStream();
-            stream.CopyTo(bytes);
+            var bytes = ReadEntry(archive, installer.Path);
+            if (bytes is null)
+                throw new HelperException("badArchive",
+                    $"'{Path.GetFileName(path)}' lists '{installer.Path}' but its data could not be read. Download it again.");
             answer["fomod"] = new JsonObject
             {
                 ["path"] = installer.Path,
-                ["config"] = Fomod.Parse(bytes.ToArray())
+                ["config"] = Fomod.Parse(bytes)
             };
         }
         return answer;
@@ -68,7 +70,13 @@ public static class Archives
         var written = 0;
         void Write(string key, Action<Stream> writeTo)
         {
-            if (!wanted.TryGetValue(key, out var targets)) return;
+            if (!wanted.TryGetValue(key, out var targets))
+            {
+                // Read it anyway, and throw it away: in a solid archive an entry can only be read once the
+                // ones before it have been, so an entry nobody asked for is drained rather than skipped.
+                writeTo(Stream.Null);
+                return;
+            }
             found.Add(key);
             Directory.CreateDirectory(Path.GetDirectoryName(targets[0])!);
             using (var output = File.Create(targets[0])) writeTo(output);
@@ -82,9 +90,11 @@ public static class Archives
 
         try
         {
-            // A solid archive — most .7z — is one compressed stream: read it once, front to back,
-            // rather than from the start again for every file.
-            if (archive.IsSolid || archive.Type == ArchiveType.SevenZip)
+            // A solid archive — most .7z — is one compressed stream: read it once, front to back, rather
+            // than from the start again for every file. A RAR holding a redirect entry cannot be read that
+            // way: the reader throws while stepping over it, before any entry can be looked at, so such an
+            // archive is read entry by entry instead (slower, and only for the rare archive that has one).
+            if ((archive.IsSolid || archive.Type == ArchiveType.SevenZip) && !HasRedirect(archive))
             {
                 using var reader = archive.ExtractAllEntries();
                 while (reader.MoveToNextEntry())
@@ -95,9 +105,10 @@ public static class Archives
             }
             else
             {
-                foreach (var entry in archive.Entries.Where(e => !e.IsDirectory && e.Key is not null))
+                foreach (var entry in archive.Entries.Where(e => !e.IsDirectory && e.Key is not null && !IsRedirect(e)))
                 {
-                    Write(Normalize(entry.Key!), output =>
+                    var key = Normalize(entry.Key!);
+                    Write(key, output =>
                     {
                         using var input = entry.OpenEntryStream();
                         input.CopyTo(output);
@@ -120,6 +131,43 @@ public static class Archives
             ["written"] = written,
             ["missing"] = new JsonArray(missing.Select(m => (JsonNode)m).ToArray())
         };
+    }
+
+    /// <summary>
+    /// A RAR entry that redirects to another rather than holding bytes: `IsRedir` in RAR5, and no data of
+    /// its own (a packed size of 0 with a size, and no CRC). SharpCompress cannot open one — "no stream for
+    /// redirect entry" — and it throws while a solid stream steps over it, so an archive holding one is read
+    /// entry by entry. Only `archive.Entries` is asked: the streaming reader's own entry is a
+    /// `RarReaderEntry`, which does not carry the flag.
+    /// </summary>
+    private static bool IsRedirect(IEntry entry) =>
+        entry is RarArchiveEntry rar && (rar.IsRedir || (rar.CompressedSize == 0 && rar.Size > 0 && rar.Crc == 0));
+
+    /// <summary>Whether any entry redirects, asked of the archive's own entries rather than a reader's.</summary>
+    private static bool HasRedirect(IArchive archive) => archive.Entries.Any(IsRedirect);
+
+    /// <summary>
+    /// One entry's bytes, or null where the archive holds no readable data for it. A solid archive is read
+    /// front to back, because reading an entry from the start of one makes SharpCompress decompress again
+    /// from the beginning and land on the wrong offset.
+    /// </summary>
+    private static byte[]? ReadEntry(IArchive archive, string key)
+    {
+        foreach (var entry in archive.Entries.Where(e => !e.IsDirectory && e.Key is not null && !IsRedirect(e)))
+        {
+            var held = Normalize(entry.Key!);
+            using var stream = entry.OpenEntryStream();
+            if (!held.Equals(key, StringComparison.OrdinalIgnoreCase))
+            {
+                // Drained, not skipped: a solid archive cannot be read from the middle.
+                stream.CopyTo(Stream.Null);
+                continue;
+            }
+            using var bytes = new MemoryStream();
+            stream.CopyTo(bytes);
+            return bytes.ToArray();
+        }
+        return null;
     }
 
     private static IArchive Open(string path)
