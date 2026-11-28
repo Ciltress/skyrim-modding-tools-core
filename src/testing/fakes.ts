@@ -15,7 +15,8 @@ import type {
     RecordSummary, RecordVersions, ListedMod, ModList, ModListQuery, GameVersionCheck,
     CrashLogSection, CrashReport, EditIniRequest, EditIniResult, EnableModRequest, EnableModResult, ReadCrashLogRequest, GameFile,
     ConflictReport, FindConflictsRequest, MovePluginRequest, MovePluginResult, EditTerrainRequest, EditTerrainResult, GenerateNavmeshRequest, GenerateNavmeshResult, NewWorldspaceRequest, NewWorldspaceResult, NewCellRequest, NewCellResult, SortPluginsRequest, SortPluginsResult, SetModPriorityRequest, SetModPriorityResult,
-    PapyrusReport, PapyrusScriptEntries, ReadPapyrusLogRequest
+    PapyrusReport, PapyrusScriptEntries, ReadPapyrusLogRequest,
+    CheckPluginsRequest, DownloadList, DownloadQuery, DownloadRow, FoundFiles, PluginCheckReport, PluginProblem, SaveList, SaveQuery, SaveRow
 } from '../backend/skyrim/SkyrimBackend.js';
 import { CrashLogNotFoundError } from '../backend/skyrim/crash/crashLogFiles.js';
 import { PapyrusLogNotFoundError } from '../backend/skyrim/papyrus/papyrusLogFiles.js';
@@ -458,6 +459,44 @@ export class InMemorySkyrimBackend implements AppBackend {
                 plugins: [{ dll: 'Sample.dll', mod: 'Sample Mod', nexusModId: NEXUS_MOD.modId }] }]
         };
     }
+
+    /** A load order with one plugin whose master is in a disabled mod. */
+    async checkPlugins(request: CheckPluginsRequest): Promise<PluginCheckReport> {
+        const problems: PluginProblem[] = [{ kind: 'missingMaster', plugin: 'Sample.esp', mod: 'Sample Mod', master: 'Base.esm', masterMod: 'Base Mod' }];
+        return {
+            plugins: { active: 3, full: 3, light: 0, limits: { full: 254, light: 4096 } },
+            counts: { missingMaster: 1 }, total: 1, problems: problems.slice(0, request.limit),
+            nextStep: 'enableMod each mod that has a needed master: {"mod": "Base Mod"}. Each changes the setup: ask the user first.'
+        };
+    }
+
+    /** One archive installed, one marked installed by Mod Organizer whose files no mod holds. */
+    async listDownloads(query: DownloadQuery): Promise<DownloadList> {
+        const all: DownloadRow[] = [
+            {
+                file: SAMPLE, bytes: 1024, modified: '2026-11-01T00:00:00.000Z', state: 'installed', mods: [{ name: 'Sample Mod', enabled: true, files: true }],
+                nexus: { modId: NEXUS_MOD.modId, fileId: 2, version: NEXUS_MOD.version }
+            },
+            { file: 'Lost Mod-9-1-0-1700000000.7z', bytes: 2048, modified: '2026-10-01T00:00:00.000Z', state: 'notInstalled', markedInstalled: true, nexus: { modId: 9 } }
+        ];
+        const downloads = all.filter(row => (!query.state || row.state === query.state) && (!query.text || row.file.toLowerCase().includes(query.text.toLowerCase())));
+        return { folder: 'downloads', counts: { installed: 1, installedEmpty: 0, notInstalled: 1, downloading: 0 }, total: downloads.length, downloads: downloads.slice(0, query.limit) };
+    }
+
+    async findFiles(files: string[]): Promise<FoundFiles> {
+        const found = files.filter(file => /sample/i.test(file));
+        return {
+            files: Object.fromEntries(found.map(file => [file, { winner: { mod: 'Sample Mod' }, looseIn: ['Sample Mod'] }])),
+            notFound: files.filter(file => !found.includes(file))
+        };
+    }
+
+    /** One save made with a plugin the load order no longer has. */
+    async listSaves(query: SaveQuery): Promise<SaveList> {
+        const all: SaveRow[] = [{ file: 'Save1_Hero.ess', modified: '2026-11-01T00:00:00.000Z', character: 'Hero', level: 12, location: 'Whiterun', plugins: 3, missing: ['Removed.esp'] }];
+        const saves = all.filter(save => !query.save || save.file.toLowerCase().includes(query.save.toLowerCase()));
+        return { folder: 'Saves', total: saves.length, saves: saves.slice(0, query.limit) };
+    }
 }
 
 const NEXUS_MOD: NexusModSummary = {
@@ -512,7 +551,7 @@ export interface FakeBackendOptions {
 const DOMAIN_METHODS = [
     'findRecords', 'readRecord', 'newProject', 'addPatch', 'editRecord', 'buildProject', 'deployProject', 'pullProject', 'exportCell', 'importCell',
     'searchNexus', 'readNexusMod', 'downloadNexusFile', 'installMod', 'disableMod', 'enableMod', 'listMods', 'movePlugin', 'sortPlugins', 'editTerrain', 'generateNavmesh', 'newWorldspace', 'newCell', 'setModPriority', 'checkGameVersion',
-    'readCrashLog', 'readPapyrusLog', 'findConflicts', 'editIni', 'findGameFiles'
+    'readCrashLog', 'readPapyrusLog', 'findConflicts', 'editIni', 'findGameFiles', 'checkPlugins', 'listDownloads', 'findFiles', 'listSaves'
 ] as const;
 
 /**

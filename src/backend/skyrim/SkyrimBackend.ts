@@ -87,6 +87,21 @@ export interface SkyrimBackend extends Backend {
      */
     findGameFiles(files: string[]): Promise<Record<string, GameFile>>;
 
+    /**
+     * The load order's enabled plugins held against their masters, from their headers: a master missing, not enabled or
+     * loading later, a plugin with no file, and the plugin limits.
+     */
+    checkPlugins(request: CheckPluginsRequest): Promise<PluginCheckReport>;
+
+    /** The downloads folder's archives, each with the mods that hold its files: what is installed, and what is not. */
+    listDownloads(query: DownloadQuery): Promise<DownloadList>;
+
+    /** Each file's copy the game takes, by its path under Data, and every enabled mod that has it loose. */
+    findFiles(files: string[]): Promise<FoundFiles>;
+
+    /** The game's saves, newest first: character, place, and the plugins each was made with that the load order lacks. */
+    listSaves(query: SaveQuery): Promise<SaveList>;
+
     /** Settings of the game's Skyrim.ini, SkyrimPrefs.ini or SkyrimCustom.ini set or removed — those the game reads for this profile. */
     editIni(request: EditIniRequest): Promise<EditIniResult>;
 }
@@ -999,4 +1014,64 @@ export interface CellPlaced {
     /** Those one places a new object beside — containers, furniture, doors, activators, NPCs, items — at most 40. */
     references: { formId: string; editorId: string | null; base: string; position: string; rotation: string; persistent: boolean }[];
     newReference: { pathInPluginFolder: string; text: string; note: string };
+}
+
+export type { DownloadList, DownloadQuery, DownloadRow, DownloadState } from './downloads.js';
+import type { DownloadList, DownloadQuery } from './downloads.js';
+export type { PluginProblem, PluginProblemKind } from './pluginCheck.js';
+import type { PluginProblem } from './pluginCheck.js';
+
+export interface CheckPluginsRequest {
+    /** Only this plugin's problems, and those of the plugins that need it. */
+    plugin?: string;
+    limit: number;
+}
+
+export interface PluginCheckReport {
+    plugins: { active: number; full: number; light: number; limits: { full: number; light: number } };
+    /** Each kind of problem with its count, the worst first. */
+    counts: Partial<Record<PluginProblem['kind'], number>>;
+    total: number;
+    problems: PluginProblem[];
+    limits?: string[];
+    nextStep?: string;
+}
+
+export interface FoundFile {
+    /** The mod whose copy the game takes; an archive's, with `archive`. */
+    winner?: { mod: string; archive?: string };
+    /** Every enabled mod with the file loose, the winner last: the copies it overrides first. */
+    looseIn: string[];
+}
+
+export interface FoundFiles {
+    files: Record<string, FoundFile>;
+    /** Files neither loose in an enabled mod nor in an archive the load order loads. */
+    notFound: string[];
+}
+
+export interface SaveQuery {
+    /** One save, by a part of its file name: its whole list of what is missing. */
+    save?: string;
+    limit: number;
+}
+
+export interface SaveRow {
+    file: string;
+    modified: string;
+    character?: string;
+    level?: number;
+    location?: string;
+    plugins?: number;
+    /** The plugins it was made with that the load order does not enable now. */
+    missing?: string[];
+    /** How many more are missing than listed. */
+    moreMissing?: number;
+    error?: string;
+}
+
+export interface SaveList {
+    folder: string;
+    total: number;
+    saves: SaveRow[];
 }

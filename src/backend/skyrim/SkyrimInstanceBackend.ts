@@ -51,8 +51,12 @@ import type {
     SetModPriorityResult, SortPluginsRequest, SortPluginsResult, EditTerrainRequest, EditTerrainResult, GenerateNavmeshRequest, GenerateNavmeshResult, NewWorldspaceRequest, NewWorldspaceResult, NewCellRequest, NewCellResult,
     InstallModResult, GameVersionCheck, ModList, ModListQuery, MoveRecordRequest, MoveRecordResult,
     NewProjectRequest, NexusAccount, NexusDownload, NexusMod, NexusSearchQuery, NexusSearchResult, ProjectFile, ProjectInfo,
-    PullResult, ExportCellRequest, ExportCellResult, ImportCellRequest, ImportCellResult, RecordQuery, RecordRequest, RecordSearchResult, RecordVersion, RecordVersions, SkyrimBackend
+    PullResult, ExportCellRequest, ExportCellResult, ImportCellRequest, ImportCellResult, RecordQuery, RecordRequest, RecordSearchResult, RecordVersion, RecordVersions, SkyrimBackend,
+    CheckPluginsRequest, DownloadList, DownloadQuery, FoundFile, FoundFiles, PluginCheckReport, PluginProblem, SaveList, SaveQuery, SaveRow
 } from './SkyrimBackend.js';
+import { checkPlugins, FULL_LIMIT, LIGHT_LIMIT } from './pluginCheck.js';
+import { listDownloads } from './downloads.js';
+import { readSave } from './saves.js';
 import { CORE_INFO } from '../../lib/product.js';
 import { exampleWeapons } from '../../lib/skills.js';
 
@@ -1756,6 +1760,122 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
         return Object.fromEntries(await this.attributor(this.engine.modManager.readInstance()).files(files));
     }
 
+    // ---------------------------------------------------------------- the setup, checked
+
+    async checkPlugins(request: CheckPluginsRequest): Promise<PluginCheckReport> {
+        const { modManager } = this.engine;
+        const instance = modManager.readInstance();
+        const mods = modManager.readModList(instance);
+        const order = modManager.readLoadOrder(instance);
+        const files = modManager.resolvePluginFiles(instance, mods);
+        // A missing master is often in a mod that is disabled: said, it is the one call that fixes it.
+        const inDisabledMods = new Map<string, string>();
+        for (const mod of mods) {
+            if (!mod.managed || mod.enabled) continue;
+            let names: string[] = [];
+            try {
+                names = fs.readdirSync(path.join(instance.modsDir, mod.name));
+            } catch {
+                continue;
+            }
+            for (const name of names) {
+                if (/\.es[mpl]$/i.test(name) && !inDisabledMods.has(name.toLowerCase())) inDisabledMods.set(name.toLowerCase(), mod.name);
+            }
+        }
+        const check = checkPlugins({ order, files, inDisabledMods, ownerOf: file => ownerOf(file, instance) });
+        const wanted = request.plugin?.toLowerCase();
+        const problems = (wanted ? check.problems.filter(p => p.plugin.toLowerCase() === wanted || p.master?.toLowerCase() === wanted) : check.problems)
+            .sort((a, b) => PROBLEM_RANK.indexOf(a.kind) - PROBLEM_RANK.indexOf(b.kind));
+        const counts: PluginCheckReport['counts'] = {};
+        for (const problem of problems) counts[problem.kind] = (counts[problem.kind] ?? 0) + 1;
+        const steps = pluginCheckSteps(problems);
+        return {
+            plugins: { active: check.active, full: check.full, light: check.light, limits: { full: FULL_LIMIT, light: LIGHT_LIMIT } },
+            counts,
+            total: problems.length,
+            problems: problems.slice(0, request.limit),
+            ...(check.limits.length > 0 ? { limits: check.limits } : {}),
+            ...(steps ? { nextStep: steps } : {})
+        };
+    }
+
+    async listDownloads(query: DownloadQuery): Promise<DownloadList> {
+        const { modManager } = this.engine;
+        const instance = modManager.readInstance();
+        const enabled = new Map(modManager.readModList(instance).map(mod => [mod.name, mod.enabled]));
+        return listDownloads(instance.downloadsDir, instance.modsDir, enabled, query);
+    }
+
+    async findFiles(asked: string[]): Promise<FoundFiles> {
+        const { modManager } = this.engine;
+        const instance = modManager.readInstance();
+        const owners = await this.attributor(instance).files(asked);
+        // readModList is the highest priority first; the copies a file overrides are said first, the winner's last.
+        const layers = [...modManager.readModList(instance).filter(mod => mod.enabled && mod.managed).reverse()
+            .map(mod => ({ mod: mod.name, dir: path.join(instance.modsDir, mod.name) })), { mod: 'overwrite', dir: instance.overwriteDir }];
+        const files: Record<string, FoundFile> = {};
+        const notFound: string[] = [];
+        for (const file of asked) {
+            const under = dataPath(file);
+            const looseIn = layers.filter(layer => findCaseInsensitive(layer.dir, under)).map(layer => layer.mod);
+            const owner = owners.get(file);
+            if (!owner && looseIn.length === 0) {
+                notFound.push(file);
+                continue;
+            }
+            files[file] = { ...(owner ? { winner: { mod: owner.mod, ...(owner.archive ? { archive: owner.archive } : {}) } } : {}), looseIn };
+        }
+        return { files, notFound };
+    }
+
+    async listSaves(query: SaveQuery): Promise<SaveList> {
+        const { modManager } = this.engine;
+        const instance = modManager.readInstance();
+        const folder = await this.savesFolder(instance);
+        let names: string[] = [];
+        try {
+            names = fs.readdirSync(folder).filter(name => /\.ess$/i.test(name));
+        } catch {
+            // No saves folder: a game never saved.
+        }
+        const wanted = query.save?.toLowerCase();
+        const saves = names
+            .filter(name => !wanted || name.toLowerCase().includes(wanted))
+            .map(name => ({ name, modified: fs.statSync(path.join(folder, name)).mtime }))
+            .sort((a, b) => b.modified.getTime() - a.modified.getTime());
+        const active = new Set(modManager.readLoadOrder(instance).filter(plugin => plugin.active).map(plugin => plugin.name.toLowerCase()));
+        // One save asked for: every plugin it lacks. A list: the first few of each.
+        const shown = wanted ? Infinity : 10;
+        const rows = saves.slice(0, query.limit).map(({ name, modified }): SaveRow => {
+            try {
+                const save = readSave(path.join(folder, name));
+                const missing = [...save.plugins, ...save.light].filter(plugin => !active.has(plugin.toLowerCase()));
+                return {
+                    file: name, modified: modified.toISOString(), character: save.character, level: save.level, location: save.location,
+                    plugins: save.plugins.length + save.light.length,
+                    ...(missing.length > 0 ? { missing: missing.slice(0, shown) } : {}),
+                    ...(missing.length > shown ? { moreMissing: missing.length - shown } : {})
+                };
+            } catch (error) {
+                return { file: name, modified: modified.toISOString(), error: error instanceof Error ? error.message : String(error) };
+            }
+        });
+        return { folder, total: saves.length, saves: rows };
+    }
+
+    /** Where the game keeps this profile's saves: the profile's own folder with Mod Organizer's local saves, else My Games'. */
+    private async savesFolder(instance: Instance): Promise<string> {
+        try {
+            const settings = parseIni(fs.readFileSync(path.join(instance.profileDir, 'settings.ini'), 'utf8')).get('General');
+            if (settings?.get('LocalSaves')?.toLowerCase() === 'true') return path.join(instance.profileDir, 'saves');
+        } catch {
+            // No profile settings: the game's own folder.
+        }
+        const myGames = await myGamesDir(this.engine.modManager, this.engine.platform, instance);
+        if (!myGames) throw new ModError('The Documents folder, where the game keeps My Games and its saves, could not be found.');
+        return path.join(myGames, 'Saves');
+    }
+
     /** Where the game finds files: loose as the mod manager layers the mods, then in the load order's archives (docs/adr/0012). */
     private attributor(instance: Instance): Attributor {
         const { modManager } = this.engine;
@@ -1935,6 +2055,21 @@ function findDownload(downloadsDir: string, file: string): string {
         : `No file '${given}' in the downloads folder ${downloadsDir}. Download it with downloadNexusFile, or give the full ` +
           `path of a file downloaded by hand.`);
 }
+
+/** checkPlugins' problems, the worst first: a missing master stops the game at its start. */
+const PROBLEM_RANK: PluginProblem['kind'][] = ['missingMaster', 'masterNotEnabled', 'noFile', 'unreadable', 'masterLoadsLater'];
+
+/** The calls that fix what checkPlugins found, said once for each kind. */
+function pluginCheckSteps(problems: readonly PluginProblem[]): string | undefined {
+    const steps: string[] = [];
+    const enable = [...new Set(problems.filter(p => (p.kind === 'missingMaster' || p.kind === 'masterNotEnabled') && p.masterMod).map(p => p.masterMod!))];
+    if (enable.length > 0) steps.push(`enableMod each mod that has a needed master: ${enable.slice(0, 8).map(m => `{"mod": "${m}"}`).join(', ')}${enable.length > 8 ? ', …' : ''}`);
+    const absent = [...new Set(problems.filter(p => p.kind === 'missingMaster' && !p.masterMod).map(p => p.master!))];
+    if (absent.length > 0) steps.push(`install the mods of the masters no mod has (searchNexus by name: ${absent.slice(0, 5).join(', ')}${absent.length > 5 ? ', …' : ''}), or disable the plugins that need them`);
+    if (problems.some(p => p.kind === 'masterLoadsLater')) steps.push('sortPlugins puts each master before the plugins that need it');
+    return steps.length > 0 ? `${steps.join('; ')}. Each changes the setup: ask the user first.` : undefined;
+}
+
 
 function isDirectory(dir: string): boolean {
     try {

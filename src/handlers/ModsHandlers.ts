@@ -1,12 +1,22 @@
 import { BaseHandler } from './BaseHandler.js';
 import type { ToolSpec } from './BaseHandler.js';
-import { asRequestError, limitArg, offsetArg, optionalBoolean, optionalString, requireString } from './args.js';
+import { asRequestError, limitArg, offsetArg, optionalBoolean, optionalChoice, optionalString, optionalStringList, requireString } from './args.js';
 import { ToolError, ToolErrorCode } from './errors.js';
 import { INI_FILES, type IniSetting } from '../backend/skyrim/SkyrimBackend.js';
 
 /** listMods' page: a whole list of most setups, within core's 24 KB (a short row is ~135 bytes); a part of a Wabbajack one's. */
 const MOD_PAGE = 150;
 const MAX_MOD_PAGE = 5000;
+
+/** checkPlugins' problems: a setup gone wrong has hundreds of one kind; the first are those to fix. */
+const PROBLEM_PAGE = 50;
+const MAX_PROBLEMS = 1000;
+const DOWNLOAD_PAGE = 100;
+const MAX_DOWNLOADS = 2000;
+const DOWNLOAD_STATES = ['installed', 'installedEmpty', 'notInstalled', 'downloading'] as const;
+const MAX_FILES = 50;
+const SAVE_PAGE = 10;
+const MAX_SAVES = 50;
 
 /**
  * The instance's mods: listing them, checking them against the game's version, installing a downloaded
@@ -95,6 +105,163 @@ export class ModsHandlers extends BaseHandler {
                 },
                 onFailure: 'Failed to check the game version',
                 run: () => asRequestError(this.backend.checkGameVersion())
+            },
+            {
+                definition: {
+                    name: 'checkPlugins',
+                    annotations: {
+                        title: 'Check the load order\'s plugins',
+                        readOnlyHint: true,
+                        destructiveHint: false,
+                        idempotentHint: true,
+                        openWorldHint: false
+                    },
+                    description:
+                        'Every enabled plugin held against its masters, read from the plugins\' headers: missingMaster (the game ' +
+                        'stops at its start), masterNotEnabled, masterLoadsLater, noFile (enabled, and no mod has it), unreadable — ' +
+                        'each with its mod, and `masterMod` where a disabled mod has the master. Also the plugins that take a slot ' +
+                        `(at most 254) and the light ones (at most 4096). \`nextStep\` names the calls that fix it. Reads files, at once.`,
+                    inputSchema: {
+                        type: 'object',
+                        properties: {
+                            plugin: {
+                                type: 'string',
+                                description: 'Only this plugin\'s problems, and those of the plugins that need it, e.g. "Bruma.esp".'
+                            },
+                            limit: {
+                                type: 'number',
+                                description: `How many problems to answer, 1-${MAX_PROBLEMS}.`,
+                                default: PROBLEM_PAGE
+                            }
+                        }
+                    },
+                    narrowingHint: 'Give `plugin`, or a smaller `limit`.'
+                },
+                onFailure: 'Failed to check the plugins',
+                run: args => asRequestError(this.backend.checkPlugins({
+                    plugin: optionalString(args, 'plugin'),
+                    limit: limitArg(args, PROBLEM_PAGE, MAX_PROBLEMS)
+                }))
+            },
+            {
+                definition: {
+                    name: 'listDownloads',
+                    annotations: {
+                        title: 'List downloaded archives',
+                        readOnlyHint: true,
+                        destructiveHint: false,
+                        idempotentHint: true,
+                        openWorldHint: false
+                    },
+                    description:
+                        'The archives in Mod Organizer\'s downloads folder, newest first, each checked against the mods folder: ' +
+                        'installed (a mod\'s meta.ini names it and the mod holds files), installedEmpty (the mod is there and holds ' +
+                        'no file: the install failed), notInstalled, downloading. `markedInstalled` is Mod Organizer\'s own mark on an ' +
+                        'archive no mod holds the files of — never proof it is installed. Only an `installed` archive is safe to ' +
+                        'delete; ask the user first. Reads files, at once.',
+                    inputSchema: {
+                        type: 'object',
+                        properties: {
+                            state: {
+                                type: 'string',
+                                enum: [...DOWNLOAD_STATES],
+                                description: 'Only the archives in this state: notInstalled and installedEmpty are those to install (again).'
+                            },
+                            text: {
+                                type: 'string',
+                                description: 'Only the archives whose file name holds this, in any case.'
+                            },
+                            limit: {
+                                type: 'number',
+                                description: `How many archives to answer, 1-${MAX_DOWNLOADS}.`,
+                                default: DOWNLOAD_PAGE
+                            },
+                            offset: {
+                                type: 'number',
+                                description: 'Where to start, for the rest of a long list.'
+                            }
+                        }
+                    },
+                    narrowingHint: 'Give `state` or `text`, or a smaller `limit`.'
+                },
+                onFailure: 'Failed to list the downloads',
+                run: args => asRequestError(this.backend.listDownloads({
+                    state: optionalChoice(args, 'state', DOWNLOAD_STATES),
+                    text: optionalString(args, 'text'),
+                    limit: limitArg(args, DOWNLOAD_PAGE, MAX_DOWNLOADS),
+                    offset: offsetArg(args)
+                }))
+            },
+            {
+                definition: {
+                    name: 'findFiles',
+                    annotations: {
+                        title: 'Find which mod gives a file',
+                        readOnlyHint: true,
+                        destructiveHint: false,
+                        idempotentHint: true,
+                        openWorldHint: false
+                    },
+                    description:
+                        'For each file by its path under Data — "SKSE/Plugins/po3_Tweaks.dll", "meshes/armor/iron/cuirass.nif" — ' +
+                        'the copy the game takes (`winner`: a mod\'s loose file, or an archive of the load order) and every enabled ' +
+                        'mod that has it loose, the winner last. `notFound` lists the files the game does not have. Archives are read ' +
+                        'by the helper; loose files at once.',
+                    inputSchema: {
+                        type: 'object',
+                        properties: {
+                            files: {
+                                type: 'array',
+                                items: { type: 'string', description: 'A path under Data, / or \\ between folders.' },
+                                description: `Paths under Data, 1-${MAX_FILES}.`
+                            }
+                        },
+                        required: ['files']
+                    }
+                },
+                onFailure: 'Failed to find the files',
+                run: args => {
+                    const files = optionalStringList(args, 'files', '["SKSE/Plugins/po3_Tweaks.dll"]');
+                    if (!files) throw new ToolError(ToolErrorCode.InvalidParams, "'files' is required: the paths under Data to look up.");
+                    if (files.length > MAX_FILES) throw new ToolError(ToolErrorCode.InvalidParams, `At most ${MAX_FILES} files at a time.`);
+                    return asRequestError(this.backend.findFiles(files));
+                }
+            },
+            {
+                definition: {
+                    name: 'listSaves',
+                    annotations: {
+                        title: 'List saves',
+                        readOnlyHint: true,
+                        destructiveHint: false,
+                        idempotentHint: true,
+                        openWorldHint: false
+                    },
+                    description:
+                        'The game\'s saves for this profile, newest first: the character, level and place, and `missing`, the plugins ' +
+                        'the save was made with that the load order does not enable now — what a save that breaks or crashes after a ' +
+                        'mod was removed comes from. Give `save` for one save\'s whole missing list. Reads files, at once.',
+                    inputSchema: {
+                        type: 'object',
+                        properties: {
+                            save: {
+                                type: 'string',
+                                description: 'One save, by a part of its file name, e.g. "Save12".'
+                            },
+                            limit: {
+                                type: 'number',
+                                description: `How many saves to answer, 1-${MAX_SAVES}.`,
+                                default: SAVE_PAGE
+                            }
+                        }
+                    },
+                    narrowingHint: 'Give `save`, or a smaller `limit`.'
+                },
+                onFailure: 'Failed to list the saves',
+                run: args => asRequestError(this.backend.listSaves({
+                    save: optionalString(args, 'save'),
+                    limit: limitArg(args, SAVE_PAGE, MAX_SAVES)
+                }))
             },
             {
                 definition: {

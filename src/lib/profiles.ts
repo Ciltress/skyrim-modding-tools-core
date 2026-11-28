@@ -38,6 +38,13 @@ const CORE_WRITE = ['addPatch', 'editRecord', 'moveRecord', 'deleteRecord', 'bui
 const INSTALLED = ['listMods', 'checkGameVersion'] as const;
 
 /**
+ * The setup looked through further: the plugins against their masters, the archives downloaded against the mods that
+ * hold them, where a file comes from, the saves. Not in core: four schemas more on every turn of a small model, for
+ * questions core's tools answer the most of already.
+ */
+const SETUP_READ = ['checkPlugins', 'listDownloads', 'findFiles', 'listSaves'] as const;
+
+/**
  * The mod manager's mods, changed — so a mod that does not fit the game can be fixed as well as found:
  * installed again from a file that fits, or disabled. Both, not disabling alone, or disabling would be
  * the only remedy on offer (the user's decision, 2026-10-17). Enabling is disabling's way back, for a
@@ -68,7 +75,7 @@ export const PROFILES: Record<ProfileName, ProfileDefinition> = {
         description:
             'Reading, never changing. The write tools are absent rather than discouraged, so this ' +
             'profile cannot modify anything — profiles.test.ts holds every member to readOnlyHint.',
-        tools: [...READ, ...INSTALLED, ...NEXUS_READ, ...ANALYSIS, ...GUIDANCE]
+        tools: [...READ, ...INSTALLED, ...SETUP_READ, ...NEXUS_READ, ...ANALYSIS, ...GUIDANCE]
     },
     all: {
         description:
