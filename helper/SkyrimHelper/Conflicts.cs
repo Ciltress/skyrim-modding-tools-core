@@ -98,7 +98,8 @@ internal static class Conflicts
         {
             var was = made.Lists.GetValueOrDefault(path) ?? [];
             var items = mine.Lists.GetValueOrDefault(path) ?? [];
-            var winners = winner.Lists.GetValueOrDefault(path) ?? [];
+            // A set: a cell's or a leveled list's items held against each other's one by one were most of a large scan.
+            var winners = (winner.Lists.GetValueOrDefault(path) ?? []).ToHashSet(StringComparer.Ordinal);
             foreach (var added in Without(items, was).Where(item => !winners.Contains(item)).Distinct())
                 lost.Add(new Change(path, "added", null, added, null, false));
             foreach (var removed in Without(was, items).Where(winners.Contains).Distinct())
