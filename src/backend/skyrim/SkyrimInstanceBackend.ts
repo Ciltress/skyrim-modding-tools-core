@@ -17,7 +17,7 @@ import { lootSort, lootUserlist } from './loot/lootSort.js';
 import { ModError, findMod, listedMods, nexusRecord, ownerOf, pluginFiles } from './modList.js';
 import { findFileConflicts } from './fileConflicts.js';
 import { moveRefusal, type PluginKind, type Where } from './orderMoves.js';
-import { parseIni, primaryPlugins } from './mo2.js';
+import { gamePlugins, parseIni } from './mo2.js';
 import { checkGameVersion, myGamesDir } from './gameVersion.js';
 import { Attributor, dataPath } from './crash/attribution.js';
 import {
@@ -1499,7 +1499,7 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
         const instance = modManager.readInstance();
         const [where, target] = placeOf(request, 'plugin');
         const order = modManager.readLoadOrder(instance).map(plugin => plugin.name);
-        const primary = new Set(primaryPlugins(instance.gameDir).map(name => name.toLowerCase()));
+        const primary = new Set(gamePlugins(instance).map(name => name.toLowerCase()));
         const same = (a: string) => (b: string) => a.toLowerCase() === b.toLowerCase();
         const placed = (name: string, note?: string): MovePluginResult => {
             const now = modManager.readLoadOrder(instance).map(plugin => plugin.name);
