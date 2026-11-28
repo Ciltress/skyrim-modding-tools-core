@@ -136,10 +136,14 @@ public sealed partial class Session : IDisposable
         }
         cache = plugins.Select(x => (ISkyrimModGetter)x.Mod).ToImmutableLinkCache<ISkyrimMod, ISkyrimModGetter>();
         var snapshot = plugins.Select(x => (x.Key, (ISkyrimModGetter)x.Mod)).ToList();
+        var paths = plugins.Select(x => (string?)x.Path).ToList();
+        // Kept between sessions unless SKYRIM_HELPER_INDEX_CACHE is "off"; another value is the folder to keep it in.
+        var cacheSetting = Environment.GetEnvironmentVariable("SKYRIM_HELPER_INDEX_CACHE");
+        var cacheDir = cacheSetting is "off" or "0" or "false" ? null : string.IsNullOrWhiteSpace(cacheSetting) ? RecordIndex.IndexCache.DefaultDir() : cacheSetting;
         indexing = Task.Run(() =>
         {
             var clock = Stopwatch.StartNew();
-            var built = RecordIndex.Build(snapshot);
+            var built = RecordIndex.Build(snapshot, paths, cacheDir);
             Console.Error.WriteLine($"[helper] indexed {built.ByFormKey.Count} records of {snapshot.Count} plugins in {clock.ElapsedMilliseconds} ms");
             return built;
         });
@@ -274,6 +278,7 @@ public sealed partial class Session : IDisposable
         foreach (var e in all.Take(limit)) rows.Add(e.ToJson());
         var answer = new JsonObject { ["total"] = all.Count, ["records"] = rows };
         if (readAs.Count > 0) answer["typesRead"] = string.Join("; ", readAs);
+        AddUnread(answer);
         if (searchedAs is not null) answer["searchedAs"] = searchedAs;
         if (notFound.Count > 0)
         {
@@ -531,13 +536,40 @@ public sealed partial class Session : IDisposable
             var contexts = records.Select(r => Contexts(r).FirstOrDefault(c => c.ModKey == group.Key))
                 .OfType<IModContext<ISkyrimMod, ISkyrimModGetter, IMajorRecord, IMajorRecordGetter>>().ToList();
             if (contexts.Count == 0) continue;
-            foreach (var (_, text) in await Render(contexts, group.Key))
-                if (Regex.Match(text, @"^FormKey:[ \t]*(\S+)", RegexOptions.Multiline) is { Success: true } line
-                    && FormKey.TryFactory(line.Groups[1].Value, out var key) && records.Contains(key))
-                    texts[(group.Key, key)] = text;
+            void Take(IEnumerable<(string Path, string Text)> rendered)
+            {
+                foreach (var (_, text) in rendered)
+                    if (Regex.Match(text, @"^FormKey:[ \t]*(\S+)", RegexOptions.Multiline) is { Success: true } line
+                        && FormKey.TryFactory(line.Groups[1].Value, out var key) && records.Contains(key))
+                        texts[(group.Key, key)] = text;
+            }
+            try
+            {
+                Take(await Render(contexts, group.Key));
+            }
+            catch (Exception whole) when (whole is not HelperException)
+            {
+                // One record that cannot be rendered — it names a plugin missing from the load order — failed the whole
+                // scan on a setup with missing masters. Its plugin's records are rendered one by one, and those that fail
+                // left out, said in `notCompared`.
+                foreach (var context in contexts)
+                {
+                    try
+                    {
+                        Take(await Render([context], group.Key));
+                    }
+                    catch (Exception one) when (one is not HelperException)
+                    {
+                        notRendered.Add((group.Key.FileName.String, FormKeyText(context.Record.FormKey), one.Message));
+                    }
+                }
+            }
         }
         return texts;
     }
+
+    /// <summary>Versions VersionTexts could not render since the last call that reset it: plugin, record, why.</summary>
+    private readonly List<(string Plugin, string Record, string Error)> notRendered = [];
 
     /// <summary>FormIDs in a change's text said with the editor ID of the record each names.</summary>
     private string WithEditorIds(string text) => Regex.Replace(text, @"[0-9A-Fa-f]{6}:[^\s,\]\}]+?\.es[mpl]", m =>
@@ -566,6 +598,7 @@ public sealed partial class Session : IDisposable
         var compared = candidates.Count;
         candidates = candidates.Take(MaxConflictRecords).ToList();
 
+        notRendered.Clear();
         var texts = await VersionTexts(candidates.SelectMany(c => c.Losers.SelectMany(l => new[] { (l.Loser, c.Entry.FormKey), (l.Made, c.Entry.FormKey) })
             .Append((c.Entry.Plugins[^1], c.Entry.FormKey))));
         var rows = new JsonArray();
@@ -607,7 +640,23 @@ public sealed partial class Session : IDisposable
         }
         var answer = new JsonObject { ["total"] = total, ["records"] = rows };
         if (compared > MaxConflictRecords) answer["compared"] = $"the first {MaxConflictRecords} of {compared} records two plugins change: name a plugin to see its own";
+        if (notRendered.Count > 0)
+        {
+            // Said once a plugin: a plugin that names a missing master fails each of its records the same way.
+            answer["notCompared"] = new JsonArray(notRendered.GroupBy(n => n.Plugin).Select(g => (JsonNode)new JsonObject
+            {
+                ["plugin"] = g.Key, ["records"] = g.Count(), ["error"] = g.First().Error
+            }).ToArray());
+        }
+        AddUnread(answer);
         return answer;
+    }
+
+    /// <summary>The plugins whose records the index could not all read, said beside an answer from it: a record of theirs may be missing.</summary>
+    private void AddUnread(JsonObject answer)
+    {
+        if (Index.Unread.Count == 0) return;
+        answer["unreadPlugins"] = new JsonArray(Index.Unread.Select(u => (JsonNode)new JsonObject { ["plugin"] = u.Plugin, ["error"] = u.Error }).ToArray());
     }
 
     // ---------------------------------------------------------------- patching

@@ -2344,8 +2344,8 @@ describe('installing a mod', () => {
         download(COOL_FILE, COOL_MOD);
         const call = engine.helper.call.bind(engine.helper);
         // The helper answers, and writes nothing: the install is refused, not reported done.
-        engine.helper.call = async (method: string, params?: Record<string, unknown>) =>
-            method === 'extractArchive' ? { written: 2, missing: [] } : call(method, params);
+        engine.helper.call = (async (method: string, params?: Record<string, unknown>) =>
+            method === 'extractArchive' ? { written: 2, missing: [] } : call(method, params)) as typeof engine.helper.call;
         await expect(backend.installMod({ file: COOL_FILE })).rejects.toThrow(/was not installed: 0 of its 2 files reached .*Keep the file/);
         expect(fs.existsSync(path.join(fixture.instanceDir, 'mods', 'Cool Mod'))).toBe(false);
         expect(fs.readFileSync(path.join(fixture.profile, 'modlist.txt'), 'utf8')).not.toMatch(/Cool Mod/);
@@ -2355,13 +2355,13 @@ describe('installing a mod', () => {
         const { backend, download, engine } = makeBackend();
         download(COOL_FILE, COOL_MOD);
         const call = engine.helper.call.bind(engine.helper);
-        engine.helper.call = async (method: string, params?: Record<string, unknown>) => {
+        engine.helper.call = (async (method: string, params?: Record<string, unknown>) => {
             if (method !== 'extractArchive') return call(method, params);
             // A RAR's redirect entry: the helper reports it missing and writes the others.
             const files = (params!.files as { from: string; to: string }[]).filter(f => !f.from.endsWith('.nif'));
             await call(method, { ...params, files });
             return { written: files.length, missing: ['Cool Mod/meshes/a.nif'] };
-        };
+        }) as typeof engine.helper.call;
         const result = await backend.installMod({ file: COOL_FILE });
         expect(result).toMatchObject({ files: 1, notUnpacked: ['Cool Mod/meshes/a.nif'] });
         expect((result as { warnings: string[] }).warnings.join(' ')).toMatch(/1 file of .* could not be unpacked .*a\.nif.*Keep the file/);

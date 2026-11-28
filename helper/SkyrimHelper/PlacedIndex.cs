@@ -47,19 +47,31 @@ internal sealed class PlacedIndex
         var doors = new HashSet<FormKey>();
         // An exterior cell by its worldspace and grid, for a persistent reference of the worldspace's top cell, which lies in
         // the cell its position is in.
-        var gridCells = new Dictionary<(FormKey, P2Int), ICellGetter>();
-        foreach (var mod in mods)
+        // Each plugin is read on its own thread — a plugin has its own reader, and reading 1,408 one after another took 6.5 s —
+        // and what each gives is merged in load order after, so the index is the one a single thread makes. A thread reads its
+        // own plugin only: the grid's cells are kept as values, never as another plugin's records.
+        var gridOf = new List<((FormKey, P2Int) At, GridCell Cell)>[mods.Count];
+        Parallel.For(0, mods.Count, i =>
         {
-            foreach (var world in mod.Worldspaces)
+            var found = new List<((FormKey, P2Int), GridCell)>();
+            foreach (var world in mods[i].Worldspaces)
                 foreach (var block in world.SubCells)
                     foreach (var sub in block.Items)
                         foreach (var cell in sub.Items)
-                            if (cell.Grid?.Point is { } point) gridCells.TryAdd((world.FormKey, point), cell);
-        }
-        foreach (var mod in mods)
+                            if (cell.Grid?.Point is { } point) found.Add(((world.FormKey, point), new GridCell(cell.FormKey, cell.EditorID, cell.Name?.String)));
+            gridOf[i] = found;
+        });
+        var gridCells = new Dictionary<(FormKey, P2Int), GridCell>();
+        foreach (var found in gridOf)
+            foreach (var (at, cell) in found) gridCells.TryAdd(at, cell);
+
+        var putsOf = new List<Placed>[mods.Count];
+        Parallel.For(0, mods.Count, i =>
         {
+            var mod = mods[i];
+            var puts = new List<Placed>();
             foreach (var cell in Interiors(mod))
-                Add(cell, null, null);
+                Add(puts, cell, null, null);
             foreach (var world in mod.Worldspaces)
             {
                 if (world.TopCell is { } top)
@@ -68,12 +80,22 @@ internal sealed class PlacedIndex
                         if (Placement(reference) is not { } at) continue;
                         var grid = CellContents.GridAt(at.Position);
                         var cell = gridCells.GetValueOrDefault((world.FormKey, grid));
-                        Put(reference, at.Position, cell?.FormKey ?? top.FormKey, cell?.EditorID, cell?.Name?.String, world.EditorID, grid);
+                        Put(puts, reference, at.Position, cell?.FormKey ?? top.FormKey, cell?.EditorId, cell?.Name, world.EditorID, grid);
                     }
                 foreach (var block in world.SubCells)
                     foreach (var sub in block.Items)
                         foreach (var cell in sub.Items)
-                            Add(cell, world.EditorID, cell.Grid?.Point);
+                            Add(puts, cell, world.EditorID, cell.Grid?.Point);
+            }
+            putsOf[i] = puts;
+        });
+        foreach (var puts in putsOf)
+        {
+            foreach (var placed in puts)
+            {
+                // The last plugin's version of a reference wins, as in game.
+                spots[placed.Spot.Reference] = (placed.Base, placed.Spot);
+                if (placed.Door) doors.Add(placed.Spot.Reference);
             }
         }
         foreach (var (_, (baseKey, spot)) in spots)
@@ -82,14 +104,14 @@ internal sealed class PlacedIndex
         Console.Error.WriteLine($"[helper] placed index: {spots.Count} references of {index.byBase.Count} records in {clock.ElapsedMilliseconds} ms");
         return index;
 
-        void Add(ICellGetter cell, string? world, P2Int? grid)
+        static void Add(List<Placed> puts, ICellGetter cell, string? world, P2Int? grid)
         {
             foreach (var reference in cell.Persistent.Concat(cell.Temporary))
                 if (Placement(reference) is { } at)
-                    Put(reference, at.Position, cell.FormKey, cell.EditorID, cell.Name?.String, world, grid);
+                    Put(puts, reference, at.Position, cell.FormKey, cell.EditorID, cell.Name?.String, world, grid);
         }
 
-        void Put(IPlacedGetter reference, P3Float position, FormKey cell, string? editorId, string? name, string? world, P2Int? grid)
+        static void Put(List<Placed> puts, IPlacedGetter reference, P3Float position, FormKey cell, string? editorId, string? name, string? world, P2Int? grid)
         {
             var baseKey = reference switch
             {
@@ -98,11 +120,16 @@ internal sealed class PlacedIndex
                 _ => null
             };
             if (baseKey is not { } key) return;
-            // The last plugin's version of a reference wins, as in game.
-            spots[reference.FormKey] = (key, new Spot(reference.FormKey, cell, editorId, name, world, grid, position));
-            if (reference is IPlacedObjectGetter { TeleportDestination: not null }) doors.Add(reference.FormKey);
+            puts.Add(new Placed(key, new Spot(reference.FormKey, cell, editorId, name, world, grid, position),
+                reference is IPlacedObjectGetter { TeleportDestination: not null }));
         }
     }
+
+    /// <summary>An exterior cell as a reference of the worldspace's top cell needs it: kept as values, read by any thread.</summary>
+    private sealed record GridCell(FormKey FormKey, string? EditorId, string? Name);
+
+    /// <summary>One reference a plugin places, before the plugins are merged in load order.</summary>
+    private readonly record struct Placed(FormKey Base, Spot Spot, bool Door);
 
     private static IEnumerable<ICellGetter> Interiors(ISkyrimModGetter mod) =>
         mod.Cells.Records.SelectMany(block => block.SubBlocks).SelectMany(sub => sub.Cells);
