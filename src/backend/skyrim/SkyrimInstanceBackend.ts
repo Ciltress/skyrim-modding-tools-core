@@ -1497,7 +1497,8 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
             let sorted: ReturnType<typeof lootSort>;
             try {
                 sorted = lootSort({
-                    libloot, gameDir: instance.gameDir, order, dataPaths, masterlist: lists.masterlist, prelude: lists.prelude,
+                    libloot, gameDir: instance.gameDir, order, dataPaths, pluginFiles: modManager.resolvePluginFiles(instance, mods),
+                    masterlist: lists.masterlist, prelude: lists.prelude,
                     userlist: lootUserlist(this.engine.platform.name), workDir
                 });
             } catch (error) {

@@ -60,6 +60,41 @@ export function looseFiles(dir: string): string[] {
 }
 
 /**
+ * The archives the game loads with the plugins, in the order it loads them: by the plugin's place in the load order, then
+ * the layer's (lowest first), then by name within a layer. Each layer's folder is read once and its archives looked up by
+ * the plugin they belong to (`X.bsa` and `X - Textures.bsa` are X's) — reading every layer again for every plugin took 105 s
+ * on a setup of 1,148 mods and 1,408 plugins, and now takes well under one.
+ */
+export function archivesInLoadOrder(layers: readonly { dir: string }[], loadOrder: readonly string[]): string[] {
+    // A plugin's base name, lower case, to its archives, as [layer, name] in layer order.
+    const byPlugin = new Map<string, { layer: number; name: string }[]>();
+    layers.forEach((layer, index) => {
+        let names: string[];
+        try {
+            names = fs.readdirSync(layer.dir).filter(name => /\.bsa$/i.test(name));
+        } catch {
+            return;
+        }
+        for (const name of names) {
+            // Every base the archive can belong to: its whole name, and each part before a " - ".
+            const stem = name.slice(0, -'.bsa'.length).toLowerCase();
+            const bases = new Set([stem]);
+            for (let at = stem.indexOf(' - '); at >= 0; at = stem.indexOf(' - ', at + 1)) bases.add(stem.slice(0, at));
+            for (const base of bases) byPlugin.set(base, [...byPlugin.get(base) ?? [], { layer: index, name }]);
+        }
+    });
+    const files: string[] = [];
+    for (const plugin of loadOrder) {
+        const found = byPlugin.get(plugin.replace(/\.(esp|esm|esl)$/i, '').toLowerCase());
+        if (!found) continue;
+        const sorted = found.filter(archive => belongsTo(archive.name, plugin))
+            .sort((a, b) => a.layer - b.layer || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+        for (const archive of sorted) files.push(path.join(layers[archive.layer].dir, archive.name));
+    }
+    return files;
+}
+
+/**
  * The setup's file conflicts between mods — of one mod, where `mod` names it — loose and in archives. `loadOrder` is the
  * active plugins in load order, which the archives load with.
  */
@@ -70,8 +105,13 @@ export async function findFileConflicts(instance: Instance, mods: readonly ModEn
         .map(mod => ({ name: mod.name, dir: path.join(instance.modsDir, mod.name) }))
         .concat([{ name: 'overwrite', dir: instance.overwriteDir }]);
     const loose = new Map<string, string[]>();
-    for (const layer of layers)
-        for (const file of looseFiles(layer.dir)) loose.set(file, [...loose.get(file) ?? [], layer.name]);
+    for (const layer of layers) {
+        for (const file of looseFiles(layer.dir)) {
+            const owners = loose.get(file);
+            if (owners) owners.push(layer.name);
+            else loose.set(file, [layer.name]);
+        }
+    }
 
     const pairs = new Map<string, FileConflictPair>();
     const count = (winner: string, loser: string, how: FileConflictPair['how'], file: string) => {
@@ -88,18 +128,7 @@ export async function findFileConflicts(instance: Instance, mods: readonly ModEn
     // The mods' archives the game loads: each of an active plugin's, in load order.
     let unreadArchives: FileConflicts['unreadArchives'];
     if (archiveLists) {
-        const archives: { file: string; mod: string }[] = [];
-        for (const plugin of loadOrder) {
-            for (const layer of layers) {
-                let names: string[];
-                try {
-                    names = fs.readdirSync(layer.dir).filter(name => /\.bsa$/i.test(name) && belongsTo(name, plugin));
-                } catch {
-                    continue;
-                }
-                for (const name of names.sort()) archives.push({ file: path.join(layer.dir, name), mod: ownerOf(path.join(layer.dir, name), instance) });
-            }
-        }
+        const archives = archivesInLoadOrder(layers, loadOrder).map(file => ({ file, mod: ownerOf(file, instance) }));
         if (archives.length > 0) {
             const listed = await archiveLists({ release: instance.release, archives: archives.map(a => a.file) });
             if (listed.errors?.length) unreadArchives = listed.errors;

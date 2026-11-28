@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { findFileConflicts, looseFiles } from '../backend/skyrim/fileConflicts';
+import { archivesInLoadOrder, findFileConflicts, looseFiles } from '../backend/skyrim/fileConflicts';
 import { moveMod, movePlugin } from '../backend/skyrim/mo2Profile';
 import type { Instance, ModEntry } from '../backend/skyrim/modManager';
 import { moveLine, moveRefusal, type PluginKind } from '../backend/skyrim/orderMoves';
@@ -145,5 +145,40 @@ describe('file conflicts', () => {
         expect(conflicts).toEqual({ pairs: [], total: 0 });
         const low = await findFileConflicts(instance, mods, [], undefined, { mod: 'Low', limit: 25 });
         expect(low.pairs).toEqual([{ winner: 'High', loser: 'Low', how: 'mod order', files: 1, examples: ['textures\\armor\\iron.dds'] }]);
+    });
+});
+
+describe('the archives the game loads with the plugins', () => {
+    it('lists each plugin\'s archives in load order, then mod order, then by name — each folder read once', () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'skyrim-archives-'));
+        try {
+            const layer = (name: string, files: string[]) => {
+                const dir = path.join(root, name);
+                fs.mkdirSync(dir, { recursive: true });
+                for (const file of files) fs.writeFileSync(path.join(dir, file), '');
+                return { dir };
+            };
+            const layers = [
+                layer('Low', ['Big - Textures.bsa', 'Big.bsa', 'Other.bsa', 'Bigger.bsa']),
+                layer('High', ['big.BSA', 'Small - Main - Textures.bsa', 'readme.txt']),
+                { dir: path.join(root, 'gone') }
+            ];
+            const read = fs.readdirSync;
+            let reads = 0;
+            // Counted: read again for every plugin, a setup of 1,148 mods took 105 s.
+            (fs as { readdirSync: unknown }).readdirSync = (...args: Parameters<typeof fs.readdirSync>) => { reads++; return read(...args); };
+            let archives: string[];
+            try {
+                archives = archivesInLoadOrder(layers, ['Small - Main.esp', 'Big.esm', 'Absent.esp', 'Bigger.esp']);
+            } finally {
+                (fs as { readdirSync: unknown }).readdirSync = read;
+            }
+            expect(reads).toBe(3);
+            expect(archives.map(file => path.relative(root, file).split(path.sep).join('/'))).toEqual([
+                'High/Small - Main - Textures.bsa', 'Low/Big - Textures.bsa', 'Low/Big.bsa', 'High/big.BSA', 'Low/Bigger.bsa'
+            ]);
+        } finally {
+            fs.rmSync(root, { recursive: true, force: true });
+        }
     });
 });
