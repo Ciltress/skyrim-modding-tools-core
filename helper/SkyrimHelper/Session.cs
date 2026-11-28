@@ -39,9 +39,9 @@ public sealed partial class Session : IDisposable
     public async Task<JsonNode?> Dispatch(string method, JsonObject p)
     {
         // Overlays are read by one thread at a time: whatever reads plugins waits for the background index.
-        // Downloaded files and plugin headers are read from files of their own, and need not wait; record
+        // Downloaded files, plugin headers and SKSE plugins' DLLs are read from files of their own, and need not wait; record
         // files do, since a FormKey of another plugin's is checked against the record it names.
-        if (method is not ("hello" or "gameVersion" or "setLoadOrder" or "readArchive" or "extractArchive" or "pluginHeaders" or "bsaFiles" or "archiveFiles" or "extractFiles")
+        if (method is not ("hello" or "gameVersion" or "setLoadOrder" or "readArchive" or "extractArchive" or "pluginHeaders" or "bsaFiles" or "archiveFiles" or "extractFiles" or "sksePlugins")
             && indexing is { } running)
         {
             try { await running; } catch { /* surfaced by the call that needs the index */ }
