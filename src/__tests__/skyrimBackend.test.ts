@@ -2329,6 +2329,58 @@ describe('installing a mod', () => {
         expect(fs.existsSync(path.join(fixture.instanceDir, 'mods', 'Cool Mod'))).toBe(false);
     });
 
+    it('installs nothing when the instance\'s mods folder is gone, and never makes one', async () => {
+        // The mods folder moved by hand, its setting where Mod Organizer does not read it: a folder made here is in no game.
+        const { backend, fixture, download } = makeBackend();
+        download(COOL_FILE, COOL_MOD);
+        const mods = path.join(fixture.instanceDir, 'mods');
+        fs.renameSync(mods, `${mods}.moved`);
+        await expect(backend.installMod({ file: COOL_FILE })).rejects.toThrow(/mods folder .* is not there, so nothing was installed.*\[Settings\]/);
+        expect(fs.existsSync(mods)).toBe(false);
+    });
+
+    it('reports a mod installed only when its files are in its folder — and removes a folder the unpack left short', async () => {
+        const { backend, fixture, download, engine } = makeBackend();
+        download(COOL_FILE, COOL_MOD);
+        const call = engine.helper.call.bind(engine.helper);
+        // The helper answers, and writes nothing: the install is refused, not reported done.
+        engine.helper.call = async (method: string, params?: Record<string, unknown>) =>
+            method === 'extractArchive' ? { written: 2, missing: [] } : call(method, params);
+        await expect(backend.installMod({ file: COOL_FILE })).rejects.toThrow(/was not installed: 0 of its 2 files reached .*Keep the file/);
+        expect(fs.existsSync(path.join(fixture.instanceDir, 'mods', 'Cool Mod'))).toBe(false);
+        expect(fs.readFileSync(path.join(fixture.profile, 'modlist.txt'), 'utf8')).not.toMatch(/Cool Mod/);
+    });
+
+    it('names the files an archive could not give, and installs the rest', async () => {
+        const { backend, download, engine } = makeBackend();
+        download(COOL_FILE, COOL_MOD);
+        const call = engine.helper.call.bind(engine.helper);
+        engine.helper.call = async (method: string, params?: Record<string, unknown>) => {
+            if (method !== 'extractArchive') return call(method, params);
+            // A RAR's redirect entry: the helper reports it missing and writes the others.
+            const files = (params!.files as { from: string; to: string }[]).filter(f => !f.from.endsWith('.nif'));
+            await call(method, { ...params, files });
+            return { written: files.length, missing: ['Cool Mod/meshes/a.nif'] };
+        };
+        const result = await backend.installMod({ file: COOL_FILE });
+        expect(result).toMatchObject({ files: 1, notUnpacked: ['Cool Mod/meshes/a.nif'] });
+        expect((result as { warnings: string[] }).warnings.join(' ')).toMatch(/1 file of .* could not be unpacked .*a\.nif.*Keep the file/);
+    });
+
+    it('never replaces another Nexus mod that only has the same name — Nexus\'s generic file names', async () => {
+        const { backend, fixture, download } = makeBackend();
+        // Two hand-downloaded "Main Archive" files of two mods: both default to the name 'Main Archive'.
+        download('Main Archive-36151-0-12-1589901908.7z', { files: { 'First.esp': 'first' } });
+        download('Main Archive-41118-1-0-1601840333.7z', { files: { 'Second.esp': 'second' } });
+        await backend.installMod({ file: 'Main Archive-36151-0-12-1589901908.7z' });
+        await expect(backend.installMod({ file: 'Main Archive-41118-1-0-1601840333.7z', replace: true }))
+            .rejects.toThrow(/'Main Archive' holds Nexus mod 36151 .*of Nexus mod 41118.*`name`/);
+        expect(fs.existsSync(path.join(fixture.instanceDir, 'mods', 'Main Archive', 'First.esp'))).toBe(true);
+        // A newer file of the same mod still replaces it.
+        download('Main Archive-36151-0-13-1600000000.7z', { files: { 'First.esp': 'newer' } });
+        await expect(backend.installMod({ file: 'Main Archive-36151-0-13-1600000000.7z', replace: true })).resolves.toMatchObject({ replaced: true });
+    });
+
     it('never installs over a project\'s mod — the project deploys it', async () => {
         const { backend, fixture, download } = makeBackend();
         await newProjectWithRecord(backend, fixture.projects, 'Quiet');

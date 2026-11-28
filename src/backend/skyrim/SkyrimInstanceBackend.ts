@@ -8,7 +8,7 @@ import { compileScripts, hasUncommittedChanges, scriptSourceFolders, vanillaSour
 import { PapyrusSources, scriptWarnings, type ScriptedRecord } from './scriptChecks.js';
 import { HelperError, HelperUnavailableError } from './helperClient.js';
 import {
-    FomodInstaller, InstallError, checkRoot, defaultModName, findDataRoot, folderName, modMetaIni, placeInLoadOrder, plainLayout, pluginOrder,
+    FomodInstaller, InstallError, checkRoot, defaultModName, findDataRoot, folderName, modMetaIni, nexusModIdOf, placeInLoadOrder, plainLayout, pluginOrder,
     topFolders, type ArchiveListing, type InstallEnvironment, type PluginHeader, type UnpackedFile
 } from './installer.js';
 import type { Instance, ModEntry, ModManagerNotice } from './modManager.js';
@@ -17,7 +17,7 @@ import { lootSort, lootUserlist } from './loot/lootSort.js';
 import { ModError, findMod, listedMods, nexusRecord, ownerOf, pluginFiles } from './modList.js';
 import { findFileConflicts } from './fileConflicts.js';
 import { moveRefusal, type PluginKind, type Where } from './orderMoves.js';
-import { primaryPlugins } from './mo2.js';
+import { parseIni, primaryPlugins } from './mo2.js';
 import { checkGameVersion, myGamesDir } from './gameVersion.js';
 import { Attributor, dataPath } from './crash/attribution.js';
 import {
@@ -675,6 +675,12 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
             throw new ProjectError(`'${project}' changed since its last build: run buildProject, then deploy.`);
         }
 
+        // As installMod: the instance's mods folder is never made here, or the mod lands in a folder no game reads.
+        if (!isDirectory(instance.modsDir)) {
+            throw new ProjectError(
+                `The instance's mods folder ${instance.modsDir} is not there, so nothing was deployed. Where the mods were moved, ` +
+                `set mod_directory under [Settings] in ModOrganizer.ini, or in Mod Organizer (Settings > Paths), then deploy again.`);
+        }
         const modFolder = path.join(instance.modsDir, project);
         const deployed = path.join(modFolder, plugin);
         // A copy that outranks the mod — Mod Organizer's overwrite — is the one the game loads, and the one to guard.
@@ -1033,11 +1039,34 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
                 `'${mod}' is the mod of the project '${mod}', which deployProject puts into the instance. Give \`name\` to ` +
                 `install this file as another mod.`);
         }
+        // The mods folder is the instance's, never made here: made, it is a folder the mod manager does not read, and every
+        // mod installed into it is in no game. Moved by hand to another drive and set under [General], where Mod Organizer
+        // does not read it, the setting left this folder gone; 540 mods went into one made anew, were reported installed,
+        // their archives deleted, and the folder later deleted with them (2026-11-28).
+        if (!isDirectory(instance.modsDir)) {
+            throw new InstallError(
+                `The instance's mods folder ${instance.modsDir} is not there, so nothing was installed: a mod put into a folder ` +
+                `made here would be in no game. Where the mods were moved, set mod_directory under [Settings] in ` +
+                `ModOrganizer.ini — Mod Organizer reads it there, not under [General] — or set it in Mod Organizer (Settings > ` +
+                `Paths), then install again.`);
+        }
         const exists = fs.existsSync(modFolder) && fs.readdirSync(modFolder).length > 0;
         if (exists && !request.replace) {
             throw new InstallError(
                 `A mod named '${mod}' is already in the instance. Pass replace: true to replace its files with this file's, ` +
                 `or give \`name\` to install it as another mod.`);
+        }
+        if (exists) {
+            // `replace` puts a file of the same mod in place of another — a newer version, other options. A file of another
+            // Nexus mod that only gets the same name, as Nexus's generic file names do ("Main File", "Main Archive",
+            // "Base"), is not one: replacing would delete that other mod's files.
+            const other = installedNexusMod(modFolder);
+            const mine = meta.modId ?? nexusModIdOf(fileName);
+            if (other && mine && other.modId !== mine) {
+                throw new InstallError(
+                    `'${mod}' holds Nexus mod ${other.modId}${other.file ? ` (${other.file})` : ''}, and ${fileName} is of Nexus mod ` +
+                    `${mine}: replacing it would delete that other mod. Give \`name\` to install this file as a mod of its own.`);
+            }
         }
 
         await this.engine.ensureFresh();
@@ -1074,13 +1103,34 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
 
         // Written from here on. A half-unpacked mod is worse than none: the file is still there to install again.
         if (exists) fs.rmSync(modFolder, { recursive: true, force: true });
-        fs.mkdirSync(modFolder, { recursive: true });
+        // Not recursive: the mods folder is there (checked above), and a mod's name is one folder.
+        fs.mkdirSync(modFolder);
+        let notUnpacked: string[] = [];
+        let onDisk: number;
         try {
-            const unpacking = this.engine.helper.call('extractArchive', { archivePath: file, targetDir: modFolder, files: plan.files }, BUILD_TIMEOUT_MS);
-            await (exists ? afterLocalWrites(unpacking) : unpacking);
+            const unpacking = this.engine.helper.call<{ written?: number; missing?: string[] }>(
+                'extractArchive', { archivePath: file, targetDir: modFolder, files: plan.files }, BUILD_TIMEOUT_MS);
+            const unpacked = await (exists ? afterLocalWrites(unpacking) : unpacking);
+            notUnpacked = unpacked?.missing ?? [];
+            // What is on disk, not what was asked for: a mod is installed when its files are in its folder.
+            onDisk = countFiles(modFolder);
+            const entry = (name: string) => name.replace(/\\/g, '/').replace(/^\/+/, '').toLowerCase();
+            const lost = new Set(notUnpacked.map(entry));
+            const expected = new Set(plan.files.filter(f => !lost.has(entry(f.from))).map(f => entry(f.to))).size;
+            if (onDisk === 0 || onDisk < expected) {
+                throw new InstallError(
+                    `${fileName} was not installed: ${onDisk} of its ${expected} files reached ${modFolder}, so the folder was ` +
+                    `removed again. Keep the file and try again; when it fails the same way, download it again.`);
+            }
         } catch (error) {
             fs.rmSync(modFolder, { recursive: true, force: true });
             throw error;
+        }
+        if (notUnpacked.length > 0) {
+            warnings.push(
+                `${notUnpacked.length} file${notUnpacked.length === 1 ? '' : 's'} of ${fileName} could not be unpacked and ` +
+                `${notUnpacked.length === 1 ? 'is' : 'are'} not in the mod: ${notUnpacked.slice(0, 5).join(', ')}` +
+                `${notUnpacked.length > 5 ? ', …' : ''}. Keep the file: the mod may not work without ${notUnpacked.length === 1 ? 'it' : 'them'}.`);
         }
         fs.writeFileSync(path.join(modFolder, 'meta.ini'), modMetaIni(meta, fileName), 'utf8');
         markDownloadInstalled(file);
@@ -1119,7 +1169,8 @@ export class SkyrimInstanceBackend implements SkyrimBackend {
         const { files: unpacked, ...how } = plan;
         return {
             mod, modFolder, file,
-            files: unpacked.length,
+            files: onDisk,
+            ...(notUnpacked.length > 0 ? { notUnpacked } : {}),
             ...how,
             plugins: order,
             ...(placed.before.size > 0 ? {
@@ -1883,6 +1934,38 @@ function findDownload(downloadsDir: string, file: string): string {
         ? `There is no file at '${given}'. Give the full path of a downloaded .7z, .zip or .rar, or its name in the downloads folder ${downloadsDir}.`
         : `No file '${given}' in the downloads folder ${downloadsDir}. Download it with downloadNexusFile, or give the full ` +
           `path of a file downloaded by hand.`);
+}
+
+function isDirectory(dir: string): boolean {
+    try {
+        return fs.statSync(dir).isDirectory();
+    } catch {
+        return false;
+    }
+}
+
+/** The files under a folder, every level down. */
+function countFiles(dir: string): number {
+    let count = 0;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (entry.isDirectory()) count += countFiles(path.join(dir, entry.name));
+        else if (entry.isFile()) count++;
+    }
+    return count;
+}
+
+/** The Nexus mod an installed mod's folder came from, by its meta.ini: its modid, else its installation file's name. */
+function installedNexusMod(modFolder: string): { modId: number; file?: string } | undefined {
+    let general: Map<string, string> | undefined;
+    try {
+        general = parseIni(fs.readFileSync(path.join(modFolder, 'meta.ini'), 'utf8')).get('General');
+    } catch {
+        return undefined;
+    }
+    const file = general?.get('installationFile') ? path.basename(general.get('installationFile')!.replace(/\\/g, '/')) : undefined;
+    const modId = Number(general?.get('modid'));
+    const id = Number.isInteger(modId) && modId > 0 ? modId : file ? nexusModIdOf(file) : undefined;
+    return id ? { modId: id, ...(file ? { file } : {}) } : undefined;
 }
 
 /** A name the caller gave, as it is — or refused, when it cannot be a folder. */

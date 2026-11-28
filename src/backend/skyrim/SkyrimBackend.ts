@@ -520,8 +520,13 @@ export interface InstallModResult {
     modFolder: string;
     /** The downloaded file it came from. */
     file: string;
-    /** How many files the mod got. */
+    /** How many files the mod got: counted in its folder once unpacked, not taken from the archive's list. */
     files: number;
+    /**
+     * Files the archive was to give the mod that could not be unpacked — a RAR's redirect entry, which names another
+     * entry instead of holding bytes. The mod lacks them; its `warnings` say so. Keep the downloaded file.
+     */
+    notUnpacked?: string[];
     /** `fomod` when its FOMOD installer chose the files, `none` when a folder of the file is the mod. */
     installer: 'fomod' | 'none';
     /** The folder of the file installed as Data; '' is its top. */
