@@ -154,6 +154,21 @@ public sealed partial class Session : IDisposable
     private ILinkCache<ISkyrimMod, ISkyrimModGetter> Cache =>
         cache ?? throw new HelperException("noLoadOrder", "No load order set: call setLoadOrder first.");
 
+    /// <summary>
+    /// The load order's link cache without one plugin, a project's deployed copy: kept for the load order, as a link cache fills
+    /// a record type's index across every plugin the first time it resolves one. Made anew for each build, it filled them all
+    /// again, and a build of two records took 15 s on a setup of 1,408 plugins.
+    /// </summary>
+    private ILinkCache<ISkyrimMod, ISkyrimModGetter> CacheWithout(ModKey except)
+    {
+        if (plugins.All(x => x.Key != except)) return Cache;
+        if (!cachesWithout.TryGetValue(except, out var without))
+            cachesWithout[except] = without = LoadedMods(except).ToImmutableLinkCache<ISkyrimMod, ISkyrimModGetter>();
+        return without;
+    }
+
+    private readonly Dictionary<ModKey, ILinkCache<ISkyrimMod, ISkyrimModGetter>> cachesWithout = [];
+
     // ---------------------------------------------------------------- finding
 
     private JsonNode FindRecords(JsonObject p)
@@ -1029,7 +1044,7 @@ public sealed partial class Session : IDisposable
 
         // Everything the plugin points at must exist — in the plugin itself, or in the load order without it.
         var others = LoadedMods(except: mod.ModKey);
-        var lookup = others.ToImmutableLinkCache<ISkyrimMod, ISkyrimModGetter>();
+        var lookup = CacheWithout(mod.ModKey);
         var own = mod.EnumerateMajorRecords().Select(r => r.FormKey).ToHashSet();
         var dangling = new List<(string Record, FormKey Target)>();
         foreach (var record in mod.EnumerateMajorRecords())
@@ -1896,6 +1911,7 @@ public sealed partial class Session : IDisposable
         foreach (var plugin in plugins) plugin.Mod.Dispose();
         plugins.Clear();
         cache = null;
+        cachesWithout.Clear();
         indexing = null;
         placedIndex = null;
         subtypeCodes = null;
