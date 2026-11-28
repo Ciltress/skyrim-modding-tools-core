@@ -597,6 +597,17 @@ export function defaultModName(meta: DownloadMeta, fileName: string): string {
     return folderName(name);
 }
 
+/**
+ * The Nexus mod a downloaded file is of, by its name alone — `<name>-<mod>-<version>-<time>`, or lately `<name> <mod>
+ * <version> <time> <tail>` — for a file with no `.meta`, downloaded by hand.
+ */
+export function nexusModIdOf(fileName: string): number | undefined {
+    const base = fileName.replace(/\.(7z|zip|rar|tar|gz)$/i, '');
+    const id = /^.+?-(\d+)-.+-\d{9,11}$/.exec(base)?.[1] ?? /^.+? (\d+) \S+ \d{4}-\d\d-\d\dT\d\d-\d\dZ \S+$/.exec(base)?.[1];
+    const value = id === undefined ? NaN : Number(id);
+    return Number.isInteger(value) && value > 0 ? value : undefined;
+}
+
 /** A name as a folder on every system: what Windows forbids replaced, no trailing dots or spaces. */
 export function folderName(name: string): string {
     return name.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').replace(/[. ]+$/, '').trim();

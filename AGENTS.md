@@ -105,6 +105,9 @@ src/
   backend/skyrim/modList.ts         listMods: the profile's mods as the manager shows them, read from files
   backend/skyrim/sksePlugins.ts     whether an SKSE plugin fits the game: the rules, SKSE's log, the verdicts
   backend/skyrim/gameVersion.ts     checkGameVersion's gathering: winning DLLs, SKSE, Address Library, the log
+  backend/skyrim/pluginCheck.ts     checkPlugins: plugins' TES4 headers read here, held against their masters
+  backend/skyrim/downloads.ts       listDownloads: the downloads folder's archives against the mods that hold their files
+  backend/skyrim/saves.ts           listSaves: a save's (.ess) header and plugin list, unpacked only that far
   backend/skyrim/nexus.ts           Nexus Mods: the catalogue over GraphQL, the account and downloads over
                                     v1 with NEXUS_API_KEY, BBCode as text; a download's .meta record
   backend/skyrim/installer.ts       what installMod decides before writing: a plain file's Data folder, a
@@ -126,8 +129,8 @@ src/
   handlers/RecordsHandlers.ts       findRecords, readRecord
   handlers/ProjectsHandlers.ts      newProject, addPatch, editRecord, editTerrain, generateNavmesh, newWorldspace, buildProject, deployProject, pullProject
   handlers/NexusHandlers.ts         searchNexus, readNexusMod, downloadNexusFile
-  handlers/ModsHandlers.ts          listMods, checkGameVersion, installMod, disableMod, enableMod, movePlugin, sortPlugins,
-                                    setModPriority, editIni
+  handlers/ModsHandlers.ts          listMods, checkGameVersion, checkPlugins, listDownloads, findFiles, listSaves,
+                                    installMod, disableMod, enableMod, movePlugin, sortPlugins, setModPriority, editIni
   handlers/AnalysisHandlers.ts      readCrashLog, findConflicts
   handlers/DocsHandlers.ts, SkillsHandlers.ts   readServerGuide and readSkill
   types/tools.ts           ToolDefinition / ToolProperty / ToolAnnotations — the inputSchema contract

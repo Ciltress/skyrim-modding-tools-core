@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using Loqui;
 using Mutagen.Bethesda.Plugins;
 using Mutagen.Bethesda.Plugins.Aspects;
+using Mutagen.Bethesda.Plugins.Exceptions;
 using Mutagen.Bethesda.Plugins.Records;
 using Mutagen.Bethesda.Skyrim;
 
@@ -13,7 +14,7 @@ namespace SkyrimHelper;
 /// references, landscape and navmesh are left out: there are hundreds of thousands of them, they rarely
 /// carry an editor ID, and the record families this server serves do not search for them.
 /// </summary>
-public sealed class RecordIndex
+public sealed partial class RecordIndex
 {
     public sealed class Entry(FormKey formKey)
     {
@@ -56,41 +57,118 @@ public sealed class RecordIndex
         .Select(name => typeof(ISkyrimModGetter).Assembly.GetType($"Mutagen.Bethesda.Skyrim.I{name}Getter")!)
         .ToArray();
 
-    public static RecordIndex Build(IEnumerable<(ModKey Key, ISkyrimModGetter Mod)> loadOrder)
+    /// <summary>
+    /// Plugins whose records could not all be read, each with why: a group Mutagen refuses — Finding_Derkeethus.esp holds two
+    /// navigation mesh info maps of one FormID — is left out, and the plugin's other records are in the index. One such plugin
+    /// failed the index, and with it every record tool, on a setup of 1,408 plugins (2026-11-28).
+    /// </summary>
+    public List<(string Plugin, string Error)> Unread { get; } = [];
+
+    /// <summary>What the index keeps of one record, read from its plugin.</summary>
+    internal readonly record struct Seen(FormKey FormKey, string Type, string Signature, Type GetterType, string? EditorId, string? Name, bool? Unplayable);
+
+    /// <summary>Every record class's getter, for reading a plugin type by type when reading it whole fails.</summary>
+    // Lazy: RecordClasses is initialized below this, and only a plugin that fails to read needs these.
+    private static Type[]? recordGetters;
+    private static Type[] RecordGetters => recordGetters ??= RecordClasses
+        .Where(name => !Skipped.Contains(name))
+        .Select(name => typeof(ISkyrimModGetter).Assembly.GetType($"Mutagen.Bethesda.Skyrim.I{name}Getter"))
+        .OfType<Type>()
+        .ToArray();
+
+    /// <param name="paths">Each plugin's file, in the order of <paramref name="loadOrder"/>: with <paramref name="cacheDir"/>, the
+    /// key of what the cache keeps of it.</param>
+    /// <param name="cacheDir">Where each plugin's records are kept between sessions (<see cref="IndexCache"/>); none, every plugin
+    /// is read.</param>
+    public static RecordIndex Build(IEnumerable<(ModKey Key, ISkyrimModGetter Mod)> loadOrder, IReadOnlyList<string?>? paths = null, string? cacheDir = null)
     {
-        var index = new RecordIndex();
-        foreach (var (key, mod) in loadOrder)
+        var mods = loadOrder.ToList();
+        // Each plugin read on its own thread: a plugin has its own reader, and this is most of the time a load order takes
+        // to index. Merged in load order after, so the plugins of an entry and its winner are as one thread would make them.
+        var read = new (List<Seen> Records, string? Error)[mods.Count];
+        var cache = cacheDir is not null && paths is not null ? new IndexCache(cacheDir) : null;
+        Parallel.For(0, mods.Count, i =>
         {
-            foreach (var record in mod.EnumerateMajorRecords())
+            var file = paths?[i];
+            if (cache is not null && file is not null && cache.Load(file) is { } kept) { read[i] = kept; return; }
+            read[i] = Read(mods[i].Mod);
+            if (cache is not null && file is not null) cache.Save(file, read[i].Records, read[i].Error);
+        });
+        cache?.Prune();
+
+        var index = new RecordIndex();
+        for (var i = 0; i < mods.Count; i++)
+        {
+            var key = mods[i].Key;
+            if (read[i].Error is { } error) index.Unread.Add((key.FileName.String, error));
+            foreach (var seen in read[i].Records)
             {
-                var type = TypeName(record);
-                if (Skipped.Contains(type)) continue;
-                if (!index.ByFormKey.TryGetValue(record.FormKey, out var entry))
+                if (!index.ByFormKey.TryGetValue(seen.FormKey, out var entry))
                 {
-                    entry = new Entry(record.FormKey)
-                    {
-                        Type = type,
-                        Signature = Signature(record),
-                        GetterType = ((ILoquiObject)record).Registration.GetterType
-                    };
-                    index.ByFormKey[record.FormKey] = entry;
+                    entry = new Entry(seen.FormKey) { Type = seen.Type, Signature = seen.Signature, GetterType = seen.GetterType };
+                    index.ByFormKey[seen.FormKey] = entry;
                 }
                 entry.Plugins.Add(key);
                 // The winner's identity is the one that counts, so later plugins overwrite.
-                if (record.EditorID is { Length: > 0 } editorId) entry.EditorId = editorId;
-                if (record is INamedGetter { Name: { Length: > 0 } name }) entry.Name = name;
-                if (record is IWeaponGetter weapon)
-                    entry.Unplayable = weapon.Data is { } data && (data.Flags.HasFlag(WeaponData.Flag.NonPlayable) || data.Flags.HasFlag(WeaponData.Flag.BoundWeapon));
-                else if (record is IArmorGetter armor)
-                    entry.Unplayable = armor.MajorFlags.HasFlag(Armor.MajorFlag.NonPlayable);
-                // CWArrow, a NonPlayable "Iron Arrow" of damage 1, was copied for eval round 129's arrow #5.
-                else if (record is IAmmunitionGetter ammo)
-                    entry.Unplayable = ammo.Flags.HasFlag(Ammunition.Flag.NonPlayable);
+                if (seen.EditorId is { } editorId) entry.EditorId = editorId;
+                if (seen.Name is { } name) entry.Name = name;
+                if (seen.Unplayable is { } unplayable) entry.Unplayable = unplayable;
             }
         }
         foreach (var entry in index.ByFormKey.Values)
             if (entry.EditorId is { } editorId) index.ByEditorId.TryAdd(editorId, entry.FormKey);
         return index;
+    }
+
+    /// <summary>
+    /// A plugin's records as the index keeps them. Where reading it whole throws, it is read again type by type, each
+    /// type that throws left out, and the first error said.
+    /// </summary>
+    private static (List<Seen> Records, string? Error) Read(ISkyrimModGetter mod)
+    {
+        var records = new List<Seen>();
+        try
+        {
+            foreach (var record in mod.EnumerateMajorRecords()) Keep(record, records);
+            return (records, null);
+        }
+        catch (Exception whole)
+        {
+            records.Clear();
+            var seen = new HashSet<FormKey>();
+            var kept = new List<Seen>();
+            foreach (var getter in RecordGetters)
+            {
+                try
+                {
+                    foreach (var record in mod.EnumerateMajorRecords(getter, throwIfUnknown: false))
+                        if (seen.Add(record.FormKey)) Keep(record, kept);
+                }
+                catch (Exception)
+                {
+                    // This type's group is the one that cannot be read; the others still are.
+                }
+            }
+            return (kept, (whole is RecordException { InnerException: { } inner } ? inner.Message : whole.Message));
+        }
+    }
+
+    private static void Keep(IMajorRecordGetter record, List<Seen> records)
+    {
+        var type = TypeName(record);
+        if (Skipped.Contains(type)) return;
+        bool? unplayable = record switch
+        {
+            IWeaponGetter weapon => weapon.Data is { } data && (data.Flags.HasFlag(WeaponData.Flag.NonPlayable) || data.Flags.HasFlag(WeaponData.Flag.BoundWeapon)),
+            IArmorGetter armor => armor.MajorFlags.HasFlag(Armor.MajorFlag.NonPlayable),
+            // CWArrow, a NonPlayable "Iron Arrow" of damage 1, was copied for eval round 129's arrow #5.
+            IAmmunitionGetter ammo => ammo.Flags.HasFlag(Ammunition.Flag.NonPlayable),
+            _ => null
+        };
+        records.Add(new Seen(record.FormKey, type, Signature(record), ((ILoquiObject)record).Registration.GetterType,
+            record.EditorID is { Length: > 0 } editorId ? editorId : null,
+            record is INamedGetter { Name: { Length: > 0 } name } ? name : null,
+            unplayable));
     }
 
     public static string TypeName(IMajorRecordGetter record)

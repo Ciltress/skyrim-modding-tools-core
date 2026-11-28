@@ -214,7 +214,7 @@ export function readModList(instance: Instance): ModEntry[] {
  * activates itself are active whatever plugins.txt says, because the game never lists them there.
  */
 export function readLoadOrder(instance: Instance): PluginEntry[] {
-    const primary = primaryPlugins(instance.gameDir);
+    const primary = gamePlugins(instance);
     const primarySet = new Set(primary.map(name => name.toLowerCase()));
     const active = activeInPluginsTxt(instance.profileDir);
 
@@ -234,18 +234,32 @@ export function readLoadOrder(instance: Instance): PluginEntry[] {
     return result;
 }
 
-/** The base masters, then what the game's Skyrim.ccc lists, kept only where the file exists. */
-export function primaryPlugins(gameDir: string): string[] {
+/**
+ * The base masters, then what the game's Skyrim.ccc lists, kept only where the file exists: in the game's
+ * Data folder, or in `present` (lower-case names) when given — the Data folder the game sees.
+ */
+export function primaryPlugins(gameDir: string, present?: ReadonlySet<string>): string[] {
     const ccc = path.join(gameDir, 'Skyrim.ccc');
     const creations = fs.existsSync(ccc) ? listLines(fs.readFileSync(ccc, 'utf8')) : [];
     // Skyrim.ccc and the files on disk need not agree on case (`ccBGSSSE001-Fish.esm`); the game does not care.
-    let present: Set<string>;
-    try {
-        present = new Set(fs.readdirSync(path.join(gameDir, 'Data')).map(name => name.toLowerCase()));
-    } catch {
-        present = new Set();
+    let files = present;
+    if (!files) {
+        try {
+            files = new Set(fs.readdirSync(path.join(gameDir, 'Data')).map(name => name.toLowerCase()));
+        } catch {
+            files = new Set();
+        }
     }
-    return [...BASE_MASTERS, ...creations].filter(name => present.has(name.toLowerCase()));
+    const has = files;
+    return [...BASE_MASTERS, ...creations].filter(name => has.has(name.toLowerCase()));
+}
+
+/**
+ * The game's own plugins as it loads them under Mod Organizer: a Creation Club plugin Skyrim.ccc lists is
+ * active once any enabled mod gives it to the virtual Data folder, not only when it is in the game's own.
+ */
+export function gamePlugins(instance: Instance): string[] {
+    return primaryPlugins(instance.gameDir, new Set(resolvePluginFiles(instance, readModList(instance)).keys()));
 }
 
 function activeInPluginsTxt(profileDir: string): { names: Set<string>; ordered: string[] } {

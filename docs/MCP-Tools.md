@@ -142,8 +142,8 @@ arguments, see [`Tool-Reference.md`](./Tool-Reference.md), which is generated fr
 | profile | listed | for |
 | --- | --- | --- |
 | `core` | 19 | look up, patch, edit, build, deploy; move or delete a record file; list the mods, check them against the game, install, disable or enable one; read a crash log or the Papyrus log; find mod conflicts — small local models |
-| `readonly` | 12 | looking records and mods up, on Nexus Mods too, and reading crash logs, the Papyrus log and conflicts only; the write tools are absent, not discouraged |
-| `all` | 34 | the default; right for clients that fetch tool schemas on demand. 33 without a Nexus API key, which `downloadNexusFile` needs; the only one with `exportCell` and `importCell`, a cell in Blender and back, `editTerrain`, the ground outdoors, `generateNavmesh`, a cell's navmesh, `newWorldspace`, a land of the mod's own, `newCell`, a room of the mod's own, and `movePlugin`, `sortPlugins` and `setModPriority`, the load order and the mod order changed |
+| `readonly` | 16 | looking records and mods up, on Nexus Mods too, checking the plugins' masters, the downloads, a file's mod and the saves, and reading crash logs, the Papyrus log and conflicts only; the write tools are absent, not discouraged |
+| `all` | 38 | the default; right for clients that fetch tool schemas on demand. 37 without a Nexus API key, which `downloadNexusFile` needs; the only one with `exportCell` and `importCell`, a cell in Blender and back, `editTerrain`, the ground outdoors, `generateNavmesh`, a cell's navmesh, `newWorldspace`, a land of the mod's own, `newCell`, a room of the mod's own, and `movePlugin`, `sortPlugins` and `setModPriority`, the load order and the mod order changed |
 
 Counts include `healthcheck`, which every profile lists. `profiles.test.ts` holds them to `PROFILES`.
 
@@ -1275,7 +1275,7 @@ A one-file change. Add a `ToolSpec` to the handler's `toolSpecs()`:
 }
 ```
 
-Then, in the same change: `npm run build && npm run docs:tools` to regenerate the reference; a row in
+Then, in the same change: `npm run build`, and the tool's row in the profile table of section 3.1; a row in
 [`Tool-Router.md`](./Tool-Router.md) if the tool answers a question someone would ask in their own
 words; the tool's name in [`profiles.ts`](../src/lib/profiles.ts) if a small profile should list it.
 `tools/list`, the router and the contract tests pick it up by themselves.

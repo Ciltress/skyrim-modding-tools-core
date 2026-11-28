@@ -26,6 +26,8 @@
     <PackageReference Include="Mutagen.Bethesda.Serialization.Yaml" Version="[1.38.6]" />
     <PackageReference Include="Mutagen.Bethesda.Serialization.SourceGenerator" Version="[1.38.6]" />
     <PackageReference Include="Noggog.CSharpExt" Version="[4.3.0]" />
+    <!-- Record text made in memory, not a file a record in the temp folder (MIT, the project of Mutagen's System.IO.Abstractions). -->
+    <PackageReference Include="TestableIO.System.IO.Abstractions.TestingHelpers" Version="[22.1.1]" />
     <!-- Downloaded files: .7z, .zip, .rar (MIT). -->
     <PackageReference Include="SharpCompress" Version="[0.50.4]" />
     <!-- Navmeshes: the meshes' collision read with NiflySharp (GPL-3.0), the walkable surface made by Recast's C# port (Zlib). -->

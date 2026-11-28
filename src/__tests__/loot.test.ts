@@ -48,7 +48,7 @@ describe('orderChanges and reorderedLines', () => {
 
 /** A libloot that sorts by the order `wanted` gives, and knows the metadata `meta` gives each plugin. */
 function fakeLibloot(wanted: string[], meta: Record<string, object> = {}, crcs: Record<string, number> = {}, files: string[] = []) {
-    const seen: { local?: string; dataPaths?: string[]; masterlist?: string; userlist?: string } = {};
+    const seen: { local?: string; dataPaths?: string[]; masterlist?: string; userlist?: string; loaded?: string[]; readOrderState?: boolean } = {};
     class Game implements Partial<LootGame> {
         private order: { name: string; active: boolean }[] = [];
         constructor(_type: number, _gamePath: string, local?: string) { seen.local = local; }
@@ -63,12 +63,13 @@ function fakeLibloot(wanted: string[], meta: Record<string, object> = {}, crcs: 
             };
         }
         loadCurrentLoadOrderState() {
+            seen.readOrderState = true;
             this.order = fs.readFileSync(path.join(seen.local!, 'Plugins.txt'), 'latin1').split(/\r?\n/).filter(Boolean)
                 .map(line => ({ name: line.replace(/^\*/, ''), active: line.startsWith('*') }));
         }
         loadOrder() { return this.order.map(plugin => plugin.name); }
         isPluginActive(name: string) { return this.order.find(plugin => plugin.name === name)?.active ?? false; }
-        loadPlugins() { /* read by the fake's metadata */ }
+        loadPlugins(paths: string[]) { seen.loaded = paths; /* read by the fake's metadata */ }
         plugin(name: string) { return { name: () => name, crc: () => crcs[name] ?? null, masters: () => [], isMaster: () => false, isLightPlugin: () => false }; }
         sortPlugins(names: string[]) { return [...names].sort((a, b) => wanted.indexOf(a) - wanted.indexOf(b)); }
     }
@@ -120,6 +121,20 @@ describe('lootSort', () => {
             missing: [{ plugin: 'Big.esp', needs: 'Big Helper' }],
             incompatible: [{ plugin: 'Patch.esp', with: 'Old.esp' }]
         });
+    });
+
+    it('hands libloot each plugin\'s own file, never asking it to look one up across the data paths', () => {
+        // Over a thousand data paths, libloot's own lookup took half a minute and now and then missed a file that was there.
+        const { module, seen } = fakeLibloot(['Skyrim.esm', 'Big.esp']);
+        const { sorted } = lootSort({
+            libloot: module, gameDir: 'G:/Skyrim', masterlist: 'M.yaml', prelude: 'P.yaml', workDir: temp('loot-work-'),
+            dataPaths: ['G:/mo2/mods/Big'], pluginFiles: new Map([['big.esp', 'G:/mo2/mods/Big/Big.esp']]),
+            order: [{ name: 'Big.esp', active: true }, { name: 'Skyrim.esm', active: true }, { name: 'Off.esp', active: false }]
+        });
+        // A plugin no mod gives — the game's own — is named, for libloot to find in Data.
+        expect(seen.loaded).toEqual(['G:/mo2/mods/Big/Big.esp', 'Skyrim.esm']);
+        expect(seen.readOrderState).toBeUndefined();
+        expect(sorted).toEqual(['Skyrim.esm', 'Big.esp']);
     });
 });
 

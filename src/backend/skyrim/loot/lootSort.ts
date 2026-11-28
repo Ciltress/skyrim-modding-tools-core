@@ -18,6 +18,14 @@ export interface LootSortInput {
     order: { name: string; active: boolean }[];
     /** Folders the game sees as Data besides its own, the highest priority first: Mod Organizer's overwrite and mods. */
     dataPaths: string[];
+    /**
+     * Each plugin's file as the game loads it, by its name in lower case: the copy that wins. libloot is handed these
+     * paths, so it never looks a plugin up by name across the data paths — over a thousand of them, that lookup took half
+     * a minute and now and then missed a file that was there, and libloot then refused the sort over the `.ghost` path it
+     * tried last ("the file at …\Data\SurvivalModeImproved.esp.ghost does not have a valid plugin header", a different
+     * plugin each run, on a setup of 1,148 mods). A plugin it does not name is looked up as before.
+     */
+    pluginFiles?: ReadonlyMap<string, string>;
     masterlist: string;
     prelude: string;
     /** LOOT's own userlist.yaml where the user has one: their rules are LOOT's too. */
@@ -61,9 +69,10 @@ export function lootSort(input: LootSortInput): { report: LootSortReport; game: 
     const database = game.database();
     database.loadMasterlistWithPrelude(input.masterlist, input.prelude);
     if (input.userlist && fs.existsSync(input.userlist)) database.loadUserlist(input.userlist);
-    game.loadCurrentLoadOrderState();
-    const current = game.loadOrder().filter(name => game.isPluginActive(name));
-    game.loadPlugins(current);
+    // The profile's own order is the current one: libloot reading it again through the data paths gave the same sort,
+    // after half a minute or more on a large setup.
+    const current = input.order.filter(plugin => plugin.active).map(plugin => plugin.name);
+    game.loadPlugins(current.map(name => input.pluginFiles?.get(name.toLowerCase()) ?? name));
     const sorted = game.sortPlugins(current);
 
     const messages: LootSortReport['messages'] = database.generalMessages(WITH_USER, EVALUATE)

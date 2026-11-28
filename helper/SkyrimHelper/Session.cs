@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Reflection;
+using System.IO.Abstractions.TestingHelpers;
 using System.Text.RegularExpressions;
 using System.Text.Json.Nodes;
 using Mutagen.Bethesda;
@@ -38,9 +39,9 @@ public sealed partial class Session : IDisposable
     public async Task<JsonNode?> Dispatch(string method, JsonObject p)
     {
         // Overlays are read by one thread at a time: whatever reads plugins waits for the background index.
-        // Downloaded files and plugin headers are read from files of their own, and need not wait; record
+        // Downloaded files, plugin headers and SKSE plugins' DLLs are read from files of their own, and need not wait; record
         // files do, since a FormKey of another plugin's is checked against the record it names.
-        if (method is not ("hello" or "gameVersion" or "setLoadOrder" or "readArchive" or "extractArchive" or "pluginHeaders" or "bsaFiles" or "archiveFiles" or "extractFiles")
+        if (method is not ("hello" or "gameVersion" or "setLoadOrder" or "readArchive" or "extractArchive" or "pluginHeaders" or "bsaFiles" or "archiveFiles" or "extractFiles" or "sksePlugins")
             && indexing is { } running)
         {
             try { await running; } catch { /* surfaced by the call that needs the index */ }
@@ -136,10 +137,14 @@ public sealed partial class Session : IDisposable
         }
         cache = plugins.Select(x => (ISkyrimModGetter)x.Mod).ToImmutableLinkCache<ISkyrimMod, ISkyrimModGetter>();
         var snapshot = plugins.Select(x => (x.Key, (ISkyrimModGetter)x.Mod)).ToList();
+        var paths = plugins.Select(x => (string?)x.Path).ToList();
+        // Kept between sessions unless SKYRIM_HELPER_INDEX_CACHE is "off"; another value is the folder to keep it in.
+        var cacheSetting = Environment.GetEnvironmentVariable("SKYRIM_HELPER_INDEX_CACHE");
+        var cacheDir = cacheSetting is "off" or "0" or "false" ? null : string.IsNullOrWhiteSpace(cacheSetting) ? RecordIndex.IndexCache.DefaultDir() : cacheSetting;
         indexing = Task.Run(() =>
         {
             var clock = Stopwatch.StartNew();
-            var built = RecordIndex.Build(snapshot);
+            var built = RecordIndex.Build(snapshot, paths, cacheDir);
             Console.Error.WriteLine($"[helper] indexed {built.ByFormKey.Count} records of {snapshot.Count} plugins in {clock.ElapsedMilliseconds} ms");
             return built;
         });
@@ -148,6 +153,21 @@ public sealed partial class Session : IDisposable
 
     private ILinkCache<ISkyrimMod, ISkyrimModGetter> Cache =>
         cache ?? throw new HelperException("noLoadOrder", "No load order set: call setLoadOrder first.");
+
+    /// <summary>
+    /// The load order's link cache without one plugin, a project's deployed copy: kept for the load order, as a link cache fills
+    /// a record type's index across every plugin the first time it resolves one. Made anew for each build, it filled them all
+    /// again, and a build of two records took 15 s on a setup of 1,408 plugins.
+    /// </summary>
+    private ILinkCache<ISkyrimMod, ISkyrimModGetter> CacheWithout(ModKey except)
+    {
+        if (plugins.All(x => x.Key != except)) return Cache;
+        if (!cachesWithout.TryGetValue(except, out var without))
+            cachesWithout[except] = without = LoadedMods(except).ToImmutableLinkCache<ISkyrimMod, ISkyrimModGetter>();
+        return without;
+    }
+
+    private readonly Dictionary<ModKey, ILinkCache<ISkyrimMod, ISkyrimModGetter>> cachesWithout = [];
 
     // ---------------------------------------------------------------- finding
 
@@ -274,6 +294,7 @@ public sealed partial class Session : IDisposable
         foreach (var e in all.Take(limit)) rows.Add(e.ToJson());
         var answer = new JsonObject { ["total"] = all.Count, ["records"] = rows };
         if (readAs.Count > 0) answer["typesRead"] = string.Join("; ", readAs);
+        AddUnread(answer);
         if (searchedAs is not null) answer["searchedAs"] = searchedAs;
         if (notFound.Count > 0)
         {
@@ -443,29 +464,41 @@ public sealed partial class Session : IDisposable
     private async Task<List<(string Path, string Text)>> Render(
         IEnumerable<IModContext<ISkyrimMod, ISkyrimModGetter, IMajorRecord, IMajorRecordGetter>> contexts, ModKey asPlugin)
     {
-        var temp = new SkyrimMod(asPlugin, release);
-        foreach (var context in contexts) context.GetOrAddAsOverride(temp);
-        return await Render(temp, asPlugin);
+        return await Render(Overrides(contexts, asPlugin), asPlugin);
     }
 
     /// <summary>A plugin made here, in project text, as <see cref="Render(IEnumerable{IModContext{ISkyrimMod, ISkyrimModGetter, IMajorRecord, IMajorRecordGetter}}, ModKey)"/> writes it.</summary>
-    private async Task<List<(string Path, string Text)>> Render(SkyrimMod temp, ModKey asPlugin)
+    private async Task<List<(string Path, string Text)>> Render(SkyrimMod temp, ModKey asPlugin) =>
+        await TextOf(await Written(temp, asPlugin), asPlugin);
+
+    /// <summary>
+    /// The first half of a render: the plugin written, in memory, for <see cref="TextOf"/>. Its records are read from the load
+    /// order's plugins, so writes go one at a time; TextOf reads nothing but the bytes.
+    /// </summary>
+    private async Task<byte[]> Written(SkyrimMod temp, ModKey asPlugin)
     {
-        var dir = Directory.CreateTempSubdirectory("skyrimhelper-").FullName;
-        try
-        {
-            var plugin = Path.Combine(dir, asPlugin.FileName);
-            await temp.BeginWrite.ToPath(plugin).WithLoadOrder(LoadedMods(except: asPlugin)).WriteAsync();
-            using var written = SkyrimMod.Create(release).FromPath(plugin).Construct();
-            var yaml = Path.Combine(dir, "yaml");
-            await MutagenYamlConverter.Instance.Serialize(written, yaml);
-            return Directory.GetFiles(yaml, "*.yaml", SearchOption.AllDirectories)
-                .Select(f => (Path: Path.GetRelativePath(yaml, f).Replace('\\', '/'), Text: TextBlocks.Literal(Lf(File.ReadAllText(f)))))
-                .Where(f => f.Path != "RecordData.yaml")
-                .OrderBy(f => f.Path, StringComparer.Ordinal)
-                .ToList();
-        }
-        finally { Directory.Delete(dir, true); }
+        var files = new MockFileSystem();
+        var plugin = files.Path.Combine(files.Path.GetTempPath(), asPlugin.FileName);
+        await temp.BeginWrite.ToPath(plugin, files).WithLoadOrder(LoadedMods(except: asPlugin)).WriteAsync();
+        return files.File.ReadAllBytes(plugin);
+    }
+
+    /// <summary>
+    /// The second half of a render: a plugin <see cref="Written"/> wrote, in project text. The text is made in a file system in
+    /// memory: a file a record on disk, under the system's temp folder, held a scan of 4,000 records to two of eight cores for
+    /// most of its 77 s. It reads nothing shared, so the second halves of several renders run side by side.
+    /// </summary>
+    private async Task<List<(string Path, string Text)>> TextOf(byte[] plugin, ModKey asPlugin)
+    {
+        using var written = SkyrimMod.Create(release).FromStreamFactory(() => new MemoryStream(plugin, writable: false), asPlugin).Construct();
+        var files = new MockFileSystem();
+        var yaml = files.Path.Combine(files.Path.GetTempPath(), "yaml");
+        await MutagenYamlConverter.Instance.Serialize(written, yaml, fileSystem: files);
+        return files.Directory.GetFiles(yaml, "*.yaml", SearchOption.AllDirectories)
+            .Select(f => (Path: files.Path.GetRelativePath(yaml, f).Replace('\\', '/'), Text: TextBlocks.Literal(Lf(files.File.ReadAllText(f)))))
+            .Where(f => f.Path != "RecordData.yaml")
+            .OrderBy(f => f.Path, StringComparer.Ordinal)
+            .ToList();
     }
 
     /// <summary>A load-order record's file text as readRecord answers it — its winning version's first file — by editor ID; null for none.</summary>
@@ -524,20 +557,66 @@ public sealed partial class Session : IDisposable
     /// <summary>Each plugin's version of these records as project text, by plugin and FormKey: one render a plugin.</summary>
     private async Task<Dictionary<(ModKey Plugin, FormKey Record), string>> VersionTexts(IEnumerable<(ModKey Plugin, FormKey Record)> wanted)
     {
-        var texts = new Dictionary<(ModKey, FormKey), string>();
-        foreach (var group in wanted.Distinct().GroupBy(w => w.Plugin))
+        // Each plugin's versions are written one plugin after another, as they are read from the load order's plugins; the
+        // written plugins are then turned to text side by side. That text, one plugin at a time, was two thirds of the 77 s
+        // a scan of 4,000 records took on a setup of 1,408 plugins.
+        var written = new List<(ModKey Plugin, HashSet<FormKey> Records, byte[] Bytes)>();
+        // A plugin's records in chunks, so one plugin that holds most of them (the master each was made from) is
+        // turned to text on several threads.
+        foreach (var group in wanted.Distinct().GroupBy(w => w.Plugin).SelectMany(g => g.Chunk(TextChunk).Select(c => (g.Key, Records: c))))
         {
-            var records = group.Select(w => w.Record).ToHashSet();
+            var records = group.Records.Select(w => w.Record).ToHashSet();
             var contexts = records.Select(r => Contexts(r).FirstOrDefault(c => c.ModKey == group.Key))
                 .OfType<IModContext<ISkyrimMod, ISkyrimModGetter, IMajorRecord, IMajorRecordGetter>>().ToList();
             if (contexts.Count == 0) continue;
-            foreach (var (_, text) in await Render(contexts, group.Key))
-                if (Regex.Match(text, @"^FormKey:[ \t]*(\S+)", RegexOptions.Multiline) is { Success: true } line
-                    && FormKey.TryFactory(line.Groups[1].Value, out var key) && records.Contains(key))
-                    texts[(group.Key, key)] = text;
+            try
+            {
+                written.Add((group.Key, records, await Written(Overrides(contexts, group.Key), group.Key)));
+            }
+            catch (Exception whole) when (whole is not HelperException)
+            {
+                // One record that cannot be written (it names a plugin missing from the load order) failed the whole
+                // scan on a setup with missing masters. Its plugin's records are written one by one, and those that
+                // fail are left out, said in `notCompared`.
+                foreach (var context in contexts)
+                {
+                    try
+                    {
+                        written.Add((group.Key, records, await Written(Overrides([context], group.Key), group.Key)));
+                    }
+                    catch (Exception one) when (one is not HelperException)
+                    {
+                        notRendered.Add((group.Key.FileName.String, FormKeyText(context.Record.FormKey), one.Message));
+                    }
+                }
+            }
         }
+
+        var rendered = new List<(string Path, string Text)>[written.Count];
+        await Parallel.ForEachAsync(Enumerable.Range(0, written.Count), async (i, _) =>
+            rendered[i] = await TextOf(written[i].Bytes, written[i].Plugin));
+        var texts = new Dictionary<(ModKey, FormKey), string>();
+        for (var i = 0; i < written.Count; i++)
+            foreach (var (_, text) in rendered[i])
+                if (Regex.Match(text, @"^FormKey:[ \t]*(\S+)", RegexOptions.Multiline) is { Success: true } line
+                    && FormKey.TryFactory(line.Groups[1].Value, out var key) && written[i].Records.Contains(key))
+                    texts[(written[i].Plugin, key)] = text;
         return texts;
     }
+
+    /// <summary>The given versions as overrides in a new plugin named <paramref name="asPlugin"/>, for <see cref="Written"/>.</summary>
+    /// <summary>The most records one plugin written for VersionTexts holds.</summary>
+    private const int TextChunk = 150;
+
+    private SkyrimMod Overrides(IEnumerable<IModContext<ISkyrimMod, ISkyrimModGetter, IMajorRecord, IMajorRecordGetter>> contexts, ModKey asPlugin)
+    {
+        var temp = new SkyrimMod(asPlugin, release);
+        foreach (var context in contexts) context.GetOrAddAsOverride(temp);
+        return temp;
+    }
+
+    /// <summary>Versions VersionTexts could not render since the last call that reset it: plugin, record, why.</summary>
+    private readonly List<(string Plugin, string Record, string Error)> notRendered = [];
 
     /// <summary>FormIDs in a change's text said with the editor ID of the record each names.</summary>
     private string WithEditorIds(string text) => Regex.Replace(text, @"[0-9A-Fa-f]{6}:[^\s,\]\}]+?\.es[mpl]", m =>
@@ -566,20 +645,26 @@ public sealed partial class Session : IDisposable
         var compared = candidates.Count;
         candidates = candidates.Take(MaxConflictRecords).ToList();
 
+        notRendered.Clear();
         var texts = await VersionTexts(candidates.SelectMany(c => c.Losers.SelectMany(l => new[] { (l.Loser, c.Entry.FormKey), (l.Made, c.Entry.FormKey) })
             .Append((c.Entry.Plugins[^1], c.Entry.FormKey))));
-        var rows = new JsonArray();
-        var total = 0;
-        foreach (var (entry, losers) in candidates)
+        // Each record's versions compared on a thread of its own, each version's text parsed once (a plugin's version is the
+        // one several others were made from): one record after another, parsing each version for every plugin that lost
+        // to it, took 18 s of a scan of 4,000 records. The rows are put together in order after.
+        var shapes = new System.Collections.Concurrent.ConcurrentDictionary<(ModKey, FormKey), Conflicts.Shape>();
+        Conflicts.Shape? ShapeOf(ModKey plugin, FormKey record) =>
+            texts.TryGetValue((plugin, record), out var text) ? shapes.GetOrAdd((plugin, record), _ => Conflicts.Flatten(text)) : null;
+        var lostOf = new (JsonArray Rows, bool Clash)?[candidates.Count];
+        Parallel.For(0, candidates.Count, i =>
         {
-            if (!texts.TryGetValue((entry.Plugins[^1], entry.FormKey), out var winnerText)) continue;
-            var winner = Conflicts.Flatten(winnerText);
+            var (entry, losers) = candidates[i];
+            if (ShapeOf(entry.Plugins[^1], entry.FormKey) is not { } winner) return;
             var lostRows = new JsonArray();
             var clash = false;
             foreach (var (loser, made) in losers)
             {
-                if (!texts.TryGetValue((loser, entry.FormKey), out var mineText) || !texts.TryGetValue((made, entry.FormKey), out var madeText)) continue;
-                var lost = Conflicts.Lost(Conflicts.Flatten(madeText), Conflicts.Flatten(mineText), winner);
+                if (ShapeOf(loser, entry.FormKey) is not { } mine || ShapeOf(made, entry.FormKey) is not { } was) continue;
+                var lost = Conflicts.Lost(was, mine, winner);
                 if (lost.Count == 0) continue;
                 clash |= lost.Any(c => c.Clash);
                 var lostRow = new JsonObject
@@ -590,7 +675,16 @@ public sealed partial class Session : IDisposable
                 if (lost.Count > 8) lostRow["more"] = lost.Count - 8;
                 lostRows.Add(lostRow);
             }
-            if (lostRows.Count == 0) continue;
+            if (lostRows.Count > 0) lostOf[i] = (lostRows, clash);
+        });
+
+        var rows = new JsonArray();
+        var total = 0;
+        for (var i = 0; i < candidates.Count; i++)
+        {
+            var (entry, _) = candidates[i];
+            if (lostOf[i] is not { } found) continue;
+            var (lostRows, clash) = found;
             total++;
             if (rows.Count >= limit) continue;
             var row = new JsonObject
@@ -607,7 +701,23 @@ public sealed partial class Session : IDisposable
         }
         var answer = new JsonObject { ["total"] = total, ["records"] = rows };
         if (compared > MaxConflictRecords) answer["compared"] = $"the first {MaxConflictRecords} of {compared} records two plugins change: name a plugin to see its own";
+        if (notRendered.Count > 0)
+        {
+            // Said once a plugin: a plugin that names a missing master fails each of its records the same way.
+            answer["notCompared"] = new JsonArray(notRendered.GroupBy(n => n.Plugin).Select(g => (JsonNode)new JsonObject
+            {
+                ["plugin"] = g.Key, ["records"] = g.Count(), ["error"] = g.First().Error
+            }).ToArray());
+        }
+        AddUnread(answer);
         return answer;
+    }
+
+    /// <summary>The plugins whose records the index could not all read, said beside an answer from it: a record of theirs may be missing.</summary>
+    private void AddUnread(JsonObject answer)
+    {
+        if (Index.Unread.Count == 0) return;
+        answer["unreadPlugins"] = new JsonArray(Index.Unread.Select(u => (JsonNode)new JsonObject { ["plugin"] = u.Plugin, ["error"] = u.Error }).ToArray());
     }
 
     // ---------------------------------------------------------------- patching
@@ -934,7 +1044,7 @@ public sealed partial class Session : IDisposable
 
         // Everything the plugin points at must exist — in the plugin itself, or in the load order without it.
         var others = LoadedMods(except: mod.ModKey);
-        var lookup = others.ToImmutableLinkCache<ISkyrimMod, ISkyrimModGetter>();
+        var lookup = CacheWithout(mod.ModKey);
         var own = mod.EnumerateMajorRecords().Select(r => r.FormKey).ToHashSet();
         var dangling = new List<(string Record, FormKey Target)>();
         foreach (var record in mod.EnumerateMajorRecords())
@@ -1801,6 +1911,7 @@ public sealed partial class Session : IDisposable
         foreach (var plugin in plugins) plugin.Mod.Dispose();
         plugins.Clear();
         cache = null;
+        cachesWithout.Clear();
         indexing = null;
         placedIndex = null;
         subtypeCodes = null;
